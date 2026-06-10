@@ -44,6 +44,10 @@ function extractEarthquakes(html: string): Earthquake[] {
   return earthquakes;
 }
 
+export const config = {
+  runtime: 'edge',
+};
+
 export default async function handler(req: Request) {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
