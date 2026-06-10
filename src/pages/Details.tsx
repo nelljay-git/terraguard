@@ -184,22 +184,38 @@ export function Details() {
 
         {/* Dynamic Seismograph Animation */}
         <div className="seismograph-container">
-          <svg className="seismograph-svg" viewBox="0 0 600 100" preserveAspectRatio="none">
+          <svg
+            className="seismograph-svg"
+            viewBox="0 0 600 200"
+            preserveAspectRatio="none"
+            style={{
+              overflow: 'visible',
+              width: '100%',
+              height: '100%',
+            }}
+          >
+            {/* Baseline */}
             <path
               className="seismograph-line-static"
-              d="M 0 50 L 600 50"
+              d="M 0 100 L 600 100"
               stroke="rgba(255,255,255,0.08)"
               strokeWidth="1"
+              fill="none"
             />
+
+            {/* Seismograph Wave */}
             <path
               className="seismograph-line"
               d={generateSeismographPath(mag)}
               stroke={color}
               strokeWidth="2"
               fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
               style={{
-                animationDuration: `${Math.max(1, 4 - (mag / 3))}s`
-              } as React.CSSProperties}
+                animationDuration: `${Math.max(1, 4 - mag / 3)}s`,
+              }}
             />
           </svg>
         </div>
