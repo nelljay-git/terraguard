@@ -152,15 +152,24 @@ export function Details() {
       </div>
 
       {/* Hero Header Card */}
-      <div className="details-hero glass" style={{ '--severity-color': color } as React.CSSProperties}>
+      <div
+        className="details-hero glass"
+        style={{
+          '--severity-color': color,
+          backgroundImage: "url('/image.png')",
+          backgroundRepeat: 'repeat',
+
+        } as React.CSSProperties}
+      >
         <div className="hero-backdrop-glow" style={{ backgroundColor: `${color}15` }}></div>
         <div className="hero-content">
           <div className="hero-left">
             <span className="hero-subtitle text-muted">SEISMIC EVENT RECORDED</span>
             <h1 className="hero-title">{earthquake.location}</h1>
+            <span className="hero-subtitle text-muted">{earthquake.datetime}</span>
             <div className="coordinates-badge">
               <MapPin size={14} style={{ color }} />
-              <span>{earthquake.latitude}°N, {earthquake.longitude}°E</span>
+              <span>{earthquake.latitude}°N, {earthquake.longitude}°E - {earthquake.depth} km depth</span>
             </div>
           </div>
 
