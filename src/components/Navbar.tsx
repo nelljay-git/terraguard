@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, Globe2, BarChart2 } from 'lucide-react';
+import { Activity, Globe2, BarChart2, HelpCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import logoSrc from '../assets/logo.png';
 import './Navbar.css';
@@ -46,6 +46,10 @@ export function Navbar() {
           <span className="source-dot"></span>
           PHIVOLCS
         </div>
+        
+        <Link to="/about" className="nav-help-btn flex-center" title="About TerraGuard">
+          <HelpCircle size={18} />
+        </Link>
       </div>
     </nav>
   );

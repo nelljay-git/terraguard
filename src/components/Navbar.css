@@ -111,6 +111,24 @@
   50% { opacity: 0.3; }
 }
 
+/* ── Help Button ── */
+.nav-help-btn {
+  color: var(--text-muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.nav-help-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: scale(1.05);
+}
+
 /* ── Mobile ── */
 @media (max-width: 768px) {
   .nav-links span {
