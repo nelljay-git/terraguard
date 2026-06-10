@@ -111,7 +111,7 @@ export function Details() {
   };
 
   const handleShare = async () => {
-    if (navigator.share) {
+    if (typeof navigator.share === 'function') {
       try {
         await navigator.share({
           title: `M${earthquake.magnitude} Earthquake - ${earthquake.location}`,
@@ -138,8 +138,12 @@ export function Details() {
             {copied ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
             <span>{copied ? 'Copied!' : 'Copy Link'}</span>
           </button>
-          {navigator.share && (
-            <button className="action-btn glass flex-center" onClick={handleShare} title="Share Event">
+          {typeof navigator.share === 'function' && (
+            <button
+              className="action-btn glass flex-center"
+              onClick={handleShare}
+              title="Share Event"
+            >
               <Share2 size={16} />
               <span>Share</span>
             </button>
@@ -159,7 +163,7 @@ export function Details() {
               <span>{earthquake.latitude}°N, {earthquake.longitude}°E</span>
             </div>
           </div>
-          
+
           <div className="hero-right">
             <div className="magnitude-display" style={{ boxShadow: `0 0 30px ${color}30`, borderColor: color }}>
               <div className="mag-glow" style={{ background: `radial-gradient(circle, ${color}30 0%, transparent 70%)` }}></div>
@@ -172,17 +176,17 @@ export function Details() {
         {/* Dynamic Seismograph Animation */}
         <div className="seismograph-container">
           <svg className="seismograph-svg" viewBox="0 0 600 100" preserveAspectRatio="none">
-            <path 
-              className="seismograph-line-static" 
-              d="M 0 50 L 600 50" 
-              stroke="rgba(255,255,255,0.08)" 
+            <path
+              className="seismograph-line-static"
+              d="M 0 50 L 600 50"
+              stroke="rgba(255,255,255,0.08)"
               strokeWidth="1"
             />
-            <path 
-              className="seismograph-line" 
-              d={generateSeismographPath(mag)} 
-              stroke={color} 
-              strokeWidth="2" 
+            <path
+              className="seismograph-line"
+              d={generateSeismographPath(mag)}
+              stroke={color}
+              strokeWidth="2"
               fill="none"
               style={{
                 animationDuration: `${Math.max(1, 4 - (mag / 3))}s`
