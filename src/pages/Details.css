@@ -1,0 +1,222 @@
+.details-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.back-link {
+  display: inline-flex;
+  gap: 8px;
+  color: var(--text-muted);
+  width: fit-content;
+  transition: color 0.2s;
+}
+
+.back-link:hover {
+  color: var(--text-primary);
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+
+.details-main {
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.details-header {
+  align-items: flex-start;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.event-id {
+  font-size: 0.8rem;
+  font-family: monospace;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+.details-title {
+  font-size: 2.5rem;
+  line-height: 1.1;
+}
+
+.details-mag-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 90px;
+  height: 90px;
+  border-radius: 16px;
+  border: 1px solid;
+  flex-shrink: 0;
+}
+
+.details-mag-badge .mag-value {
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.details-mag-badge .mag-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.8;
+  margin-top: 4px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+.info-icon {
+  color: var(--text-muted);
+}
+
+.info-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.info-value {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.section-title {
+  font-size: 1.25rem;
+  margin-bottom: 16px;
+  color: var(--text-primary);
+}
+
+.details-map-container {
+  height: 350px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.details-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.impact-card, .safety-card {
+  padding: 24px;
+}
+
+.impact-severity {
+  font-size: 2rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.safety-item {
+  margin-bottom: 16px;
+}
+
+.safety-item h4 {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.safety-item p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 992px) {
+  .details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .details-sidebar {
+    order: 2;
+  }
+
+  .details-main {
+    order: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .details-container {
+    gap: 18px;
+  }
+
+  .details-main,
+  .impact-card,
+  .safety-card {
+    padding: 18px;
+  }
+
+  .details-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .details-title {
+    font-size: 1.8rem;
+    word-break: break-word;
+  }
+
+  .details-mag-badge {
+    width: 78px;
+    height: 78px;
+    align-self: flex-start;
+  }
+
+  .details-mag-badge .mag-value {
+    font-size: 2rem;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .info-item {
+    align-items: flex-start;
+  }
+
+  .details-map-container {
+    height: 260px;
+  }
+
+  .section-title {
+    font-size: 1.05rem;
+  }
+
+  .impact-severity {
+    font-size: 1.5rem;
+  }
+
+  .safety-item p {
+    font-size: 0.9rem;
+  }
+}
