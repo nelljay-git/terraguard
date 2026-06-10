@@ -281,10 +281,15 @@ export function Stats() {
                 <YAxis stroke="var(--text-muted)" fontSize={11} domain={[0, 'auto']} />
                 <Tooltip
                   contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
-                  allowEscapeViewBox={{ x: true, y: true }}
-                  wrapperStyle={{ pointerEvents: 'none' }}
+                  wrapperStyle={{ pointerEvents: 'none', zIndex: 10 }}
                   itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
                   labelStyle={{ color: '#94a3b8' }}
+                  labelFormatter={(label, payload) => {
+                    if (payload && payload.length > 0 && payload[0].payload.date) {
+                      return `${payload[0].payload.date} - ${label}`;
+                    }
+                    return label;
+                  }}
                 />
                 <Area
                   type="monotone"

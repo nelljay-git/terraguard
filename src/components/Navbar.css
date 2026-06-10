@@ -15,15 +15,10 @@
   gap: 10px;
 }
 
-.brand-icon-wrap {
+.brand-logo {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
-  background: #6366f1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
+  object-fit: contain;
 }
 
 .brand-text {

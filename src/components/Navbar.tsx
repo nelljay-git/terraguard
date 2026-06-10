@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, Globe2, BarChart2, Shield } from 'lucide-react';
+import { Activity, Globe2, BarChart2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import logoSrc from '../assets/logo.png';
 import './Navbar.css';
 
 export function Navbar() {
@@ -16,9 +17,7 @@ export function Navbar() {
     <nav className="navbar glass">
       <div className="container flex-between nav-content">
         <Link to="/" className="nav-brand flex-center">
-          <div className="brand-icon-wrap">
-            <Shield size={20} />
-          </div>
+          <img src={logoSrc} alt="TerraGuard Logo" className="brand-logo" />
           <div className="brand-text-group">
             <span className="brand-text">TerraGuard</span>
             <span className="brand-sub">Seismic Monitor</span>
