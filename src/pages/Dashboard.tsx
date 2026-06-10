@@ -59,9 +59,19 @@ export function Dashboard() {
   }
 
   if (earthquakes.length === 0) return (
-    <div className="container flex-center" style={{ height: '50vh', flexDirection: 'column', gap: '12px' }}>
-      <h2>No Data Available</h2>
-      <p className="text-muted">Unable to connect to PHIVOLCS. Please check your network.</p>
+    <div className="container flex-center" style={{ height: '50vh', flexDirection: 'column', gap: '16px' }}>
+      <Shield size={48} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
+      <h2>Connecting to PHIVOLCS...</h2>
+      <p className="text-muted">The data source is temporarily unavailable. Retrying automatically.</p>
+      <button
+        className="dash-refresh-btn"
+        onClick={loadData}
+        disabled={syncing}
+        style={{ padding: '10px 24px', borderRadius: '12px', fontSize: '0.9rem', cursor: 'pointer', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)' }}
+      >
+        <RefreshCw size={16} className={syncing ? 'spin' : ''} style={{ marginRight: '8px', display: 'inline' }} />
+        {syncing ? 'Retrying...' : 'Retry Now'}
+      </button>
     </div>
   );
 
