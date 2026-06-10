@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { parse, isValid, startOfDay, subDays, subMonths, format } from 'date-fns';
-import { fetchPhivolcsData, type PhivolcsEarthquake } from '../api/phivolcs';
+import { fetchPhivolcsData, getCachedData, type PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityLabel } from '../lib/utils';
 import { InteractiveMap } from '../components/InteractiveMap';
 import {
@@ -41,8 +41,9 @@ function parseEarthquakeDate(datetime: string): Date | null {
 }
 
 export function Stats() {
-  const [earthquakes, setEarthquakes] = useState<PhivolcsEarthquake[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialCache = getCachedData();
+  const [earthquakes, setEarthquakes] = useState<PhivolcsEarthquake[]>(initialCache?.data ?? []);
+  const [loading, setLoading] = useState(!initialCache?.data?.length);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('month');
@@ -52,8 +53,10 @@ export function Stats() {
     setSyncing(true);
     try {
       const res = await fetchPhivolcsData();
-      setEarthquakes(res.data);
-      setLastSync(new Date());
+      if (res.data.length > 0) {
+        setEarthquakes(res.data);
+        setLastSync(new Date());
+      }
     } catch (err) {
       console.error('Stats fetch error', err);
     } finally {

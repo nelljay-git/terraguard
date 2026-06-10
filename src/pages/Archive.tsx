@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
-import { fetchPhivolcsData, type PhivolcsEarthquake } from '../api/phivolcs';
+import { fetchPhivolcsData, getCachedData, type PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityColor } from '../lib/utils';
 import { Search, Filter, Clock, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import './Archive.css';
 
 export function Archive() {
-  const [earthquakes, setEarthquakes] = useState<PhivolcsEarthquake[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialCache = getCachedData();
+  const [earthquakes, setEarthquakes] = useState<PhivolcsEarthquake[]>(initialCache?.data ?? []);
+  const [loading, setLoading] = useState(!initialCache?.data?.length);
   
   const [search, setSearch] = useState("");
   const [dateSearch, setDateSearch] = useState("");
@@ -19,7 +20,9 @@ export function Archive() {
     async function loadData() {
       try {
         const res = await fetchPhivolcsData();
-        setEarthquakes(res.data);
+        if (res.data.length > 0) {
+          setEarthquakes(res.data);
+        }
       } catch (err) {
         console.error(err);
       } finally {

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { parse, isValid, isSameMonth } from 'date-fns';
-import { fetchPhivolcsData, getSignificantEarthquakes, type PhivolcsEarthquake } from '../api/phivolcs';
+import { fetchPhivolcsData, getSignificantEarthquakes, getCachedData, type PhivolcsEarthquake } from '../api/phivolcs';
 import { SummaryCards } from '../components/SummaryCards';
 import { LatestEarthquake } from '../components/LatestEarthquake';
 import { InteractiveMap } from '../components/InteractiveMap';
@@ -9,9 +9,13 @@ import { Radio, RefreshCw, Shield } from 'lucide-react';
 import './Dashboard.css';
 
 export function Dashboard() {
-  const [earthquakes, setEarthquakes] = useState<PhivolcsEarthquake[]>([]);
-  const [sigEarthquakes, setSigEarthquakes] = useState<PhivolcsEarthquake[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Try to load cached data instantly so the user sees something right away
+  const initialCache = getCachedData();
+  const [earthquakes, setEarthquakes] = useState<PhivolcsEarthquake[]>(initialCache?.data ?? []);
+  const [sigEarthquakes, setSigEarthquakes] = useState<PhivolcsEarthquake[]>(
+    initialCache?.data ? getSignificantEarthquakes(initialCache.data) : []
+  );
+  const [loading, setLoading] = useState(!initialCache?.data?.length);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
 
@@ -19,9 +23,11 @@ export function Dashboard() {
     setSyncing(true);
     try {
       const res = await fetchPhivolcsData();
-      setEarthquakes(res.data);
-      setSigEarthquakes(getSignificantEarthquakes(res.data));
-      setLastSync(new Date());
+      if (res.data.length > 0) {
+        setEarthquakes(res.data);
+        setSigEarthquakes(getSignificantEarthquakes(res.data));
+        setLastSync(new Date());
+      }
     } catch (err) {
       console.error("Failed to fetch dashboard data", err);
     } finally {
