@@ -83,8 +83,10 @@ export default async function handler(req: any, res: any) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return res.status(500).json({
+    return res.status(200).json({
       success: false,
+      count: 0,
+      data: [],
       error: message,
     });
   }

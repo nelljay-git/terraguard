@@ -23,7 +23,7 @@ export function MagnitudeChart({ data }: { data: PhivolcsEarthquake[] }) {
         <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', letterSpacing: '0.5px', textTransform: 'uppercase' as const, fontWeight: 600 }}>Last 24 Hours</span>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorMagDash" x1="0" y1="0" x2="0" y2="1">

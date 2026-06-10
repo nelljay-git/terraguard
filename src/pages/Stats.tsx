@@ -268,7 +268,7 @@ export function Stats() {
             Magnitude Timeline
           </div>
           <div className="chart-body chart-body--timeline" style={{ height: 280 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
               <AreaChart data={statsData.magTimeline} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gradMag" x1="0" y1="0" x2="0" y2="1">
@@ -333,7 +333,7 @@ export function Stats() {
             Magnitude Distribution
           </div>
           <div className="chart-body" style={{ height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
               <PieChart>
                 <Pie
                   data={statsData.magDistribution}
@@ -373,7 +373,7 @@ export function Stats() {
             Top Active Regions
           </div>
           <div className="chart-body" style={{ height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
               <BarChart data={statsData.topRegions} layout="vertical" margin={{ top: 5, right: 20, left: 5, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
                 <XAxis type="number" stroke="var(--text-muted)" fontSize={11} />
@@ -401,7 +401,7 @@ export function Stats() {
             Depth vs Magnitude Profile
           </div>
           <div className="chart-body" style={{ height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
               <ScatterChart margin={{ top: 10, right: 10, left: -10, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                 <XAxis dataKey="magnitude" type="number" name="Magnitude" stroke="var(--text-muted)" fontSize={11} label={{ value: 'Magnitude', position: 'insideBottom', offset: -5, fill: 'var(--text-muted)', fontSize: 11 }} />
@@ -426,7 +426,7 @@ export function Stats() {
             Events Per Day
           </div>
           <div className="chart-body" style={{ height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
               <BarChart data={statsData.timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 30 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                 <XAxis dataKey="day" stroke="var(--text-muted)" fontSize={10} angle={-30} textAnchor="end" interval={0} />
