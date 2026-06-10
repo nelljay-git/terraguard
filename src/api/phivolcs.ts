@@ -17,15 +17,19 @@ export async function fetchPhivolcsData(): Promise<PhivolcsResponse> {
   try {
     const res = await fetch('/api/phivolcs');
     if (!res.ok) throw new Error("Failed to fetch from proxy");
-    
+    const contentType = res.headers.get('content-type') || '';
+
+    if (contentType.includes('application/json')) {
+      return (await res.json()) as PhivolcsResponse;
+    }
+
     const html = await res.text();
-    
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, "text/html");
-    
+
     const rows = doc.querySelectorAll("table tr");
     const earthquakes: PhivolcsEarthquake[] = [];
-    
+
     rows.forEach((row) => {
       const cols = row.querySelectorAll("td");
       // Header rows use <th> so cols.length will be 0. Data rows have >= 6 <td> elements.
