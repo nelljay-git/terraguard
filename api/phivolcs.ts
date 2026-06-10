@@ -1,3 +1,5 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 type Earthquake = {
   datetime: string;
   latitude: string;
@@ -44,76 +46,46 @@ function extractEarthquakes(html: string): Earthquake[] {
   return earthquakes;
 }
 
-export const config = {
-  runtime: 'edge',
-};
+export default async function handler(req: any, res: any) {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-export default async function handler(req: Request) {
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-    });
+    return res.status(204).end();
   }
 
   if (req.method !== 'GET') {
-    return new Response(JSON.stringify({ success: false, error: 'Method not allowed' }), {
-      status: 405,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
+    return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
   try {
-    const res = await fetch('https://earthquake.phivolcs.dost.gov.ph/', {
+    const response = await fetch('https://earthquake.phivolcs.dost.gov.ph/', {
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
       },
     });
 
-    if (!res.ok) {
-      throw new Error(`PHIVOLCS responded with ${res.status}`);
+    if (!response.ok) {
+      throw new Error(`PHIVOLCS responded with ${response.status}`);
     }
 
-    const html = await res.text();
+    const html = await response.text();
     const earthquakes = extractEarthquakes(html);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        count: earthquakes.length,
-        data: earthquakes,
-      }),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-store',
-        },
-      }
-    );
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(200).json({
+      success: true,
+      count: earthquakes.length,
+      data: earthquakes,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: message,
-      }),
-      {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      }
-    );
+    return res.status(500).json({
+      success: false,
+      error: message,
+    });
   }
 }
