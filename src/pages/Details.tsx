@@ -21,7 +21,7 @@ export function Details() {
           const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
           return eqId === id;
         });
-        
+
         if (found) {
           setEarthquake(found);
         } else {
@@ -72,7 +72,7 @@ export function Details() {
         <div className="details-main glass">
           <div className="details-header flex-between">
             <div>
-              <div className="event-id text-muted">Event ID: {id}</div>
+              <div className="event-id text-muted"></div>
               <h1 className="details-title">{earthquake.location}</h1>
             </div>
             <div className="details-mag-badge" style={{ backgroundColor: `${color}20`, color, borderColor: color }}>
@@ -143,12 +143,12 @@ export function Details() {
             <div className="impact-severity" style={{ color }}>{severityLabel}</div>
             <p className="impact-desc text-muted">
               {mag < 4 ? "Generally not felt by people, but recorded by local seismographs." :
-               mag < 5 ? "Felt by many indoors, some outdoors. Dishes and windows disturbed." :
-               mag < 6 ? "Felt by everyone. Slight damage to buildings." :
-               mag < 7 ? "Can cause damage to moderately built structures." :
-               "Major earthquake. Can cause widespread severe damage."}
+                mag < 5 ? "Felt by many indoors, some outdoors. Dishes and windows disturbed." :
+                  mag < 6 ? "Felt by everyone. Slight damage to buildings." :
+                    mag < 7 ? "Can cause damage to moderately built structures." :
+                      "Major earthquake. Can cause widespread severe damage."}
             </p>
-            
+
             <div className="pop-estimate flex-center glass-card" style={{ marginTop: '16px', padding: '12px', gap: '12px' }}>
               <Users size={20} color="var(--text-muted)" />
               <div>
@@ -160,7 +160,7 @@ export function Details() {
 
           <div className="safety-card glass">
             <h3 className="section-title">Safety Guidelines</h3>
-            
+
             <div className="safety-item">
               <h4>Before</h4>
               <p>Secure heavy furniture to walls. Prepare an emergency kit with food, water, and first aid supplies.</p>
