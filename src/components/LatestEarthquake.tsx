@@ -1,6 +1,6 @@
 import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
-import { MapPin, Clock, Activity, ArrowRight, Waves } from 'lucide-react';
+import { MapPin, Clock, Activity, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import './LatestEarthquake.css';
 
