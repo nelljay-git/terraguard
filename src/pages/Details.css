@@ -172,6 +172,7 @@
   font-family: monospace;
   font-size: 0.9rem;
   border: 1px solid rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(4px);
 }
 
 .hero-right {
@@ -194,6 +195,7 @@
   /* backdrop-filter: blur(8px); */
   overflow: hidden;
   transition: transform 0.3s ease;
+  backdrop-filter: blur(2px);
 }
 
 .magnitude-display:hover {

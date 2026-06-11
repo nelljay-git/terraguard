@@ -1,17 +1,23 @@
 :root {
-  --color-micro: #10b981; /* Green */
-  --color-minor: #3b82f6; /* Blue */
-  --color-light: #eab308; /* Yellow */
-  --color-moderate: #f97316; /* Orange */
-  --color-strong: #ef4444; /* Red */
-  --color-major: #8b5cf6; /* Purple */
+  --color-micro: #10b981;
+  /* Green */
+  --color-minor: #3b82f6;
+  /* Blue */
+  --color-light: #eab308;
+  /* Yellow */
+  --color-moderate: #f97316;
+  /* Orange */
+  --color-strong: #ef4444;
+  /* Red */
+  --color-major: #8b5cf6;
+  /* Purple */
 
   --bg-primary: #0f172a;
   --bg-secondary: #1e293b;
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
-  
+
   --border-color: rgba(255, 255, 255, 0.1);
   --glass-bg: rgba(30, 41, 59, 0.7);
   --glass-border: rgba(255, 255, 255, 0.05);
@@ -27,7 +33,7 @@
     --text-primary: #0f172a;
     --text-secondary: #475569;
     --text-muted: #94a3b8;
-    
+
     --border-color: rgba(0, 0, 0, 0.1);
     --glass-bg: rgba(255, 255, 255, 0.7);
     --glass-border: rgba(0, 0, 0, 0.05);
@@ -63,7 +69,7 @@ body {
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--glass-border);
   border-radius: 16px;
-  padding: 24px;
+
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -77,10 +83,12 @@ body {
   background: var(--bg-secondary) !important;
   border-radius: 16px;
   border: 1px solid var(--border-color);
-  z-index: 0; /* Keep behind navbar */
+  z-index: 0;
+  /* Keep behind navbar */
 }
 
-.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
   background: var(--bg-secondary) !important;
   color: var(--text-primary) !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3) !important;
@@ -114,7 +122,12 @@ body {
 }
 
 /* Base UI Elements */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-weight: 600;
   line-height: 1.2;
 }

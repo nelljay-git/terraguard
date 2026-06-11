@@ -9,7 +9,7 @@ export function Archive() {
   const initialCache = getCachedData();
   const [earthquakes, setEarthquakes] = useState<PhivolcsEarthquake[]>(initialCache?.data ?? []);
   const [loading, setLoading] = useState(!initialCache?.data?.length);
-  
+
   const [search, setSearch] = useState("");
   const [dateSearch, setDateSearch] = useState("");
   const [timeSearch, setTimeSearch] = useState("");
@@ -76,9 +76,9 @@ export function Archive() {
       <div className="filters-container glass">
         <div className="search-box">
           <Search size={20} className="filter-icon" />
-          <input 
-            type="text" 
-            placeholder="Search by location..." 
+          <input
+            type="text"
+            placeholder="Search by location..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -103,7 +103,7 @@ export function Archive() {
             onChange={e => setTimeSearch(e.target.value)}
           />
         </div>
-        
+
         <div className="filter-box">
           <Filter size={20} className="filter-icon" />
           <select value={minMag} onChange={e => setMinMag(Number(e.target.value))}>
@@ -115,7 +115,7 @@ export function Archive() {
           </select>
         </div>
       </div>
-
+      <div style={{ marginTop: '5px', textAlign: 'center', color: '#707070ff' }}> Recent Activities </div>
       <div className="archive-grid">
         {filteredData.slice(0, visibleCount).map((eq, i) => {
           const mag = parseFloat(eq.magnitude);
@@ -143,11 +143,11 @@ export function Archive() {
           );
         })}
       </div>
-      
+
       {filteredData.length === 0 && (
         <div className="no-results">No earthquakes match your filters.</div>
       )}
-      
+
       {visibleCount < filteredData.length && (
         <div className="loader-small">Scroll for more...</div>
       )}

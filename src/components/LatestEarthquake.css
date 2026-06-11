@@ -50,8 +50,17 @@
 }
 
 @keyframes dot-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.8); }
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
 }
 
 .eq-severity-tag {
@@ -73,20 +82,22 @@
 }
 
 .eq-mag-circle {
-  width: 110px;
-  height: 110px;
-  border-radius: 50%;
-  border: 2px solid;
+  width: 140px;
+  height: 140px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   gap: 0;
+
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(11px);
+  -webkit-backdrop-filter: blur(11px);
 }
 
 .eq-mag-number {
-  font-size: 3rem;
+  font-size: 3.2rem;
   font-weight: 900;
   line-height: 1;
   letter-spacing: -2px;
@@ -135,10 +146,11 @@
 
 /* ── Actions ── */
 .eq-actions {
-  display: flex;
-  gap: 10px;
+  display: block;
+  justify-content: space-between;
   margin-top: auto;
 }
+
 
 .eq-action-btn {
   display: inline-flex;
@@ -150,7 +162,10 @@
   font-weight: 600;
   text-decoration: none;
   transition: all 0.2s ease;
-  border: 1px solid transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .eq-action-primary:hover {
@@ -183,7 +198,7 @@
   }
 
   .eq-mag-number {
-    font-size: 2.2rem;
+    font-size: 3.2rem;
   }
 
   .eq-actions {
