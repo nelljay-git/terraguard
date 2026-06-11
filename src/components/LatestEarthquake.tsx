@@ -87,7 +87,7 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
             <ArrowRight size={15} />
           </Link>
           <Link to="/archive" className="eq-action-btn eq-action-secondary">
-            Browse Archive
+            See Archive
             <ArrowRight size={15} />
           </Link>
         </div>
