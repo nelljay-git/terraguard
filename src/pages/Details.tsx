@@ -250,6 +250,30 @@ export function Details() {
 
       <div className="details-grid">
         <div className="details-main-pane">
+
+
+          {/* Interactive Map */}
+          <div className="details-card glass map-card">
+            <h3 className="card-title">Seismic Epicenter Location</h3>
+            <div className="details-map-container">
+              {!isNaN(lat) && !isNaN(lng) ? (
+                <MapContainer center={[lat, lng]} zoom={8} scrollWheelZoom={false} style={{ height: '100%', width: '100%', zIndex: 0 }}>
+                  <TileLayer
+                    attribution='&copy; OpenStreetMap &copy; CARTO'
+                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                  />
+                  <CircleMarker
+                    center={[lat, lng]}
+                    radius={Math.max(mag * 3.5, 8)}
+                    pathOptions={{ color, fillColor: color, fillOpacity: 0.5, weight: 2 }}
+                  />
+                </MapContainer>
+              ) : (
+                <div className="flex-center" style={{ height: '100%' }}>Invalid Coordinates</div>
+              )}
+            </div>
+          </div>
+
           {/* Richter Scale & Key Details */}
           <div className="details-card glass">
             <h3 className="card-title">Key Parameters</h3>
@@ -304,29 +328,9 @@ export function Details() {
               </div>
             </div>
           </div>
-
-          {/* Interactive Map */}
-          <div className="details-card glass map-card">
-            <h3 className="card-title">Seismic Epicenter Location</h3>
-            <div className="details-map-container">
-              {!isNaN(lat) && !isNaN(lng) ? (
-                <MapContainer center={[lat, lng]} zoom={8} scrollWheelZoom={false} style={{ height: '100%', width: '100%', zIndex: 0 }}>
-                  <TileLayer
-                    attribution='&copy; OpenStreetMap &copy; CARTO'
-                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                  />
-                  <CircleMarker
-                    center={[lat, lng]}
-                    radius={Math.max(mag * 3.5, 8)}
-                    pathOptions={{ color, fillColor: color, fillOpacity: 0.5, weight: 2 }}
-                  />
-                </MapContainer>
-              ) : (
-                <div className="flex-center" style={{ height: '100%' }}>Invalid Coordinates</div>
-              )}
-            </div>
-          </div>
         </div>
+
+
 
         <div className="details-sidebar-pane">
           {/* Impact assessment */}
