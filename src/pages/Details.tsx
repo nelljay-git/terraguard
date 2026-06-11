@@ -158,14 +158,40 @@ export function Details() {
           '--severity-color': color,
           backgroundImage: "url('/image.png')",
           backgroundRepeat: 'repeat',
+          color: '#ffffffff'
 
         } as React.CSSProperties}
       >
         <div className="hero-backdrop-glow" style={{ backgroundColor: `${color}15` }}></div>
         <div className="hero-content">
           <div className="hero-left">
-            <span className="hero-subtitle text-muted">SEISMIC EVENT RECORDED</span>
-            <h1 className="hero-title">{earthquake.location}</h1>
+            <span
+              className="hero-subtitle text-muted"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "left",
+                gap: "8px",
+              }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="17"
+                height="17"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#ef4444"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="lucide lucide-activity"
+                aria-hidden="true"
+              >
+                <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />
+              </svg>
+              SEISMIC EVENT RECORDED
+            </span>
+            <h1 className="hero-title" style={{ color: '#ffffffff' }}>{earthquake.location}</h1>
             <span className="hero-subtitle text-muted">{earthquake.datetime}</span>
             <div className="coordinates-badge">
               <MapPin size={14} style={{ color }} />
@@ -219,6 +245,7 @@ export function Details() {
             />
           </svg>
         </div>
+        <div style={{ position: 'absolute', bottom: '20px', left: '5%', float: 'left', color: '#424242ff', fontSize: '12px' }}>Source data: PHIVOLCS</div>
       </div>
 
       <div className="details-grid">
