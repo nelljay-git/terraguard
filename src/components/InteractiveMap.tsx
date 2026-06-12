@@ -16,6 +16,7 @@ type InteractiveMapProps = {
   compactMarkers?: boolean;
   autoCenter?: boolean;
   enableLegendFilter?: boolean;
+  disableDragging?: boolean;
 };
 
 function createMagnitudeIcon(magnitude: string, color: string, compact = false) {
@@ -48,7 +49,7 @@ function getSeverityHexColor(mag: number): string {
   return "#8b5cf6";
 }
 
-function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = false, compactMarkers = false, autoCenter = false, enableLegendFilter = false }: InteractiveMapProps) {
+function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = false, compactMarkers = false, autoCenter = false, enableLegendFilter = false, disableDragging = false }: InteractiveMapProps) {
   const mapRef = useRef<L.Map | null>(null);
   const [visibleBounds, setVisibleBounds] = useState<L.LatLngBounds | null>(null);
   const [selectedEarthquake, setSelectedEarthquake] = useState<PhivolcsEarthquake | null>(null);
@@ -148,7 +149,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
         return null;
       }
       const hexColor = getSeverityHexColor(mag);
-      const radius = compactMarkers ? Math.max(6, mag * 2.5) : Math.max(10, mag * 4);
+      const radius = compactMarkers ? Math.max(14, mag * 2.5) : Math.max(18, mag * 4);
 
       return (
         <CircleMarker
@@ -260,8 +261,8 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
           const mag = label === 'Micro' ? 1 : label === 'Minor' ? 3 : label === 'Light' ? 4 : label === 'Moderate' ? 5 : label === 'Strong' ? 6 : 7;
           const isActive = activeFilter === label;
           return (
-            <span 
-              key={label} 
+            <span
+              key={label}
               className={`legend-chip ${isActive ? 'legend-chip--active' : ''} ${enableLegendFilter ? 'legend-chip--clickable' : ''}`}
               onClick={() => {
                 if (enableLegendFilter) {
@@ -282,6 +283,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
           center={center}
           zoom={hasLatestCoords ? 8 : 5}
           scrollWheelZoom={false}
+          dragging={!disableDragging}
           preferCanvas={true}
           style={{ height: '100%', width: '100%', zIndex: 0 }}
         >

@@ -113,7 +113,7 @@ export function Dashboard() {
       {/* ── Hero: Latest + Map side by side ── */}
       <div className="dash-hero-row">
         <LatestEarthquake earthquake={latestEq} />
-        <InteractiveMap earthquakes={monthlyEarthquakes} latestEarthquake={latestEq} autoCenter={true} />
+        <InteractiveMap earthquakes={monthlyEarthquakes} latestEarthquake={latestEq} autoCenter={true} disableDragging={false} />
       </div>
 
       {/* ── Activity Feed (full-width below) ── */}
