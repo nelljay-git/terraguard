@@ -46,7 +46,7 @@ export function Stats() {
   const [loading, setLoading] = useState(!initialCache?.data?.length);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [timeRange, setTimeRange] = useState<TimeRangeKey>('month');
+  const [timeRange, setTimeRange] = useState<TimeRangeKey>('day');
   const [selectedTimelinePoint, setSelectedTimelinePoint] = useState<{ date: string; time: string; magnitude: number } | null>(null);
 
   const loadData = useCallback(async () => {
@@ -220,7 +220,7 @@ export function Stats() {
       </div>
 
       {/* ── Quick Stats ── */}
-      <div className="quick-stats-row">
+      <div className="quick-stats-row" style={{ display: 'none' }}>
         <div className="quick-stat glass-card">
           <span className="qs-value">{filteredEarthquakes.length}</span>
           <span className="qs-label">Total Events {timeRange === 'day' ? 'Today' : timeRangeLabel}</span>
@@ -259,6 +259,50 @@ export function Stats() {
           showAllEvents={true}
           compactMarkers={true}
         />
+      </div>
+
+      <div className="stats-summary">
+        <div className="stat-item">
+          <span className="stat-label">Total Events</span>
+          <span className="stat-value">{filteredEarthquakes.length}</span>
+
+        </div>
+
+        <div className="stat-item">
+          <span className="stat-label">Date Range {timeRange === 'day' && <span className="qs-sub-label">{timeRangeSubtitle}</span>}</span>
+          <span className="stat-value">
+            {timeRange === 'day' ? 'Today' : timeRangeLabel}
+
+          </span>
+        </div>
+
+        <div className="stat-item">
+          <span className="stat-label">Highest Magnitude</span>
+          <span className="stat-value" style={{ color: '#ef4444' }}>
+            {statsData.maxMag > 0 ? statsData.maxMag.toFixed(1) : '—'} MG
+          </span>
+        </div>
+
+        <div className="stat-item">
+          <span className="stat-label">Average Magnitude</span>
+          <span className="stat-value" style={{ color: '#f59e0b' }}>
+            {statsData.avgMag > 0 ? statsData.avgMag.toFixed(1) : '—'} MG
+          </span>
+        </div>
+
+        <div className="stat-item">
+          <span className="stat-label">Max Depth</span>
+          <span className="stat-value" style={{ color: '#8b5cf6' }}>
+            {statsData.maxDepth > 0 ? `${statsData.maxDepth.toFixed(0)} km` : '—'}
+          </span>
+        </div>
+
+        <div className="stat-item">
+          <span className="stat-label">Significant</span>
+          <span className="stat-value" style={{ color: '#10b981' }}>
+            {statsData.significantCount}
+          </span>
+        </div>
       </div>
 
       {/* ── Charts Grid ── */}
@@ -450,6 +494,6 @@ export function Stats() {
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 }
