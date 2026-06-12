@@ -113,7 +113,7 @@ export function Dashboard() {
       {/* ── Hero: Latest + Map side by side ── */}
       <div className="dash-hero-row">
         <LatestEarthquake earthquake={latestEq} />
-        <InteractiveMap earthquakes={monthlyEarthquakes} latestEarthquake={latestEq} autoCenter={true} disableDragging={false} />
+        <InteractiveMap earthquakes={monthlyEarthquakes} latestEarthquake={latestEq} autoCenter={true} disableDragging={true} />
       </div>
 
       {/* ── Summary Cards + Chart ── */}
