@@ -108,14 +108,16 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* ── Summary Cards + Chart ── */}
-      <SummaryCards recent={earthquakes} significant={sigEarthquakes} />
+
 
       {/* ── Hero: Latest + Map side by side ── */}
       <div className="dash-hero-row">
         <LatestEarthquake earthquake={latestEq} />
         <InteractiveMap earthquakes={monthlyEarthquakes} latestEarthquake={latestEq} autoCenter={true} disableDragging={false} />
       </div>
+
+      {/* ── Summary Cards + Chart ── */}
+      <SummaryCards recent={earthquakes} significant={sigEarthquakes} />
 
       {/* ── Activity Feed (full-width below) ── */}
       <ActivityFeed earthquakes={earthquakes.slice(0, 5)} />
