@@ -87,7 +87,6 @@ export function Stats() {
       return parsedDate ? parsedDate >= lowerBound : false;
     });
   }, [earthquakes, timeRange]);
-  const latestFilteredEarthquake = filteredEarthquakes[0] ?? null;
 
   const timeRangeLabel = useMemo(() => {
     return TIME_RANGES.find(option => option.key === timeRange)?.label ?? 'One Month';
@@ -255,9 +254,9 @@ export function Stats() {
       <div className="stats-map-shell glass-card">
         <InteractiveMap
           earthquakes={filteredEarthquakes}
-          latestEarthquake={latestFilteredEarthquake}
           showAllEvents={true}
           compactMarkers={true}
+          enableLegendFilter={true}
         />
       </div>
 
