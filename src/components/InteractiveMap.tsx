@@ -282,7 +282,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
           ref={mapRef}
           center={center}
           zoom={hasLatestCoords ? 8 : 5}
-          scrollWheelZoom={false}
+          scrollWheelZoom={true}
           dragging={!disableDragging}
           preferCanvas={true}
           style={{ height: '100%', width: '100%', zIndex: 0 }}
@@ -339,7 +339,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
                 ref={mapRef}
                 center={center}
                 zoom={hasLatestCoords ? 8 : 5}
-                scrollWheelZoom={false}
+                scrollWheelZoom={true}
                 preferCanvas={true}
                 style={{ height: '100%', width: '100%', zIndex: 0 }}
               >
