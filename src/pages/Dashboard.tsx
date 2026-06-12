@@ -5,6 +5,7 @@ import { SummaryCards } from '../components/SummaryCards';
 import { LatestEarthquake } from '../components/LatestEarthquake';
 import { InteractiveMap } from '../components/InteractiveMap';
 import { ActivityFeed } from '../components/ActivityFeed';
+import { NewsFeed } from '../components/NewsFeed';
 import { Radio, RefreshCw, Shield } from 'lucide-react';
 import './Dashboard.css';
 
@@ -118,6 +119,9 @@ export function Dashboard() {
 
       {/* ── Activity Feed (full-width below) ── */}
       <ActivityFeed earthquakes={earthquakes.slice(0, 5)} />
+
+      {/* ── News Feed ── */}
+      <NewsFeed limit={4} />
     </div>
   );
 }

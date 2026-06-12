@@ -4,6 +4,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Archive } from './pages/Archive';
 import { Details } from './pages/Details';
 import { Stats } from './pages/Stats';
+import { News } from './pages/News';
 import { About } from './pages/About';
 import './App.css';
 
@@ -17,6 +18,7 @@ function App() {
           <Route path="/archive" element={<Archive />} />
           <Route path="/details/:id" element={<Details />} />
           <Route path="/stats" element={<Stats />} />
+          <Route path="/news" element={<News />} />
           <Route path="/about" element={<About />} />
         </Routes>
       </main>
