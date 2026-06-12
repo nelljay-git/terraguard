@@ -263,31 +263,35 @@ export function Stats() {
 
       <div className="stats-summary">
         <div className="stat-item">
-          <span className="stat-label">Total Events</span>
+          <span className="stat-label">Events</span>
           <span className="stat-value">{filteredEarthquakes.length}</span>
+          <span className="stat-secondary">Total Recorded</span>
 
         </div>
 
         <div className="stat-item">
-          <span className="stat-label">Date Range {timeRange === 'day' && <span className="qs-sub-label">{timeRangeSubtitle}</span>}</span>
+          <span className="stat-label">Range</span>
           <span className="stat-value">
             {timeRange === 'day' ? 'Today' : timeRangeLabel}
 
           </span>
+          {timeRange === 'day' && <span className="stat-secondary">{timeRangeSubtitle}</span>}
         </div>
 
         <div className="stat-item">
-          <span className="stat-label">Highest Magnitude</span>
+          <span className="stat-label">High Mag</span>
           <span className="stat-value" style={{ color: '#ef4444' }}>
             {statsData.maxMag > 0 ? statsData.maxMag.toFixed(1) : '—'} MG
           </span>
+          <span className="stat-secondary">Strongest event</span>
         </div>
 
         <div className="stat-item">
-          <span className="stat-label">Average Magnitude</span>
+          <span className="stat-label">Avg Mag</span>
           <span className="stat-value" style={{ color: '#f59e0b' }}>
             {statsData.avgMag > 0 ? statsData.avgMag.toFixed(1) : '—'} MG
           </span>
+          <span className="stat-secondary">Mean magnitude</span>
         </div>
 
         <div className="stat-item">
@@ -295,6 +299,8 @@ export function Stats() {
           <span className="stat-value" style={{ color: '#8b5cf6' }}>
             {statsData.maxDepth > 0 ? `${statsData.maxDepth.toFixed(0)} km` : '—'}
           </span>
+
+          <span className="stat-secondary">Deepest event</span>
         </div>
 
         <div className="stat-item">
@@ -302,7 +308,10 @@ export function Stats() {
           <span className="stat-value" style={{ color: '#10b981' }}>
             {statsData.significantCount}
           </span>
+          <span className="stat-secondary">M ≥ 4.5 events</span>
         </div>
+
+
       </div>
 
       {/* ── Charts Grid ── */}
@@ -414,7 +423,7 @@ export function Stats() {
         </div>
 
         {/* Top Active Regions */}
-        <div className="chart-panel glass-card">
+        <div className="chart-panel glass-card" id="top-active-regions">
           <div className="chart-title">
             <BarChart3 size={18} />
             Top Active Regions

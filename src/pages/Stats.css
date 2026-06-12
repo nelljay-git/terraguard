@@ -302,6 +302,16 @@
 
 }
 
+.stat-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 300;
+  color: #838383;
+
+}
+
 /* Stats identifer */
 
 .stat-label:nth-child(1) {
