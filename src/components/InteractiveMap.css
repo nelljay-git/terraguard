@@ -106,44 +106,39 @@
   z-index: 1;
 }
 
-/* ── Latest Magnitude Marker ── */
-.eq-magnitude-marker {
+/* ── Canvas Tooltips ── */
+.leaflet-tooltip.eq-canvas-tooltip,
+.leaflet-tooltip.eq-cluster-tooltip {
   background: transparent;
-  border: 0;
-}
-
-.eq-magnitude-marker__circle {
-  --marker-color: #10b981;
-  width: 46px;
-  height: 46px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--marker-color) 28%, rgba(15, 23, 42, 0.95));
-  border: 2px solid var(--marker-color);
-  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.06), 0 10px 24px rgba(0, 0, 0, 0.35);
-  color: #ffffff;
-  font-weight: 800;
-  font-size: 0.95rem;
-  letter-spacing: 0.01em;
-}
-
-.eq-magnitude-marker__circle span {
-  transform: translateY(-0.5px);
-}
-
-.eq-magnitude-marker--compact {
-  background: transparent;
-  border: 0;
-}
-
-.eq-magnitude-marker__circle--compact {
-  width: 22px;
-  height: 22px;
-  border-width: 1px;
+  border: none;
   box-shadow: none;
-  font-size: 0.52rem;
+  color: #ffffff;
+  font-family: 'Inter', system-ui, sans-serif;
   font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: -0.02em;
+  text-shadow: 0px 1px 4px rgba(0, 0, 0, 0.9), 0px 0px 2px rgba(0, 0, 0, 1);
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.leaflet-tooltip.eq-canvas-tooltip--glow {
+  text-shadow: 0px 1px 4px rgba(0, 0, 0, 0.9), 0px 0px 2px rgba(0, 0, 0, 1), 0 0 10px rgba(255, 255, 255, 0.4);
+}
+
+.leaflet-tooltip.eq-cluster-tooltip {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+/* Hide default leaflet tooltip arrow */
+.leaflet-tooltip.eq-canvas-tooltip::before,
+.leaflet-tooltip.eq-cluster-tooltip::before {
+  display: none;
 }
 
 /* ── Earthquake Modal ── */
