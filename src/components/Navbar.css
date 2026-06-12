@@ -8,6 +8,8 @@
 
 .nav-content {
   height: 60px;
+  backdrop-filter: blur(5px);
+  ;
 }
 
 /* ── Brand ── */
@@ -107,8 +109,15 @@
 }
 
 @keyframes source-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
 }
 
 /* ── Help Button ── */
@@ -134,12 +143,15 @@
   .nav-links span {
     display: none;
   }
+
   .nav-link {
     padding: 8px;
   }
+
   .brand-sub {
     display: none;
   }
+
   .nav-source-badge {
     display: none;
   }
