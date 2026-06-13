@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MapContainer, TileLayer, Marker, CircleMarker, Tooltip, Popup, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, CircleMarker, Tooltip, Popup, useMapEvents, Polyline } from 'react-leaflet';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { Expand, MapPin, X, ExternalLink } from 'lucide-react';
@@ -8,6 +8,76 @@ import { Link } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './InteractiveMap.css';
+
+const PHILIPPINE_TRENCHES = [
+  {
+    name: "Philippine Trench",
+    color: "#ef4444",
+    // East of the Philippines, runs NNW-SSE from off Samar/Leyte south toward Mindanao
+    coordinates: [
+      [13.5, 126.2],  // northern end, off eastern Samar
+      [12.5, 126.5],
+      [11.5, 126.8],
+      [10.5, 127.0],
+      [9.5, 127.2],  // off eastern Mindanao (Galathea/Emden Deep area ~9-10°N)
+      [8.5, 127.3],
+      [7.5, 127.2],
+      [6.5, 126.8],
+      [5.5, 126.2],
+      [4.5, 125.4]   // southern end, trending toward Halmahera
+    ] as [number, number][]
+  },
+  {
+    name: "Manila Trench",
+    color: "#ef4444",
+    // West of Luzon and Mindoro in the South China Sea, nearly N-S
+    // Northern terminus ~Taiwan collision zone; southern terminus ~Mindoro (~13°N)
+    coordinates: [
+      [20.5, 119.2],  // northern end near Taiwan
+      [19.5, 119.5],
+      [18.5, 119.7],
+      [17.5, 119.8],
+      [16.5, 119.7],
+      [15.5, 119.5],
+      [14.5, 119.4],
+      [13.5, 119.5],
+      [13.0, 119.8]   // southern terminus near Mindoro collision zone
+    ] as [number, number][]
+  },
+  {
+    name: "Negros Trench",
+    color: "#ef4444",
+    // West of Negros Island in the Sulu Sea; two segments ~9–12°N, ~121–122°E
+    coordinates: [
+      [11.5, 121.5],
+      [10.5, 121.5],
+      [9.5, 121.6],
+      [8.8, 121.8]
+    ] as [number, number][]
+  },
+  {
+    name: "Sulu Trench",
+    color: "#ef4444",
+    // Wikipedia gives exact endpoints: 6.2°N 119.6°E to 7.2°N 121.4°E (NE trending)
+    coordinates: [
+      [6.2, 119.6],
+      [6.6, 120.2],
+      [7.0, 120.9],
+      [7.2, 121.4]
+    ] as [number, number][]
+  },
+  {
+    name: "Cotabato Trench",
+    color: "#ef4444",
+    // Off SW Mindanao in the Celebes Sea / Moro Gulf; roughly NW-SE ~5–7°N, 122–124°E
+    coordinates: [
+      [6.8, 122.5],
+      [6.2, 123.0],
+      [5.6, 123.5],
+      [5.0, 124.0]
+    ] as [number, number][]
+  }
+];
 
 type InteractiveMapProps = {
   earthquakes: PhivolcsEarthquake[];
@@ -298,6 +368,15 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
+          {PHILIPPINE_TRENCHES.map((trench, idx) => (
+            <Polyline
+              key={`trench-${idx}`}
+              positions={trench.coordinates}
+              pathOptions={{ color: trench.color, weight: 2, dashArray: '5, 8', opacity: 0.4 }}
+            >
+              <Tooltip sticky className="trench-tooltip">{trench.name}</Tooltip>
+            </Polyline>
+          ))}
           {latestEarthquake && hasLatestCoords && (
             <Marker
               position={[latestLat, latestLng]}
@@ -354,6 +433,15 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                   url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                 />
+                {PHILIPPINE_TRENCHES.map((trench, idx) => (
+                  <Polyline
+                    key={`trench-full-${idx}`}
+                    positions={trench.coordinates}
+                    pathOptions={{ color: trench.color, weight: 2, dashArray: '5, 8', opacity: 0.4 }}
+                  >
+                    <Tooltip sticky className="trench-tooltip">{trench.name}</Tooltip>
+                  </Polyline>
+                ))}
                 {latestEarthquake && hasLatestCoords && (
                   <Marker
                     position={[latestLat, latestLng]}
