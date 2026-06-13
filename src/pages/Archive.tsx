@@ -10,18 +10,42 @@ export function Archive() {
   const [earthquakes, setEarthquakes] = useState<PhivolcsEarthquake[]>(initialCache?.data ?? []);
   const [loading, setLoading] = useState(!initialCache?.data?.length);
 
-  const [search, setSearch] = useState("");
-  const [dateSearch, setDateSearch] = useState("");
-  const [timeSearch, setTimeSearch] = useState("");
-  const [minMag, setMinMag] = useState(0);
+  const [search, setSearch] = useState(() => sessionStorage.getItem('archive_search') || "");
+  const [dateSearch, setDateSearch] = useState(() => sessionStorage.getItem('archive_dateSearch') || "");
+  const [timeSearch, setTimeSearch] = useState(() => sessionStorage.getItem('archive_timeSearch') || "");
+  const [minMag, setMinMag] = useState(() => {
+    const saved = sessionStorage.getItem('archive_minMag');
+    return saved ? parseInt(saved, 10) : 0;
+  });
   const [visibleCount, setVisibleCount] = useState(10);
 
   const currentYear = new Date().getFullYear();
-  const [fetchMode, setFetchMode] = useState<'latest' | 'archive'>('latest');
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [selectedMonth, setSelectedMonth] = useState('January');
+  const [fetchMode, setFetchMode] = useState<'latest' | 'archive'>(() => {
+    return (sessionStorage.getItem('archive_fetchMode') as 'latest' | 'archive') || 'latest';
+  });
+  const [selectedYear, setSelectedYear] = useState(() => {
+    const saved = sessionStorage.getItem('archive_selectedYear');
+    return saved ? parseInt(saved, 10) : currentYear;
+  });
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    return sessionStorage.getItem('archive_selectedMonth') || 'January';
+  });
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const years = Array.from({ length: currentYear - 2017 }, (_, i) => currentYear - i); // 2018 to current
+
+  // Persist state
+  useEffect(() => {
+    sessionStorage.setItem('archive_search', search);
+    sessionStorage.setItem('archive_dateSearch', dateSearch);
+    sessionStorage.setItem('archive_timeSearch', timeSearch);
+    sessionStorage.setItem('archive_minMag', minMag.toString());
+  }, [search, dateSearch, timeSearch, minMag]);
+
+  useEffect(() => {
+    sessionStorage.setItem('archive_fetchMode', fetchMode);
+    sessionStorage.setItem('archive_selectedYear', selectedYear.toString());
+    sessionStorage.setItem('archive_selectedMonth', selectedMonth);
+  }, [fetchMode, selectedYear, selectedMonth]);
 
   useEffect(() => {
     async function loadData() {
