@@ -80,7 +80,7 @@ async function fetchOnce(): Promise<PhivolcsResponse> {
         let link = aTag?.getAttribute('href') || '';
         if (link && !link.startsWith('http')) {
           link = link.replace(/\\/g, '/');
-          link = 'https://earthquake.phivolcs.dost.gov.ph/' + link;
+          link = new URL(link, 'https://earthquake.phivolcs.dost.gov.ph/').href;
         }
 
         earthquakes.push({
@@ -126,6 +126,68 @@ export async function fetchPhivolcsData(): Promise<PhivolcsResponse> {
   }
 
   return { success: false, count: 0, data: [] };
+}
+
+export async function fetchPhivolcsArchiveData(year: number, monthName: string): Promise<PhivolcsResponse> {
+  const url = `/api/phivolcs/EQLatest-Monthly/${year}/${year}_${monthName}.html`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error(`Failed to fetch archive from proxy (${res.status})`);
+    
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const json = (await res.json()) as PhivolcsResponse;
+      if (json.success === false && json.data?.length === 0) {
+        throw new Error(json.error || 'PHIVOLCS returned no data');
+      }
+      return json;
+    }
+
+    const html = await res.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+
+    const rows = doc.querySelectorAll("table tr");
+    const earthquakes: PhivolcsEarthquake[] = [];
+
+    rows.forEach((row) => {
+      const cols = row.querySelectorAll("td");
+      if (cols.length >= 6) {
+        const aTag = cols[0].querySelector('a');
+        let link = aTag?.getAttribute('href') || '';
+        if (link && !link.startsWith('http')) {
+          link = link.replace(/\\/g, '/');
+          const baseUrl = `https://earthquake.phivolcs.dost.gov.ph/EQLatest-Monthly/${year}/`;
+          link = new URL(link, baseUrl).href;
+        }
+
+        earthquakes.push({
+          datetime: cols[0].textContent?.trim() || "",
+          latitude: cols[1].textContent?.trim() || "",
+          longitude: cols[2].textContent?.trim() || "",
+          depth: cols[3].textContent?.trim() || "",
+          magnitude: cols[4].textContent?.trim() || "",
+          location: cols[5].textContent?.trim() || "",
+          link: link
+        });
+      }
+    });
+
+    return {
+      success: true,
+      count: earthquakes.length,
+      data: earthquakes
+    };
+  } catch (error) {
+    console.warn(`PHIVOLCS archive fetch failed for ${year} ${monthName}:`, error);
+    return { success: false, count: 0, data: [] };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export function getSignificantEarthquakes(data: PhivolcsEarthquake[]): PhivolcsEarthquake[] {

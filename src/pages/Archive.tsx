@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { fetchPhivolcsData, getCachedData, type PhivolcsEarthquake } from '../api/phivolcs';
+import { fetchPhivolcsData, fetchPhivolcsArchiveData, getCachedData, type PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityColor } from '../lib/utils';
 import { Search, Filter, Clock, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -15,14 +15,30 @@ export function Archive() {
   const [timeSearch, setTimeSearch] = useState("");
   const [minMag, setMinMag] = useState(0);
   const [visibleCount, setVisibleCount] = useState(10);
+  
+  const currentYear = new Date().getFullYear();
+  const [fetchMode, setFetchMode] = useState<'latest' | 'archive'>('latest');
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [selectedMonth, setSelectedMonth] = useState('January');
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const years = Array.from({ length: currentYear - 2017 }, (_, i) => currentYear - i); // 2018 to current
 
   useEffect(() => {
     async function loadData() {
+      setLoading(true);
       try {
-        const res = await fetchPhivolcsData();
-        if (res.data.length > 0) {
-          setEarthquakes(res.data);
+        let res;
+        if (fetchMode === 'latest') {
+          res = await fetchPhivolcsData();
+        } else {
+          res = await fetchPhivolcsArchiveData(selectedYear, selectedMonth);
         }
+        if (res && res.data) {
+          setEarthquakes(res.data);
+        } else {
+          setEarthquakes([]);
+        }
+        setVisibleCount(10); // reset visible count on new data
       } catch (err) {
         console.error(err);
       } finally {
@@ -30,7 +46,7 @@ export function Archive() {
       }
     }
     loadData();
-  }, []);
+  }, [fetchMode, selectedYear, selectedMonth]);
 
   const filteredData = useMemo(() => {
     return earthquakes.filter(eq => {
@@ -74,7 +90,26 @@ export function Archive() {
       </div>
 
       <div className="filters-container glass">
-        <div className="search-box">
+        <div className="filter-box" style={{ flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+          <select value={fetchMode} onChange={e => setFetchMode(e.target.value as 'latest' | 'archive')} style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', fontWeight: 'bold' }}>
+            <option value="latest">Latest Events (Live)</option>
+            <option value="archive">Historical Archive</option>
+          </select>
+          
+          {fetchMode === 'archive' && (
+            <>
+              <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}>
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+                {months.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', width: '100%' }}>
+          <div className="search-box">
           <Search size={20} className="filter-icon" />
           <input
             type="text"
@@ -114,8 +149,11 @@ export function Archive() {
             <option value={6}>Mag 6.0+</option>
           </select>
         </div>
+        </div>
       </div>
-      <div style={{ marginTop: '5px', textAlign: 'center', color: '#707070ff' }}> Recent Activities </div>
+      <div style={{ marginTop: '5px', textAlign: 'center', color: '#707070ff' }}>
+        {fetchMode === 'archive' ? `Archive Results for ${selectedMonth} ${selectedYear}` : 'Recent Activities'}
+      </div>
       <div className="archive-grid">
         {filteredData.slice(0, visibleCount).map((eq, i) => {
           const mag = parseFloat(eq.magnitude);

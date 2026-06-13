@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { fetchPhivolcsData, fetchEarthquakeDetails, type PhivolcsEarthquake, type EarthquakeDetails } from '../api/phivolcs';
+import { fetchPhivolcsData, fetchEarthquakeDetails, fetchPhivolcsArchiveData, type PhivolcsEarthquake, type EarthquakeDetails } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
@@ -19,13 +19,55 @@ export function Details() {
 
   useEffect(() => {
     async function loadEq() {
+      if (!id) return;
       try {
-        const res = await fetchPhivolcsData();
-        // Decode ID to match
-        const found = res.data.find(eq => {
+        let targetYear = new Date().getFullYear();
+        let targetMonth = 'January';
+        let isHistorical = false;
+
+        try {
+          const pad = id.length % 4;
+          const paddedId = pad ? id + '='.repeat(4 - pad) : id;
+          const decodedStr = atob(paddedId);
+          const datePart = decodedStr.split('-')[0].trim();
+          
+          const match = datePart.match(/(\d+)\s+([A-Za-z]+)\s+(\d{4})/);
+          if (match) {
+            targetMonth = match[2];
+            targetYear = parseInt(match[3], 10);
+            
+            const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            const monthIndex = months.findIndex(m => m.toLowerCase() === targetMonth.toLowerCase());
+            targetMonth = months[monthIndex !== -1 ? monthIndex : 0];
+
+            const current = new Date();
+            if (targetYear < current.getFullYear() || (targetYear === current.getFullYear() && monthIndex < current.getMonth())) {
+              isHistorical = true;
+            }
+          }
+        } catch (e) {
+          console.warn("Could not decode ID for historical fetch", e);
+        }
+
+        let res;
+        if (isHistorical) {
+          res = await fetchPhivolcsArchiveData(targetYear, targetMonth);
+        } else {
+          res = await fetchPhivolcsData();
+        }
+
+        let found = res.data.find(eq => {
           const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
           return eqId === id;
         });
+
+        if (!found && !isHistorical) {
+           const archiveRes = await fetchPhivolcsArchiveData(targetYear, targetMonth);
+           found = archiveRes.data.find(eq => {
+             const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
+             return eqId === id;
+           });
+        }
 
         if (found) {
           setEarthquake(found);
