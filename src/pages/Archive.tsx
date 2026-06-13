@@ -186,7 +186,7 @@ export function Archive() {
           const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
 
           return (
-            <Link to={`/details/${eqId}`} key={i} className="archive-card glass-card">
+            <Link to={`/details/${eqId}`} state={{ earthquake: eq }} key={i} className="archive-card glass-card">
               <div className="archive-card-mag" style={{ backgroundColor: `${color}20`, color }}>
                 {eq.magnitude}
               </div>

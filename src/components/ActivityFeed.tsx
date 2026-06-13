@@ -56,7 +56,7 @@ export function ActivityFeed({ earthquakes }: { earthquakes: PhivolcsEarthquake[
 
           return (
             <motion.div key={i} variants={itemVariants}>
-              <Link to={`/details/${eqId}`} className="feed-item">
+              <Link to={`/details/${eqId}`} state={{ earthquake: eq }} className="feed-item">
                 {/* Left accent */}
                 <div className="feed-accent" style={{ backgroundColor: color }}></div>
                 

@@ -307,6 +307,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
           </div>
           <Link
             to={`/details/${btoa(`${selectedEarthquake.datetime}-${selectedEarthquake.latitude}-${selectedEarthquake.longitude}`).replace(/=/g, '')}`}
+            state={{ earthquake: selectedEarthquake }}
             className="eq-modal-link"
           >
             View Full Details <ExternalLink size={14} />

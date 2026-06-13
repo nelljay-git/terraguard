@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { fetchPhivolcsData, fetchEarthquakeDetails, fetchPhivolcsArchiveData, type PhivolcsEarthquake, type EarthquakeDetails } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
@@ -10,9 +10,11 @@ import './Details.css';
 
 export function Details() {
   const { id } = useParams<{ id: string }>();
-  const [earthquake, setEarthquake] = useState<PhivolcsEarthquake | null>(null);
+  const { state } = useLocation();
+  const [earthquake, setEarthquake] = useState<PhivolcsEarthquake | null>(state?.earthquake || null);
   const [details, setDetails] = useState<EarthquakeDetails | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!state?.earthquake);
+  const [detailsLoading, setDetailsLoading] = useState(true);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mapView, setMapView] = useState<'interactive' | 'official'>('interactive');
@@ -49,31 +51,40 @@ export function Details() {
           console.warn("Could not decode ID for historical fetch", e);
         }
 
-        let res;
-        if (isHistorical) {
-          res = await fetchPhivolcsArchiveData(targetYear, targetMonth);
-        } else {
-          res = await fetchPhivolcsData();
-        }
+        let found = earthquake;
+        if (!found) {
+          let res;
+          if (isHistorical) {
+            res = await fetchPhivolcsArchiveData(targetYear, targetMonth);
+          } else {
+            res = await fetchPhivolcsData();
+          }
 
-        let found = res.data.find(eq => {
-          const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
-          return eqId === id;
-        });
+          found = res.data.find(eq => {
+            const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
+            return eqId === id;
+          });
 
-        if (!found && !isHistorical) {
-           const archiveRes = await fetchPhivolcsArchiveData(targetYear, targetMonth);
-           found = archiveRes.data.find(eq => {
-             const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
-             return eqId === id;
-           });
+          if (!found && !isHistorical) {
+             const archiveRes = await fetchPhivolcsArchiveData(targetYear, targetMonth);
+             found = archiveRes.data.find(eq => {
+               const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
+               return eqId === id;
+             });
+          }
         }
 
         if (found) {
-          setEarthquake(found);
+          if (!earthquake) setEarthquake(found);
+          setLoading(false); // main data is ready!
+          
           if (found.link) {
-            const det = await fetchEarthquakeDetails(found.link);
-            if (det) setDetails(det);
+            try {
+              const det = await fetchEarthquakeDetails(found.link);
+              if (det) setDetails(det);
+            } catch (err) {
+              console.error("Failed to load extra details:", err);
+            }
           }
         } else {
           setError(true);
@@ -83,6 +94,7 @@ export function Details() {
         setError(true);
       } finally {
         setLoading(false);
+        setDetailsLoading(false);
       }
     }
     loadEq();
@@ -91,9 +103,13 @@ export function Details() {
   if (loading) {
     return (
       <div className="container flex-center" style={{ height: '50vh' }}>
-        <div className="loader-container">
-          <div className="pulse-loader" style={{ borderColor: 'var(--color-minor)' }}></div>
-          <div className="loader-text">Analyzing Seismic Signature...</div>
+        <div className="loading-screen">
+          <div className="loading-spinner">
+            <div className="spinner-ring"></div>
+            <Activity size={28} className="spinner-icon" />
+          </div>
+          <p className="loading-text">Loading Details...</p>
+          <p className="loading-sub">Fetching event data from PHIVOLCS</p>
         </div>
       </div>
     );
@@ -472,7 +488,11 @@ export function Details() {
                   <div className="info-value">PHIVOLCS-DOST</div>
                 </div>
               </div>
-              {details && details.origin && (
+              {detailsLoading ? (
+                <div className="info-item glass-card flex-center" style={{ gridColumn: 'span 2', minHeight: '60px' }}>
+                  <div className="pulse-loader" style={{ width: '20px', height: '20px', borderColor: color, borderWidth: '2px' }}></div>
+                </div>
+              ) : details && details.origin && (
                 <div className="info-item glass-card" style={{ gridColumn: 'span 2' }}>
                   <Info size={20} className="info-icon" style={{ color }} />
                   <div>
@@ -533,7 +553,11 @@ export function Details() {
           </div>
 
           {/* Intensities from PHIVOLCS */}
-          {details && (details.reportedIntensities || details.instrumentalIntensities) && (
+          {detailsLoading ? (
+             <div className="safety-card glass flex-center" style={{ marginTop: '20px', minHeight: '120px' }}>
+               <div className="pulse-loader" style={{ width: '30px', height: '30px', borderColor: 'var(--color-minor)' }}></div>
+             </div>
+          ) : details && (details.reportedIntensities || details.instrumentalIntensities) ? (
             <div className="safety-card glass" style={{ marginTop: '20px' }}>
               <h3 className="card-title">Intensities</h3>
               {details.reportedIntensities && (
@@ -554,7 +578,7 @@ export function Details() {
                 </div>
               )}
             </div>
-          )}
+          ) : null}
 
           {/* Safety Guidelines */}
           <div className="safety-card glass">

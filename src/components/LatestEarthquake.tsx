@@ -82,7 +82,7 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
 
         {/* Action buttons */}
         <div className="eq-actions">
-          <Link to={`/details/${eqId}`} className="eq-action-btn eq-action-primary" style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30`, marginRight: "4px" }}>
+          <Link to={`/details/${eqId}`} state={{ earthquake }} className="eq-action-btn eq-action-primary" style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30`, marginRight: "4px" }}>
             View Details
             <ArrowRight size={15} />
           </Link>
