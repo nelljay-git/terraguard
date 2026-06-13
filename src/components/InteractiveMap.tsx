@@ -9,73 +9,81 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './InteractiveMap.css';
 
-const PHILIPPINE_TRENCHES = [
+// Define a strict type for your coordinates [Latitude, Longitude]
+type Coordinate = [number, number];
+
+export interface Trench {
+  name: string;
+  color: string;
+  coordinates: Coordinate[];
+}
+
+const TRENCH_COLOR = "#ef4444"; // Standard red for convergent boundaries/subduction zones
+
+export const PHILIPPINE_TRENCHES: Trench[] = [
   {
     name: "Philippine Trench",
-    color: "#ef4444",
-    // East of the Philippines, runs NNW-SSE from off Samar/Leyte south toward Mindanao
+    color: TRENCH_COLOR,
     coordinates: [
-      [13.5, 126.2],  // northern end, off eastern Samar
-      [12.5, 126.5],
-      [11.5, 126.8],
-      [10.5, 127.0],
-      [9.5, 127.2],  // off eastern Mindanao (Galathea/Emden Deep area ~9-10°N)
-      [8.5, 127.3],
-      [7.5, 127.2],
-      [6.5, 126.8],
-      [5.5, 126.2],
-      [4.5, 125.4]   // southern end, trending toward Halmahera
-    ] as [number, number][]
+      [15.50, 122.60], // Off Polillo Islands
+      [14.60, 123.60],
+      [13.80, 124.80], // North of Catanduanes
+      [12.90, 125.60], // East of Northern Samar
+      [12.00, 126.10], // East of Eastern Samar
+      [10.80, 126.60],
+      [9.50, 127.00],  // East of Siargao/Surigao
+      [8.00, 127.20],  // Deepest segments east of Davao Oriental
+      [6.80, 127.30],
+      [5.50, 127.20],  // Southeast of Mindanao
+      [4.20, 126.80],
+      [3.00, 126.40]   // Near Talaud Islands
+    ]
   },
   {
     name: "Manila Trench",
-    color: "#ef4444",
-    // West of Luzon and Mindoro in the South China Sea, nearly N-S
-    // Northern terminus ~Taiwan collision zone; southern terminus ~Mindoro (~13°N)
+    color: TRENCH_COLOR,
     coordinates: [
-      [20.5, 119.2],  // northern end near Taiwan
-      [19.5, 119.5],
-      [18.5, 119.7],
-      [17.5, 119.8],
-      [16.5, 119.7],
-      [15.5, 119.5],
-      [14.5, 119.4],
-      [13.5, 119.5],
-      [13.0, 119.8]   // southern terminus near Mindoro collision zone
-    ] as [number, number][]
+      [21.50, 119.00], // South of Taiwan
+      [20.50, 119.30],
+      [19.00, 119.50], // West of Ilocos
+      [17.50, 119.30],
+      [16.00, 119.00], // West of Pangasinan/Zambales
+      [14.80, 119.10],
+      [13.80, 119.80], // Curving inwards near Lubang
+      [13.20, 120.20]  // West of Mindoro
+    ]
   },
   {
     name: "Negros Trench",
-    color: "#ef4444",
-    // West of Negros Island in the Sulu Sea; two segments ~9–12°N, ~121–122°E
+    color: TRENCH_COLOR,
     coordinates: [
-      [11.5, 121.5],
-      [10.5, 121.5],
-      [9.5, 121.6],
-      [8.8, 121.8]
-    ] as [number, number][]
+      [10.60, 121.70], // Panay Gulf
+      [9.80, 122.00],  // West of Negros Island
+      [9.00, 122.30],
+      [8.30, 122.70]   // West of Zamboanga del Norte
+    ]
   },
   {
     name: "Sulu Trench",
-    color: "#ef4444",
-    // Wikipedia gives exact endpoints: 6.2°N 119.6°E to 7.2°N 121.4°E (NE trending)
+    color: TRENCH_COLOR,
     coordinates: [
-      [6.2, 119.6],
-      [6.6, 120.2],
-      [7.0, 120.9],
-      [7.2, 121.4]
-    ] as [number, number][]
+      [9.20, 118.20],  // Southeast of Palawan
+      [8.60, 119.00],
+      [8.00, 120.00],  // Sulu Sea basin
+      [7.60, 121.00]   // Approaching Zamboanga Peninsula
+    ]
   },
   {
     name: "Cotabato Trench",
-    color: "#ef4444",
-    // Off SW Mindanao in the Celebes Sea / Moro Gulf; roughly NW-SE ~5–7°N, 122–124°E
+    color: TRENCH_COLOR,
     coordinates: [
-      [6.8, 122.5],
-      [6.2, 123.0],
-      [5.6, 123.5],
-      [5.0, 124.0]
-    ] as [number, number][]
+      [7.40, 123.30],  // Moro Gulf
+      [6.80, 123.60],
+      [6.10, 123.90],  // Off the coast of Sultan Kudarat
+      [5.40, 124.50],  // South of Sarangani / SOCCSKSARGEN
+      [4.80, 125.00],
+      [4.10, 125.50]   // Extending into the Celebes Sea
+    ]
   }
 ];
 

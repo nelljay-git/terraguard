@@ -6,7 +6,7 @@ import { LatestEarthquake } from '../components/LatestEarthquake';
 import { InteractiveMap } from '../components/InteractiveMap';
 import { ActivityFeed } from '../components/ActivityFeed';
 import { NewsFeed } from '../components/NewsFeed';
-import { Radio, RefreshCw, Shield } from 'lucide-react';
+import { Radio, RefreshCw, Shield, Bell, BellOff } from 'lucide-react';
 import './Dashboard.css';
 
 export function Dashboard() {
@@ -19,12 +19,64 @@ export function Dashboard() {
   const [loading, setLoading] = useState(!initialCache?.data?.length);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotificationsEnabled(Notification.permission === 'granted' && localStorage.getItem('terraguard_notifications_muted') !== 'true');
+    }
+  }, []);
+
+  const toggleNotifications = async () => {
+    if (!('Notification' in window)) {
+      alert('This browser does not support desktop notifications.');
+      return;
+    }
+    
+    if (notificationsEnabled) {
+      localStorage.setItem('terraguard_notifications_muted', 'true');
+      setNotificationsEnabled(false);
+    } else {
+      if (Notification.permission === 'granted') {
+        localStorage.removeItem('terraguard_notifications_muted');
+        setNotificationsEnabled(true);
+      } else if (Notification.permission !== 'denied') {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          localStorage.removeItem('terraguard_notifications_muted');
+          setNotificationsEnabled(true);
+        }
+      } else {
+        alert('Notifications are blocked by your browser. Please enable them in your settings.');
+      }
+    }
+  };
 
   const loadData = useCallback(async () => {
     setSyncing(true);
     try {
       const res = await fetchPhivolcsData();
       if (res.data.length > 0) {
+        const latestEq = res.data[0];
+        const latestEqId = `${latestEq.datetime}-${latestEq.latitude}-${latestEq.longitude}`;
+        const notifiedEqId = localStorage.getItem('terraguard_last_notified_eq');
+        const isMuted = localStorage.getItem('terraguard_notifications_muted') === 'true';
+
+        // Check if there's a new earthquake and it's not the first load
+        if (notifiedEqId && notifiedEqId !== latestEqId && !isMuted) {
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('New Earthquake Detected!', {
+              body: `Magnitude ${latestEq.magnitude} • ${latestEq.location}`,
+              icon: '/favicon.ico'
+            });
+          }
+        }
+
+        // Always update the tracked ID to prevent loops
+        if (notifiedEqId !== latestEqId) {
+          localStorage.setItem('terraguard_last_notified_eq', latestEqId);
+        }
+
         setEarthquakes(res.data);
         setSigEarthquakes(getSignificantEarthquakes(res.data));
         setLastSync(new Date());
@@ -102,6 +154,14 @@ export function Dashboard() {
               {lastSync.toLocaleTimeString()}
             </span>
           )}
+          <button 
+            className={`dash-refresh-btn ${notificationsEnabled ? 'active' : ''}`} 
+            onClick={toggleNotifications} 
+            title={notificationsEnabled ? 'Mute notifications' : 'Enable notifications'}
+            style={{ color: notificationsEnabled ? '#10b981' : undefined }}
+          >
+            {notificationsEnabled ? <Bell size={16} /> : <BellOff size={16} />}
+          </button>
           <button className="dash-refresh-btn" onClick={loadData} disabled={syncing} title="Refresh data">
             <RefreshCw size={16} className={syncing ? 'spin' : ''} />
           </button>
