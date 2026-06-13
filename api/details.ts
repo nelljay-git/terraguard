@@ -1,7 +1,5 @@
 // @ts-nocheck
-import https from 'node:https';
-
-const agent = new https.Agent({ rejectUnauthorized: false });
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -18,13 +16,10 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // Use custom agent to bypass PHIVOLCS SSL cert issues
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      },
-      // @ts-ignore — Node.js fetch supports dispatcher/agent
-      agent
+      }
     });
 
     if (!response.ok) {
@@ -41,9 +36,7 @@ export default async function handler(req: any, res: any) {
     const originMatch = /Origin\s*:\s*(.*?)\s*Magnitude/i.exec(cleanText);
     const origin = originMatch ? originMatch[1].trim() : 'Unknown';
 
-    // The text after Reported Intensities but before Instrumental Intensities or Note
     const reportedMatch = /Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
-    // Remove the tracking code like "11.20a 2026_0613_0205_M53D017_B3F"
     let reported = reportedMatch ? reportedMatch[1].replace(/^[a-zA-Z0-9_.\s]+Intensity/i, 'Intensity').trim() : '';
 
     const instrumentalMatch = /Instrumental Intensities\s*:?\s*(.*?)(?:This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
@@ -63,7 +56,6 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // Resolve relative mapUrl
     if (mapUrl && !mapUrl.startsWith('http')) {
       const urlObj = new URL(url);
       mapUrl = urlObj.origin + urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf('/') + 1) + mapUrl;

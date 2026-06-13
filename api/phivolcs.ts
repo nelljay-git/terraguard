@@ -1,7 +1,5 @@
 // @ts-nocheck
-import https from 'node:https';
-
-const agent = new https.Agent({ rejectUnauthorized: false });
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 type Earthquake = {
   datetime: string;
@@ -64,7 +62,6 @@ function extractEarthquakes(html: string): Earthquake[] {
 }
 
 export default async function handler(req: any, res: any) {
-  // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -83,8 +80,6 @@ export default async function handler(req: any, res: any) {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
       },
-      // @ts-ignore — Node.js fetch supports agent
-      agent
     });
 
     if (!response.ok) {
