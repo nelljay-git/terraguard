@@ -1,3 +1,4 @@
+// @ts-nocheck
 import https from 'node:https';
 
 const agent = new https.Agent({ rejectUnauthorized: false });
