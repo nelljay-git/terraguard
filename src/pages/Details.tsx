@@ -63,14 +63,14 @@ export function Details() {
           found = res.data.find(eq => {
             const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
             return eqId === id;
-          });
+          }) || null;
 
           if (!found && !isHistorical) {
              const archiveRes = await fetchPhivolcsArchiveData(targetYear, targetMonth);
              found = archiveRes.data.find(eq => {
                const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
                return eqId === id;
-             });
+             }) || null;
           }
         }
 
