@@ -15,7 +15,7 @@ export function Archive() {
   const [timeSearch, setTimeSearch] = useState("");
   const [minMag, setMinMag] = useState(0);
   const [visibleCount, setVisibleCount] = useState(10);
-  
+
   const currentYear = new Date().getFullYear();
   const [fetchMode, setFetchMode] = useState<'latest' | 'archive'>('latest');
   const [selectedYear, setSelectedYear] = useState(currentYear);
@@ -95,7 +95,7 @@ export function Archive() {
             <option value="latest">Latest Events (Live)</option>
             <option value="archive">Historical Archive</option>
           </select>
-          
+
           {fetchMode === 'archive' && (
             <>
               <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}>
@@ -108,47 +108,47 @@ export function Archive() {
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', width: '100%' }}>
+        <div className='filter-box-archive'>
           <div className="search-box">
-          <Search size={20} className="filter-icon" />
-          <input
-            type="text"
-            placeholder="Search by location..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
+            <Search size={20} className="filter-icon" />
+            <input
+              type="text"
+              placeholder="Search by location..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
 
-        <div className="search-box">
-          <Clock size={20} className="filter-icon" />
-          <input
-            type="text"
-            placeholder="Search by date (e.g. 08 June 2026)"
-            value={dateSearch}
-            onChange={e => setDateSearch(e.target.value)}
-          />
-        </div>
+          <div className="search-box">
+            <Clock size={20} className="filter-icon" />
+            <input
+              type="text"
+              placeholder="Search by date (e.g. 08 June 2026)"
+              value={dateSearch}
+              onChange={e => setDateSearch(e.target.value)}
+            />
+          </div>
 
-        <div className="search-box">
-          <Clock size={20} className="filter-icon" />
-          <input
-            type="text"
-            placeholder="Search by time (e.g. 07:48 AM)"
-            value={timeSearch}
-            onChange={e => setTimeSearch(e.target.value)}
-          />
-        </div>
+          <div className="search-box">
+            <Clock size={20} className="filter-icon" />
+            <input
+              type="text"
+              placeholder="Search by time (e.g. 07:48 AM)"
+              value={timeSearch}
+              onChange={e => setTimeSearch(e.target.value)}
+            />
+          </div>
 
-        <div className="filter-box">
-          <Filter size={20} className="filter-icon" />
-          <select value={minMag} onChange={e => setMinMag(Number(e.target.value))}>
-            <option value={0}>All Magnitudes</option>
-            <option value={3}>Mag 3.0+</option>
-            <option value={4}>Mag 4.0+</option>
-            <option value={5}>Mag 5.0+</option>
-            <option value={6}>Mag 6.0+</option>
-          </select>
-        </div>
+          <div className="filter-box">
+            <Filter size={20} className="filter-icon" />
+            <select value={minMag} onChange={e => setMinMag(Number(e.target.value))}>
+              <option value={0}>All Magnitudes</option>
+              <option value={3}>Mag 3.0+</option>
+              <option value={4}>Mag 4.0+</option>
+              <option value={5}>Mag 5.0+</option>
+              <option value={6}>Mag 6.0+</option>
+            </select>
+          </div>
         </div>
       </div>
       <div style={{ marginTop: '5px', textAlign: 'center', color: '#707070ff' }}>
