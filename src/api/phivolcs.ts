@@ -129,7 +129,11 @@ export async function fetchPhivolcsData(): Promise<PhivolcsResponse> {
 }
 
 export async function fetchPhivolcsArchiveData(year: number, monthName: string): Promise<PhivolcsResponse> {
-  const url = `/api/phivolcs/EQLatest-Monthly/${year}/${year}_${monthName}.html`;
+  const path = `EQLatest-Monthly/${year}/${year}_${monthName}.html`;
+  // In dev, Vite proxy handles the path routing. In prod, Vercel serverless function expects a ?path= query.
+  const url = import.meta.env?.DEV 
+    ? `/api/phivolcs/${path}` 
+    : `/api/phivolcs?path=${encodeURIComponent(path)}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 

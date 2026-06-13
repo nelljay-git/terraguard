@@ -11,7 +11,7 @@ type Earthquake = {
   link: string;
 };
 
-function extractEarthquakes(html: string): Earthquake[] {
+function extractEarthquakes(html: string, req: any): Earthquake[] {
   const earthquakes: Earthquake[] = [];
   const rowRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
   let rowMatch: RegExpExecArray | null;
@@ -44,7 +44,16 @@ function extractEarthquakes(html: string): Earthquake[] {
     if (cells.length >= 6) {
       if (link && !link.startsWith('http')) {
         link = link.replace(/\\/g, '/');
-        link = 'https://earthquake.phivolcs.dost.gov.ph/' + link;
+        // Extract path to construct correct base URL for relative links
+        const pathQuery = req?.query?.path || '';
+        const baseUrl = pathQuery 
+          ? `https://earthquake.phivolcs.dost.gov.ph/${pathQuery}`
+          : 'https://earthquake.phivolcs.dost.gov.ph/';
+        try {
+          link = new URL(link, baseUrl).href;
+        } catch {
+          link = baseUrl + link;
+        }
       }
       earthquakes.push({
         datetime: cells[0] || '',
@@ -75,7 +84,12 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const response = await fetch('https://earthquake.phivolcs.dost.gov.ph/', {
+    const pathQuery = req.query.path as string;
+    const targetUrl = pathQuery 
+      ? `https://earthquake.phivolcs.dost.gov.ph/${pathQuery}`
+      : 'https://earthquake.phivolcs.dost.gov.ph/';
+
+    const response = await fetch(targetUrl, {
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -87,7 +101,7 @@ export default async function handler(req: any, res: any) {
     }
 
     const html = await response.text();
-    const earthquakes = extractEarthquakes(html);
+    const earthquakes = extractEarthquakes(html, req);
 
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({
