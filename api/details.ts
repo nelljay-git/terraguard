@@ -1,3 +1,7 @@
+import https from 'node:https';
+
+const agent = new https.Agent({ rejectUnauthorized: false });
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -13,10 +17,13 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
+    // Use custom agent to bypass PHIVOLCS SSL cert issues
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0'
-      }
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      },
+      // @ts-ignore — Node.js fetch supports dispatcher/agent
+      agent
     });
 
     if (!response.ok) {
@@ -74,6 +81,7 @@ export default async function handler(req: any, res: any) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Details API error:', message);
     return res.status(500).json({
       success: false,
       error: message

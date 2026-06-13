@@ -1,4 +1,6 @@
+import https from 'node:https';
 
+const agent = new https.Agent({ rejectUnauthorized: false });
 
 type Earthquake = {
   datetime: string;
@@ -80,6 +82,8 @@ export default async function handler(req: any, res: any) {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
       },
+      // @ts-ignore — Node.js fetch supports agent
+      agent
     });
 
     if (!response.ok) {
