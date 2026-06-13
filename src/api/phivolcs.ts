@@ -5,6 +5,7 @@ export interface PhivolcsEarthquake {
   depth: string;
   magnitude: string;
   location: string;
+  link: string;
 }
 
 export interface PhivolcsResponse {
@@ -12,6 +13,14 @@ export interface PhivolcsResponse {
   count: number;
   data: PhivolcsEarthquake[];
   error?: string;
+}
+
+export interface EarthquakeDetails {
+  origin: string;
+  reportedIntensities: string;
+  instrumentalIntensities: string;
+  note: string;
+  mapUrl: string;
 }
 
 const CACHE_KEY = 'terraguard_phivolcs_cache';
@@ -67,13 +76,21 @@ async function fetchOnce(): Promise<PhivolcsResponse> {
     rows.forEach((row) => {
       const cols = row.querySelectorAll("td");
       if (cols.length >= 6) {
+        const aTag = cols[0].querySelector('a');
+        let link = aTag?.getAttribute('href') || '';
+        if (link && !link.startsWith('http')) {
+          link = link.replace(/\\/g, '/');
+          link = 'https://earthquake.phivolcs.dost.gov.ph/' + link;
+        }
+
         earthquakes.push({
           datetime: cols[0].textContent?.trim() || "",
           latitude: cols[1].textContent?.trim() || "",
           longitude: cols[2].textContent?.trim() || "",
           depth: cols[3].textContent?.trim() || "",
           magnitude: cols[4].textContent?.trim() || "",
-          location: cols[5].textContent?.trim() || ""
+          location: cols[5].textContent?.trim() || "",
+          link: link
         });
       }
     });
@@ -113,5 +130,74 @@ export async function fetchPhivolcsData(): Promise<PhivolcsResponse> {
 
 export function getSignificantEarthquakes(data: PhivolcsEarthquake[]): PhivolcsEarthquake[] {
   return data.filter(eq => parseFloat(eq.magnitude) >= 4.5);
+}
+
+export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDetails | null> {
+  try {
+    // Try Vercel serverless function only in production
+    // This prevents Vite from erroneously trying to compile api/details.ts
+    if (!import.meta.env?.DEV) {
+      const res = await fetch(`/api/details?url=${encodeURIComponent(url)}`);
+      if (res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const json = await res.json();
+          if (json.success) return json.data;
+        }
+      }
+    }
+    
+    // Fallback for local Vite dev environment
+    // Use the Vite proxy to fetch the HTML directly
+    const localProxyUrl = url.replace('https://earthquake.phivolcs.dost.gov.ph', '/api/phivolcs');
+    const htmlRes = await fetch(localProxyUrl);
+    if (!htmlRes.ok) throw new Error('Failed to fetch details HTML');
+    const html = await htmlRes.text();
+    
+    const cleanText = html
+      .replace(/&nbsp;/g, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const originMatch = /Origin\s*:\s*(.*?)\s*Magnitude/i.exec(cleanText);
+    const origin = originMatch ? originMatch[1].trim() : 'Unknown';
+
+    const reportedMatch = /Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
+    let reported = reportedMatch ? reportedMatch[1].replace(/^[a-zA-Z0-9_.\s]+Intensity/i, 'Intensity').trim() : '';
+
+    const instrumentalMatch = /Instrumental Intensities\s*:?\s*(.*?)(?:This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
+    const instrumental = instrumentalMatch ? instrumentalMatch[1].trim() : '';
+
+    const noteMatch = /(This is an aftershock.*?)(?:Expecting Damage|$)/i.exec(cleanText);
+    const note = noteMatch ? noteMatch[1].trim() : '';
+
+    const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+    let imgMatch;
+    let mapUrl = '';
+    while ((imgMatch = imgRegex.exec(html)) !== null) {
+      const src = imgMatch[1].trim();
+      if (!src.toLowerCase().includes('logo') && !src.toLowerCase().includes('header')) {
+        mapUrl = src;
+        break;
+      }
+    }
+
+    if (mapUrl && !mapUrl.startsWith('http')) {
+      const urlObj = new URL(url);
+      mapUrl = urlObj.origin + urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf('/') + 1) + mapUrl;
+    }
+
+    return {
+      origin,
+      reportedIntensities: reported,
+      instrumentalIntensities: instrumental,
+      note,
+      mapUrl
+    };
+  } catch (error) {
+    console.warn('Failed to fetch earthquake details:', error);
+  }
+  return null;
 }
 

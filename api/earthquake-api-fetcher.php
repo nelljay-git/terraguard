@@ -80,13 +80,29 @@ foreach ($rows as $index => $row) {
     $cols = $row->getElementsByTagName('td');
 
     if ($cols->length >= 6) {
+        $link = '';
+        $aTags = $cols->item(0)->getElementsByTagName('a');
+        if ($aTags->length > 0) {
+            $href = $aTags->item(0)->getAttribute('href');
+            if ($href) {
+                // Construct absolute URL if it's relative
+                if (strpos($href, 'http') !== 0) {
+                    $href = str_replace('\\', '/', $href);
+                    $link = 'https://earthquake.phivolcs.dost.gov.ph/' . ltrim($href, '/');
+                } else {
+                    $link = $href;
+                }
+            }
+        }
+
         $earthquakes[] = [
             'datetime'  => trim($cols->item(0)->textContent),
             'latitude'  => trim($cols->item(1)->textContent),
             'longitude' => trim($cols->item(2)->textContent),
             'depth'     => trim($cols->item(3)->textContent),
             'magnitude' => trim($cols->item(4)->textContent),
-            'location'  => trim($cols->item(5)->textContent)
+            'location'  => trim($cols->item(5)->textContent),
+            'link'      => $link
         ];
     }
 }

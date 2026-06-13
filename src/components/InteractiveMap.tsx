@@ -17,14 +17,18 @@ type InteractiveMapProps = {
   autoCenter?: boolean;
   enableLegendFilter?: boolean;
   disableDragging?: boolean;
+  pulseMarkers?: boolean;
 };
 
-function createMagnitudeIcon(magnitude: string, color: string, compact = false) {
+function createMagnitudeIcon(magnitude: string, color: string, compact = false, pulse = true) {
   const label = magnitude || '';
   const size = compact ? 22 : 46;
   return L.divIcon({
     className: `eq-magnitude-marker${compact ? ' eq-magnitude-marker--compact' : ''}`,
-    html: `<div class="eq-magnitude-marker__circle${compact ? ' eq-magnitude-marker__circle--compact' : ''}" style="--marker-color: ${color}"><span>${label}</span></div>`,
+    html: `
+      ${pulse ? `<div class="pulse-ring-dashboard" style="--pulse-color: ${color}"></div>` : ''}
+      <div class="eq-magnitude-marker__circle${compact ? ' eq-magnitude-marker__circle--compact' : ''}" style="--marker-color: ${color}"><span>${label}</span></div>
+    `,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
@@ -49,7 +53,7 @@ function getSeverityHexColor(mag: number): string {
   return "#8b5cf6";
 }
 
-function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = false, compactMarkers = false, autoCenter = false, enableLegendFilter = false, disableDragging = false }: InteractiveMapProps) {
+function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = false, compactMarkers = false, autoCenter = false, enableLegendFilter = false, disableDragging = false, pulseMarkers = true }: InteractiveMapProps) {
   const mapRef = useRef<L.Map | null>(null);
   const [visibleBounds, setVisibleBounds] = useState<L.LatLngBounds | null>(null);
   const [selectedEarthquake, setSelectedEarthquake] = useState<PhivolcsEarthquake | null>(null);
@@ -117,6 +121,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
           key={i}
           center={[lat, lng]}
           radius={radius}
+          className={pulseMarkers ? 'pulsing-circle-marker' : ''}
           pathOptions={{
             color: hexColor,
             fillColor: hexColor,
@@ -133,7 +138,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
         </CircleMarker>
       );
     });
-  }, [visibleEarthquakes, latestEarthquake, compactMarkers, activeFilter]);
+  }, [visibleEarthquakes, latestEarthquake, compactMarkers, activeFilter, pulseMarkers]);
 
   const fullscreenMapMarkers = useMemo(() => {
     return visibleEarthquakes.map((eq, i) => {
@@ -156,6 +161,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
           key={`full-${i}`}
           center={[lat, lng]}
           radius={radius}
+          className={pulseMarkers ? 'pulsing-circle-marker' : ''}
           pathOptions={{
             color: hexColor,
             fillColor: hexColor,
@@ -172,7 +178,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
         </CircleMarker>
       );
     });
-  }, [visibleEarthquakes, latestEarthquake, compactMarkers, activeFilter]);
+  }, [visibleEarthquakes, latestEarthquake, compactMarkers, activeFilter, pulseMarkers]);
 
   const popupPosition = useMemo<[number, number] | null>(() => {
     if (!selectedEarthquake) return null;
@@ -295,7 +301,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
           {latestEarthquake && hasLatestCoords && (
             <Marker
               position={[latestLat, latestLng]}
-              icon={createMagnitudeIcon(latestEarthquake.magnitude, latestColor, compactMarkers)}
+              icon={createMagnitudeIcon(latestEarthquake.magnitude, latestColor, compactMarkers, pulseMarkers)}
               eventHandlers={{
                 click: () => setSelectedEarthquake(latestEarthquake),
               }}
@@ -351,7 +357,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
                 {latestEarthquake && hasLatestCoords && (
                   <Marker
                     position={[latestLat, latestLng]}
-                    icon={createMagnitudeIcon(latestEarthquake.magnitude, latestColor, compactMarkers)}
+                    icon={createMagnitudeIcon(latestEarthquake.magnitude, latestColor, compactMarkers, pulseMarkers)}
                     eventHandlers={{
                       click: () => setSelectedEarthquake(latestEarthquake),
                     }}

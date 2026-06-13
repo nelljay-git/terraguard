@@ -7,6 +7,7 @@ type Earthquake = {
   depth: string;
   magnitude: string;
   location: string;
+  link: string;
 };
 
 function extractEarthquakes(html: string): Earthquake[] {
@@ -21,10 +22,18 @@ function extractEarthquakes(html: string): Earthquake[] {
     const rowHtml = rowMatch[1];
     const cellRegex = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;
     const cells: string[] = [];
+    let link = '';
     let cellMatch: RegExpExecArray | null;
 
     while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
-      const value = cellMatch[1]
+      const cellHtml = cellMatch[1];
+      if (cells.length === 0) {
+        const linkMatch = /href=(?:'|")([^'"]+)(?:'|")/i.exec(cellHtml);
+        if (linkMatch) {
+          link = linkMatch[1];
+        }
+      }
+      const value = cellHtml
         .replace(/<[^>]+>/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
@@ -32,6 +41,10 @@ function extractEarthquakes(html: string): Earthquake[] {
     }
 
     if (cells.length >= 6) {
+      if (link && !link.startsWith('http')) {
+        link = link.replace(/\\/g, '/');
+        link = 'https://earthquake.phivolcs.dost.gov.ph/' + link;
+      }
       earthquakes.push({
         datetime: cells[0] || '',
         latitude: cells[1] || '',
@@ -39,6 +52,7 @@ function extractEarthquakes(html: string): Earthquake[] {
         depth: cells[3] || '',
         magnitude: cells[4] || '',
         location: cells[5] || '',
+        link: link,
       });
     }
   }

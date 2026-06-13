@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { fetchPhivolcsData, type PhivolcsEarthquake } from '../api/phivolcs';
+import { fetchPhivolcsData, fetchEarthquakeDetails, type PhivolcsEarthquake, type EarthquakeDetails } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
-import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet';
-import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle } from 'lucide-react';
+import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import L from 'leaflet';
+import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, Map as MapIcon, Image as ImageIcon } from 'lucide-react';
+import { motion } from 'framer-motion';
 import './Details.css';
 
 export function Details() {
   const { id } = useParams<{ id: string }>();
   const [earthquake, setEarthquake] = useState<PhivolcsEarthquake | null>(null);
+  const [details, setDetails] = useState<EarthquakeDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [mapView, setMapView] = useState<'interactive' | 'official'>('interactive');
 
   useEffect(() => {
     async function loadEq() {
@@ -25,6 +29,10 @@ export function Details() {
 
         if (found) {
           setEarthquake(found);
+          if (found.link) {
+            const det = await fetchEarthquakeDetails(found.link);
+            if (det) setDetails(det);
+          }
         } else {
           setError(true);
         }
@@ -69,6 +77,7 @@ export function Details() {
   const severityLabel = getSeverityLabel(mag);
   const lat = parseFloat(earthquake.latitude);
   const lng = parseFloat(earthquake.longitude);
+  const isSevere = mag >= 6.0;
 
   // Energy Calculation: E = 10^(1.5 * M + 4.8) Joules
   // 1 Ton of TNT = 4.184e9 Joules
@@ -126,8 +135,56 @@ export function Details() {
     }
   };
 
+  const renderIntensities = (text: string) => {
+    if (!text) return null;
+    const lines = text.split(/Intensity\s+/i).filter(line => line.trim().length > 0);
+    
+    if (lines.length === 0 || !text.toLowerCase().includes('intensity')) {
+      return (
+        <div className="scrollable-content">
+          <p className="text-muted" style={{ whiteSpace: 'pre-line', fontSize: '0.9rem', lineHeight: '1.5', margin: 0 }}>
+            {text.replace(/Intensity /g, '\nIntensity ').trim()}
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="intensities-list scrollable-content">
+        {lines.map((line, idx) => {
+          const parts = line.split(/\s*-\s*/);
+          if (parts.length >= 2) {
+            const level = parts[0].trim();
+            const locations = parts.slice(1).join(' - ').trim();
+            // Map Roman numerals to a safe CSS class name if possible, fallback to default
+            const safeLevel = level.replace(/[^A-Za-z0-9]/g, '');
+            return (
+              <div key={idx} className="intensity-row">
+                <div className={`intensity-badge intensity-${safeLevel}`}>{level}</div>
+                <div className="intensity-locations">{locations}</div>
+              </div>
+            );
+          }
+          return (
+            <div key={idx} className="intensity-row">
+              <div className="intensity-locations">{line}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
-    <div className="details-container container">
+    <motion.div 
+      className="details-container container"
+      initial={{ x: 0 }}
+      animate={isSevere ? { 
+        x: [0, -10, 10, -10, 10, -5, 5, 0],
+        y: [0, 5, -5, 5, -5, 0, 0, 0]
+      } : {}}
+      transition={{ duration: 0.6, ease: "easeInOut" }}
+    >
       <div className="details-nav flex-between">
         <Link to="/archive" className="back-link flex-center">
           <ArrowLeft size={18} />
@@ -252,24 +309,91 @@ export function Details() {
         <div className="details-main-pane">
 
 
-          {/* Interactive Map */}
-          <div className="details-card glass map-card">
-            <h3 className="card-title">Seismic Epicenter Location</h3>
-            <div className="details-map-container">
-              {!isNaN(lat) && !isNaN(lng) ? (
-                <MapContainer center={[lat, lng]} zoom={8} scrollWheelZoom={false} style={{ height: '100%', width: '100%', zIndex: 0 }}>
-                  <TileLayer
-                    attribution='&copy; OpenStreetMap &copy; CARTO'
-                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                  />
-                  <CircleMarker
-                    center={[lat, lng]}
-                    radius={Math.max(mag * 3.5, 8)}
-                    pathOptions={{ color, fillColor: color, fillOpacity: 0.5, weight: 2 }}
-                  />
-                </MapContainer>
+          {/* Combined Map View */}
+          <div className="details-card glass map-card" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="flex-between" style={{ marginBottom: '24px' }}>
+              <h3 className="card-title" style={{ marginBottom: 0 }}>Seismic Epicenter Location</h3>
+              {details && details.mapUrl && (
+                <div className="map-toggle-group" style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '4px' }}>
+                  <button 
+                    className={`map-toggle-btn ${mapView === 'interactive' ? 'active' : ''}`}
+                    onClick={() => setMapView('interactive')}
+                    style={{ 
+                      padding: '6px 12px', 
+                      borderRadius: '6px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px',
+                      background: mapView === 'interactive' ? color : 'transparent',
+                      color: mapView === 'interactive' ? '#fff' : 'var(--text-secondary)',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <MapIcon size={14} /> Interactive
+                  </button>
+                  <button 
+                    className={`map-toggle-btn ${mapView === 'official' ? 'active' : ''}`}
+                    onClick={() => setMapView('official')}
+                    style={{ 
+                      padding: '6px 12px', 
+                      borderRadius: '6px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px',
+                      background: mapView === 'official' ? color : 'transparent',
+                      color: mapView === 'official' ? '#fff' : 'var(--text-secondary)',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <ImageIcon size={14} /> Official
+                  </button>
+                </div>
+              )}
+            </div>
+            
+            <div className="details-map-container" style={{ flex: 1, minHeight: '380px' }}>
+              {mapView === 'interactive' ? (
+                !isNaN(lat) && !isNaN(lng) ? (
+                  <MapContainer center={[lat, lng]} zoom={8} scrollWheelZoom={false} style={{ height: '100%', width: '100%', zIndex: 0 }}>
+                    <TileLayer
+                      attribution='&copy; OpenStreetMap &copy; CARTO'
+                      url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    />
+                    {(() => {
+                      const pulseSize = Math.max(mag * 30, 50);
+                      const coreSize = Math.max(mag * 4, 12);
+                      return (
+                        <Marker
+                          position={[lat, lng]}
+                          icon={L.divIcon({
+                            className: 'details-pulse-marker',
+                            html: `<div class="pulse-ring" style="--pulse-color: ${color}; width: ${pulseSize}px; height: ${pulseSize}px;"></div><div class="pulse-core" style="background-color: ${color}; width: ${coreSize}px; height: ${coreSize}px;"></div>`,
+                            iconSize: [pulseSize, pulseSize],
+                            iconAnchor: [pulseSize / 2, pulseSize / 2],
+                          })}
+                        />
+                      );
+                    })()}
+                  </MapContainer>
+                ) : (
+                  <div className="flex-center" style={{ height: '100%' }}>Invalid Coordinates</div>
+                )
               ) : (
-                <div className="flex-center" style={{ height: '100%' }}>Invalid Coordinates</div>
+                <div className="official-map-container flex-center" style={{ height: '100%', padding: '10px' }}>
+                  <img 
+                    src={details?.mapUrl} 
+                    alt={`Official map for earthquake in ${earthquake.location}`} 
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} 
+                  />
+                </div>
               )}
             </div>
           </div>
@@ -306,6 +430,15 @@ export function Details() {
                   <div className="info-value">PHIVOLCS-DOST</div>
                 </div>
               </div>
+              {details && details.origin && (
+                <div className="info-item glass-card" style={{ gridColumn: 'span 2' }}>
+                  <Info size={20} className="info-icon" style={{ color }} />
+                  <div>
+                    <div className="info-label">Origin</div>
+                    <div className="info-value" style={{ textTransform: 'capitalize' }}>{details.origin.toLowerCase()}</div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Richter Scale Visualizer */}
@@ -357,6 +490,30 @@ export function Details() {
             </div>
           </div>
 
+          {/* Intensities from PHIVOLCS */}
+          {details && (details.reportedIntensities || details.instrumentalIntensities) && (
+            <div className="safety-card glass" style={{ marginTop: '20px' }}>
+              <h3 className="card-title">Intensities</h3>
+              {details.reportedIntensities && (
+                <div style={{ marginBottom: '16px' }}>
+                  <h4 style={{ color: 'var(--color-minor)', marginBottom: '8px' }}>Reported</h4>
+                  {renderIntensities(details.reportedIntensities)}
+                </div>
+              )}
+              {details.instrumentalIntensities && (
+                <div>
+                  <h4 style={{ color: 'var(--color-minor)', marginBottom: '8px' }}>Instrumental</h4>
+                  {renderIntensities(details.instrumentalIntensities)}
+                </div>
+              )}
+              {details.note && (
+                <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', fontSize: '0.85rem' }} className="text-muted">
+                  {details.note}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Safety Guidelines */}
           <div className="safety-card glass">
             <h3 className="card-title">Safety Protocol</h3>
@@ -386,7 +543,7 @@ export function Details() {
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

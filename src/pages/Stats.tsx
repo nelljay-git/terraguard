@@ -257,6 +257,7 @@ export function Stats() {
           showAllEvents={true}
           compactMarkers={true}
           enableLegendFilter={true}
+          pulseMarkers={false}
         />
       </div>
 

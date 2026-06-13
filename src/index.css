@@ -95,6 +95,26 @@ body {
   border: 1px solid var(--border-color) !important;
 }
 
+/* Map Marker Pulsing Animations */
+.pulsing-circle-marker {
+  animation: pulse-svg-stroke 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+@keyframes pulse-svg-stroke {
+  0% {
+    stroke-width: 2px;
+    stroke-opacity: 1;
+  }
+  50% {
+    stroke-width: 12px;
+    stroke-opacity: 0.15;
+  }
+  100% {
+    stroke-width: 2px;
+    stroke-opacity: 1;
+  }
+}
+
 /* Layout Utilities */
 .container {
   max-width: 1200px;

@@ -403,6 +403,41 @@
   position: relative;
 }
 
+/* Radar Pulse Marker for Details */
+.details-pulse-marker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pulse-core {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.5);
+  z-index: 2;
+}
+
+.pulse-ring {
+  position: absolute;
+  border-radius: 50%;
+  background-color: var(--pulse-color);
+  animation: radar-pulse 2.5s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+  z-index: 1;
+}
+
+@keyframes radar-pulse {
+  0% {
+    transform: scale(0.1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
 /* Sidebar Styling */
 .impact-card,
 .safety-card {
@@ -423,6 +458,82 @@
   font-size: 0.95rem;
   line-height: 1.6;
   color: var(--text-secondary) !important;
+}
+
+/* Custom Scrollbar for Long Text Content */
+.scrollable-content {
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 12px;
+  margin: 0;
+}
+
+.scrollable-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollable-content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 10px;
+}
+
+.scrollable-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+
+.scrollable-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Rich Intensities Layout */
+.intensities-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.intensity-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.intensity-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+  transform: translateX(2px);
+}
+
+.intensity-badge {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-weight: 800;
+  font-size: 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.intensity-I, .intensity-II, .intensity-III { border-color: rgba(59, 130, 246, 0.5); color: #60a5fa; background: rgba(59, 130, 246, 0.1); }
+.intensity-IV, .intensity-V { border-color: rgba(245, 158, 11, 0.5); color: #fbbf24; background: rgba(245, 158, 11, 0.1); }
+.intensity-VI, .intensity-VII { border-color: rgba(239, 68, 68, 0.5); color: #f87171; background: rgba(239, 68, 68, 0.1); }
+.intensity-VIII, .intensity-IX, .intensity-X { border-color: rgba(185, 28, 28, 0.5); color: #fca5a5; background: rgba(185, 28, 28, 0.2); }
+
+.intensity-locations {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  padding-top: 2px;
 }
 
 /* Timeline style for safety protocol */

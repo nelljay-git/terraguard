@@ -2,7 +2,31 @@ import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { Link } from 'react-router-dom';
 import { Activity, ArrowRight, MapPin, Clock } from 'lucide-react';
+import { motion } from 'framer-motion';
 import './ActivityFeed.css';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { 
+    opacity: 1, 
+    y: 0,
+    transition: {
+      type: 'spring',
+      stiffness: 260,
+      damping: 20
+    }
+  }
+};
 
 export function ActivityFeed({ earthquakes }: { earthquakes: PhivolcsEarthquake[] }) {
   return (
@@ -17,7 +41,12 @@ export function ActivityFeed({ earthquakes }: { earthquakes: PhivolcsEarthquake[
         </Link>
       </div>
       
-      <div className="feed-list">
+      <motion.div 
+        className="feed-list"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
         {earthquakes.map((eq, i) => {
           const mag = parseFloat(eq.magnitude);
           const color = getSeverityColor(mag);
@@ -25,28 +54,31 @@ export function ActivityFeed({ earthquakes }: { earthquakes: PhivolcsEarthquake[
           const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
 
           return (
-            <Link to={`/details/${eqId}`} key={i} className="feed-item">
-              {/* Left accent */}
-              <div className="feed-accent" style={{ backgroundColor: color }}></div>
-              
-              <div className="feed-mag-badge" style={{ backgroundColor: `${color}15`, color }}>
-                {eq.magnitude || '—'}
-              </div>
-
-              <div className="feed-body">
-                <div className="feed-loc">{eq.location}</div>
-                <div className="feed-meta">
-                  <span className="feed-chip"><Clock size={11} />{eq.datetime}</span>
-                  <span className="feed-chip"><MapPin size={11} />{eq.depth} km deep</span>
-                  <span className="feed-severity-tag" style={{ color, backgroundColor: `${color}10` }}>{label}</span>
+            <motion.div key={i} variants={itemVariants}>
+              <Link to={`/details/${eqId}`} className="feed-item">
+                {/* Left accent */}
+                <div className="feed-accent" style={{ backgroundColor: color }}></div>
+                
+                <div className="feed-mag-badge" style={{ backgroundColor: `${color}15`, color }}>
+                  {eq.magnitude || '—'}
                 </div>
-              </div>
 
-              <ArrowRight size={16} className="feed-arrow" />
-            </Link>
+                <div className="feed-body">
+                  <div className="feed-loc">{eq.location}</div>
+                  <div className="feed-meta">
+                    <span className="feed-chip"><Clock size={11} />{eq.datetime}</span>
+                    <span className="feed-chip"><MapPin size={11} />{eq.depth} km deep</span>
+                    <span className="feed-severity-tag" style={{ color, backgroundColor: `${color}10` }}>{label}</span>
+                  </div>
+                </div>
+
+                <ArrowRight size={16} className="feed-arrow" />
+              </Link>
+            </motion.div>
           );
         })}
-      </div>
+      </motion.div>
     </div>
   );
 }
+
