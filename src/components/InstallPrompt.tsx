@@ -77,7 +77,6 @@ export function InstallPrompt() {
     setVisible(false);
   };
 
-  const hasNativePrompt = !!deferredPrompt.current;
   const showInstallButton = !isIos;
 
   return (
