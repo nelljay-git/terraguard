@@ -21,7 +21,7 @@ interface UpdateItem {
   badge: BadgeType;
   title: string;
   description: string;
-  quick_changes?: string;
+  quick_changes: string;
 }
 
 interface UpdateData {
@@ -31,8 +31,10 @@ interface UpdateData {
   items: UpdateItem[];
 }
 
+// Added "quick_changes" field to each item for easy copy paste on history page
+
 const UPDATE_DATA: UpdateData = {
-  version: '2.1.4',
+  version: '1.5',
   date: 'June 15, 2026',
   greeting:
     "We've been working hard to make TerraGuard better! Here's what's new in this update:",
