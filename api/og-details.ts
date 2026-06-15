@@ -130,15 +130,19 @@ export default async function handler(req: any, res: any) {
       }
     }
     
-    const htmlResponse = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    // Fetch the actual React app index.html
+    const appUrl = `https://${req.headers.host || 'terraguard.vercel.app'}/index.html`;
+    let baseHtml = '';
+    try {
+      const htmlRes = await fetch(appUrl);
+      if (htmlRes.ok) baseHtml = await htmlRes.text();
+    } catch (e) {
+      console.error('Failed to fetch base HTML', e);
+    }
+    
+    const metaTags = `
     <title>${title}</title>
     <meta name="description" content="${description}" />
-    
-    <!-- Open Graph -->
     <meta property="og:type" content="article" />
     <meta property="og:title" content="${title}" />
     <meta property="og:description" content="${description}" />
@@ -147,21 +151,33 @@ export default async function handler(req: any, res: any) {
     <meta property="og:image:width" content="600" />
     <meta property="og:image:height" content="300" />
     <meta property="og:site_name" content="TerraGuard" />
-    
-    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${title}" />
     <meta name="twitter:description" content="${description}" />
     <meta name="twitter:image" content="${imageUrl}" />
+    `;
+
+    let htmlResponse = baseHtml;
+    if (baseHtml) {
+      // Replace the <title> tag and everything up to the end of default OG tags
+      htmlResponse = baseHtml.replace(/<title>.*?<\/title>/i, '');
+      // Inject our new tags into the head
+      htmlResponse = htmlResponse.replace('</head>', `${metaTags}\n</head>`);
+    } else {
+      // Fallback if index.html fetch fails
+      htmlResponse = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    ${metaTags}
 </head>
 <body>
     <p>Redirecting to <a href="/details/${id}">TerraGuard Details</a>...</p>
-    <script>
-      // Crawlers ignore this, but real browsers (if they somehow hit this endpoint) will redirect
-      window.location.replace('/details/${id}');
-    </script>
+    <script>window.location.replace('/details/${id}');</script>
 </body>
 </html>`;
+    }
 
     res.setHeader('Content-Type', 'text/html');
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
