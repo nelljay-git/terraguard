@@ -62,7 +62,7 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
             <span className="eq-mag-unit">MAG</span>
           </div>
           <div className="eq-hero-info">
-            <h2 className="eq-location">{earthquake.location}</h2>
+            <h2 className="eq-location" style={{ color: '#f0f0f0ff' }}>{earthquake.location}</h2>
             <div className="eq-meta-chips">
               <span className="eq-chip">
                 <Clock size={13} />
