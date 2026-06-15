@@ -114,7 +114,7 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 3. Generate HTML
+    // 3. Build meta content
     let title = 'TerraGuard - Earthquake Monitoring';
     let description = 'Real-time earthquake monitoring and alerts for the Philippines. Track seismic activity, view interactive maps, and stay informed with TerraGuard.';
     let imageUrl = `https://${req.headers.host || 'terraguard.vercel.app'}/pwa-512x512.png`;
@@ -133,6 +133,18 @@ export default async function handler(req: any, res: any) {
     const canonicalUrl = `https://${req.headers.host || 'terraguard.vercel.app'}/details/${id}`;
     const spaUrl = `${canonicalUrl}?_spa=1`;
 
+    // 4. Detect crawlers vs human browsers
+    const ua = (req.headers['user-agent'] || '').toLowerCase();
+    const isBot = /bot|crawl|spider|slurp|facebookexternalhit|facebot|twitterbot|rogerbot|linkedinbot|embedly|quora|pinterest|slackbot|vkshare|discordbot|whatsapp|telegrambot|viber|outbrain|w3c_validator|redditbot|applebot|yandex|baiduspider|bingpreview|semrushbot|ahrefsbot|mj12bot|seznambot|duckduckbot|ia_archiver|mediapartners|google(?!chrome)/i.test(ua);
+
+    // For human browsers: instant invisible 302 redirect (no flash, no raw URL)
+    if (!isBot) {
+      res.setHeader('Location', spaUrl);
+      res.setHeader('Cache-Control', 'no-cache');
+      return res.status(302).end();
+    }
+
+    // For bots/crawlers: serve the full OG HTML
     const htmlResponse = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -140,9 +152,6 @@ export default async function handler(req: any, res: any) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${title}</title>
     <meta name="description" content="${description}" />
-
-    <!-- Instant redirect for human browsers (crawlers ignore this) -->
-    <meta http-equiv="refresh" content="0;url=${spaUrl}" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="article" />
@@ -161,8 +170,8 @@ export default async function handler(req: any, res: any) {
     <meta name="twitter:image" content="${imageUrl}" />
 </head>
 <body>
-    <p>Redirecting to <a href="${spaUrl}">TerraGuard</a>...</p>
-    <script>window.location.replace('${spaUrl}');</script>
+    <p>${title}</p>
+    <p>${description}</p>
 </body>
 </html>`;
 
