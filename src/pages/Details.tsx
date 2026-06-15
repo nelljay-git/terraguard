@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { Helmet } from 'react-helmet-async';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { fetchPhivolcsData, fetchEarthquakeDetails, fetchPhivolcsArchiveData, type PhivolcsEarthquake, type EarthquakeDetails } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
@@ -154,6 +155,20 @@ export function Details() {
   const lng = parseFloat(earthquake.longitude);
   const isSevere = mag >= 6.0;
 
+  // --- Social-sharing meta data ---
+  const ogTitle = `M${earthquake.magnitude} Earthquake – ${earthquake.location}`;
+  const ogDescription = `A magnitude ${earthquake.magnitude} (${severityLabel}) earthquake occurred at ${earthquake.location} on ${earthquake.datetime}. Depth: ${earthquake.depth} km. View details on TerraGuard.`;
+  const ogUrl = window.location.href;
+  // Use a static map thumbnail for the OG image so crawlers get a real image
+  const ogImage = useMemo(() => {
+    if (!isNaN(lat) && !isNaN(lng)) {
+      // OpenStreetMap static map via a free tile service (no API key required)
+      return `https://static-maps.yandex.ru/v1?lang=en_US&ll=${lng},${lat}&z=7&size=600,300&l=map&pt=${lng},${lat},pm2rdl`;
+    }
+    // Fallback to the app logo
+    return `${window.location.origin}/pwa-512x512.png`;
+  }, [lat, lng]);
+
   // Energy Calculation: E = 10^(1.5 * M + 4.8) Joules
   // 1 Ton of TNT = 4.184e9 Joules
   const calculateEnergy = (magnitude: number) => {
@@ -251,15 +266,38 @@ export function Details() {
   };
 
   return (
-    <motion.div 
-      className="details-container container"
-      initial={{ x: 0 }}
-      animate={isSevere ? { 
-        x: [0, -10, 10, -10, 10, -5, 5, 0],
-        y: [0, 5, -5, 5, -5, 0, 0, 0]
-      } : {}}
-      transition={{ duration: 0.6, ease: "easeInOut" }}
-    >
+    <>
+      {/* Dynamic social-sharing meta tags */}
+      <Helmet>
+        <title>{ogTitle} | TerraGuard</title>
+        <meta name="description" content={ogDescription} />
+
+        {/* Open Graph (Facebook, Discord, LinkedIn, etc.) */}
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content={ogTitle} />
+        <meta property="og:description" content={ogDescription} />
+        <meta property="og:url" content={ogUrl} />
+        <meta property="og:image" content={ogImage} />
+        <meta property="og:image:width" content="600" />
+        <meta property="og:image:height" content="300" />
+        <meta property="og:site_name" content="TerraGuard" />
+
+        {/* Twitter / X */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={ogTitle} />
+        <meta name="twitter:description" content={ogDescription} />
+        <meta name="twitter:image" content={ogImage} />
+      </Helmet>
+
+      <motion.div 
+        className="details-container container"
+        initial={{ x: 0 }}
+        animate={isSevere ? { 
+          x: [0, -10, 10, -10, 10, -5, 5, 0],
+          y: [0, 5, -5, 5, -5, 0, 0, 0]
+        } : {}}
+        transition={{ duration: 0.6, ease: "easeInOut" }}
+      >
       <div className="details-nav flex-between">
         <Link to="/archive" className="back-link flex-center">
           <ArrowLeft size={18} />
@@ -643,7 +681,8 @@ export function Details() {
         imageUrl={details?.mapUrl}
         altText={`Official map for earthquake in ${earthquake.location}`}
       />
-    </motion.div>
+      </motion.div>
+    </>
   );
 }
 
