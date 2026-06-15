@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { DevUpdateModal } from './components/DevUpdateModal';
+import { InstallPrompt } from './components/InstallPrompt';
 import { Dashboard } from './pages/Dashboard';
 import { Archive } from './pages/Archive';
 import { Details } from './pages/Details';
@@ -13,6 +14,7 @@ function App() {
   return (
     <div className="app-container">
       <DevUpdateModal />
+      <InstallPrompt />
       <Navbar />
       <main className="main-content">
         <Routes>
