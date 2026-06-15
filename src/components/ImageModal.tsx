@@ -64,16 +64,17 @@ export function ImageModal({ isOpen, onClose, imageUrl, altText }: ImageModalPro
             </div>
           </div>
           
-          <div className="image-modal-viewport" ref={constraintsRef}>
+          <div className="image-modal-viewport" ref={constraintsRef} style={{ touchAction: 'none' }}>
             <motion.img
               src={imageUrl}
               alt={altText}
               className="image-modal-content"
-              drag
-              dragConstraints={constraintsRef}
-              dragElastic={0.1}
-              style={{ scale, cursor: 'grab' }}
-              whileTap={{ cursor: 'grabbing' }}
+              drag={scale > 1}
+              dragConstraints={{ left: -1500, right: 1500, top: -1500, bottom: 1500 }}
+              dragElastic={0}
+              dragMomentum={false}
+              style={{ scale, cursor: scale > 1 ? 'grab' : 'default', touchAction: 'none' }}
+              whileTap={scale > 1 ? { cursor: 'grabbing' } : undefined}
               animate={{ scale }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             />
