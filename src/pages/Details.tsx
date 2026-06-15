@@ -1,5 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
-import { Helmet } from 'react-helmet-async';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { fetchPhivolcsData, fetchEarthquakeDetails, fetchPhivolcsArchiveData, type PhivolcsEarthquake, type EarthquakeDetails } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
@@ -21,6 +20,54 @@ export function Details() {
   const [copied, setCopied] = useState(false);
   const [mapView, setMapView] = useState<'interactive' | 'official'>('interactive');
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+
+  // Set document title immediately and update when data arrives
+  useEffect(() => {
+    if (earthquake) {
+      const sev = getSeverityLabel(parseFloat(earthquake.magnitude));
+      document.title = `M${earthquake.magnitude} ${sev} – ${earthquake.location} | TerraGuard`;
+    } else {
+      document.title = 'Loading Earthquake Details... | TerraGuard';
+    }
+    return () => { document.title = 'TerraGuard - Earthquake Monitoring'; };
+  }, [earthquake]);
+
+  // Update OG meta tags in the DOM for any JS-based scrapers
+  const metaTagsSet = useRef(false);
+  useEffect(() => {
+    if (!earthquake || metaTagsSet.current) return;
+    metaTagsSet.current = true;
+    const sev = getSeverityLabel(parseFloat(earthquake.magnitude));
+    const title = `M${earthquake.magnitude} Earthquake – ${earthquake.location}`;
+    const desc = `A magnitude ${earthquake.magnitude} (${sev}) earthquake occurred at ${earthquake.location} on ${earthquake.datetime}. Depth: ${earthquake.depth} km.`;
+    const lat = parseFloat(earthquake.latitude);
+    const lng = parseFloat(earthquake.longitude);
+    const img = (!isNaN(lat) && !isNaN(lng))
+      ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=7&size=600,300&l=map&pt=${lng},${lat},pm2rdl`
+      : `${window.location.origin}/pwa-512x512.png`;
+    const url = window.location.href.replace(/[?&]_spa=1/, '');
+
+    const setMeta = (attr: string, key: string, content: string) => {
+      let el = document.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute(attr, key);
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', content);
+    };
+    setMeta('name', 'description', desc);
+    setMeta('property', 'og:title', title);
+    setMeta('property', 'og:description', desc);
+    setMeta('property', 'og:image', img);
+    setMeta('property', 'og:url', url);
+    setMeta('property', 'og:type', 'article');
+    setMeta('property', 'og:site_name', 'TerraGuard');
+    setMeta('name', 'twitter:card', 'summary_large_image');
+    setMeta('name', 'twitter:title', title);
+    setMeta('name', 'twitter:description', desc);
+    setMeta('name', 'twitter:image', img);
+  }, [earthquake]);
 
   useEffect(() => {
     async function loadEq() {
@@ -155,19 +202,6 @@ export function Details() {
   const lng = parseFloat(earthquake.longitude);
   const isSevere = mag >= 6.0;
 
-  // --- Social-sharing meta data ---
-  const ogTitle = `M${earthquake.magnitude} Earthquake – ${earthquake.location}`;
-  const ogDescription = `A magnitude ${earthquake.magnitude} (${severityLabel}) earthquake occurred at ${earthquake.location} on ${earthquake.datetime}. Depth: ${earthquake.depth} km. View details on TerraGuard.`;
-  const ogUrl = window.location.href;
-  // Use a static map thumbnail for the OG image so crawlers get a real image
-  const ogImage = useMemo(() => {
-    if (!isNaN(lat) && !isNaN(lng)) {
-      // OpenStreetMap static map via a free tile service (no API key required)
-      return `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=7&size=600,300&l=map&pt=${lng},${lat},pm2rdl`;
-    }
-    // Fallback to the app logo
-    return `${window.location.origin}/pwa-512x512.png`;
-  }, [lat, lng]);
 
   // Energy Calculation: E = 10^(1.5 * M + 4.8) Joules
   // 1 Ton of TNT = 4.184e9 Joules
@@ -267,28 +301,6 @@ export function Details() {
 
   return (
     <>
-      {/* Dynamic social-sharing meta tags */}
-      <Helmet>
-        <title>{ogTitle} | TerraGuard</title>
-        <meta name="description" content={ogDescription} />
-
-        {/* Open Graph (Facebook, Discord, LinkedIn, etc.) */}
-        <meta property="og:type" content="article" />
-        <meta property="og:title" content={ogTitle} />
-        <meta property="og:description" content={ogDescription} />
-        <meta property="og:url" content={ogUrl} />
-        <meta property="og:image" content={ogImage} />
-        <meta property="og:image:width" content="600" />
-        <meta property="og:image:height" content="300" />
-        <meta property="og:site_name" content="TerraGuard" />
-
-        {/* Twitter / X */}
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={ogTitle} />
-        <meta name="twitter:description" content={ogDescription} />
-        <meta name="twitter:image" content={ogImage} />
-      </Helmet>
-
       <motion.div 
         className="details-container container"
         initial={{ x: 0 }}
