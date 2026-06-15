@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
+import { DevUpdateModal } from './components/DevUpdateModal';
 import { Dashboard } from './pages/Dashboard';
 import { Archive } from './pages/Archive';
 import { Details } from './pages/Details';
@@ -11,6 +12,7 @@ import './App.css';
 function App() {
   return (
     <div className="app-container">
+      <DevUpdateModal />
       <Navbar />
       <main className="main-content">
         <Routes>
