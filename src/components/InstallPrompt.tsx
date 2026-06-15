@@ -9,6 +9,7 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 const DISMISSED_KEY = 'terraguard_install_dismissed';
+const INSTALLED_KEY = 'terraguard_pwa_installed';
 const SHOW_DELAY_MS = 4000;
 
 function isIOS() {
@@ -22,6 +23,16 @@ function isInStandaloneMode() {
   );
 }
 
+/** Mark the PWA as installed so the prompt never appears again. */
+function markAsInstalled() {
+  try { localStorage.setItem(INSTALLED_KEY, '1'); } catch { /* quota */ }
+}
+
+/** Check if we previously recorded that the PWA was installed. */
+function wasInstalledBefore() {
+  try { return localStorage.getItem(INSTALLED_KEY) === '1'; } catch { return false; }
+}
+
 export function InstallPrompt() {
   const [visible, setVisible] = useState(false);
   const [isIos, setIsIos] = useState(false);
@@ -29,7 +40,13 @@ export function InstallPrompt() {
 
   useEffect(() => {
     // Never show if already running as installed PWA
-    if (isInStandaloneMode()) return;
+    if (isInStandaloneMode()) {
+      markAsInstalled();
+      return;
+    }
+
+    // Never show again if we know the user already installed the PWA
+    if (wasInstalledBefore()) return;
 
     // Don't show if dismissed in this session
     if (sessionStorage.getItem(DISMISSED_KEY)) return;
@@ -37,14 +54,30 @@ export function InstallPrompt() {
     const ios = isIOS();
     setIsIos(ios);
 
-    // Hide if the app gets installed through any method (address bar, OS, etc.)
-    const onAppInstalled = () => setVisible(false);
+    // Check the Related Apps API (Chrome 80+) to detect if already installed
+    if ('getInstalledRelatedApps' in navigator) {
+      (navigator as any).getInstalledRelatedApps().then((apps: any[]) => {
+        if (apps && apps.length > 0) {
+          markAsInstalled();
+          setVisible(false);
+        }
+      }).catch(() => { /* API not available / error — ignore */ });
+    }
+
+    // Hide & remember if the app gets installed through any method
+    const onAppInstalled = () => {
+      markAsInstalled();
+      setVisible(false);
+    };
     window.addEventListener('appinstalled', onAppInstalled);
 
     // Also watch for display-mode changes (e.g., user opens the installed PWA)
     const standaloneQuery = window.matchMedia('(display-mode: standalone)');
     const onDisplayModeChange = (e: MediaQueryListEvent) => {
-      if (e.matches) setVisible(false);
+      if (e.matches) {
+        markAsInstalled();
+        setVisible(false);
+      }
     };
     standaloneQuery.addEventListener('change', onDisplayModeChange);
 
@@ -59,8 +92,10 @@ export function InstallPrompt() {
     // event fired — on iOS and in dev mode it won't fire, but we still
     // want to surface the install instructions.
     const timer = setTimeout(() => {
-      // Re-check standalone at the time the timer fires
-      if (!isInStandaloneMode()) setVisible(true);
+      // Re-check all signals at the time the timer fires
+      if (!isInStandaloneMode() && !wasInstalledBefore()) {
+        setVisible(true);
+      }
     }, SHOW_DELAY_MS);
 
     return () => {
@@ -78,6 +113,7 @@ export function InstallPrompt() {
       const { outcome } = await deferredPrompt.current.userChoice;
       deferredPrompt.current = null;
       if (outcome === 'accepted') {
+        markAsInstalled();
         setVisible(false);
       }
     } else if (!isIos) {
