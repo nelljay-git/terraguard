@@ -25,11 +25,13 @@ export default async function handler(req: any, res: any) {
     const paddedId = pad ? id + '='.repeat(4 - pad) : id;
     const decodedStr = Buffer.from(paddedId, 'base64').toString('utf-8');
     
-    // Format: "16 Jun 2026 - 08:32 AM - 12.34 - 123.45"
+    // Robust parsing (lat and lng are always the last two parts)
     const parts = decodedStr.split('-');
-    const datetime = parts[0].trim() + (parts[1] && parts[1].includes(':') ? ' - ' + parts[1].trim() : '');
-    const lat = parseFloat(parts.length > 2 ? parts[2].trim() : '0');
-    const lng = parseFloat(parts.length > 3 ? parts[3].trim() : '0');
+    const lngStr = parts.pop() || '0';
+    const latStr = parts.pop() || '0';
+    const datetime = parts.join('-').trim();
+    const lat = parseFloat(latStr.trim());
+    const lng = parseFloat(lngStr.trim());
     
     let targetYear = new Date().getFullYear();
     let targetMonthName = MONTHS[new Date().getMonth()];
@@ -124,7 +126,7 @@ export default async function handler(req: any, res: any) {
       description = `A magnitude ${earthquake.magnitude} (${severityLabel}) earthquake occurred at ${earthquake.location} on ${earthquake.datetime}. Depth: ${earthquake.depth} km. View details on TerraGuard.`;
       
       if (!isNaN(lat) && !isNaN(lng)) {
-        imageUrl = `https://static-maps.yandex.ru/v1?lang=en_US&ll=${lng},${lat}&z=7&size=600,300&l=map&pt=${lng},${lat},pm2rdl`;
+        imageUrl = `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=7&size=600,300&l=map&pt=${lng},${lat},pm2rdl`;
       }
     }
     

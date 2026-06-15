@@ -163,7 +163,7 @@ export function Details() {
   const ogImage = useMemo(() => {
     if (!isNaN(lat) && !isNaN(lng)) {
       // OpenStreetMap static map via a free tile service (no API key required)
-      return `https://static-maps.yandex.ru/v1?lang=en_US&ll=${lng},${lat}&z=7&size=600,300&l=map&pt=${lng},${lat},pm2rdl`;
+      return `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=7&size=600,300&l=map&pt=${lng},${lat},pm2rdl`;
     }
     // Fallback to the app logo
     return `${window.location.origin}/pwa-512x512.png`;
