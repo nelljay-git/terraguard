@@ -8,6 +8,7 @@ import { Details } from './pages/Details';
 import { Stats } from './pages/Stats';
 import { News } from './pages/News';
 import { About } from './pages/About';
+import { History } from './pages/History';
 import './App.css';
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
           <Route path="/stats" element={<Stats />} />
           <Route path="/news" element={<News />} />
           <Route path="/about" element={<About />} />
+          <Route path="/history" element={<History />} />
         </Routes>
       </main>
     </div>

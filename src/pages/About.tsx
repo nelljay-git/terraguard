@@ -1,4 +1,5 @@
-import { Info, Code2 } from 'lucide-react';
+import { Info, Code2, Clock } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import './About.css';
 
 export function About() {
@@ -14,6 +15,11 @@ export function About() {
           <p className="about-description">
             TerraGuard is a modern seismic monitoring dashboard that provides real-time updates and analytics on earthquake activity in the Philippines, powered by data from PHIVOLCS.
           </p>
+
+          <Link to="/history" className="version-history-btn glass">
+            <Clock size={18} />
+            View Version History
+          </Link>
 
           <div className="about-developer glass-card">
             <Code2 size={24} className="dev-icon" />

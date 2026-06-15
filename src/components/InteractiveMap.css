@@ -144,8 +144,15 @@
 }
 
 @keyframes radar-pulse-dashboard {
-  0% { transform: scale(0.3); opacity: 0.6; }
-  100% { transform: scale(1); opacity: 0; }
+  0% {
+    transform: scale(0.3);
+    opacity: 0.6;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
 }
 
 .eq-magnitude-marker__circle {
@@ -343,6 +350,7 @@
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.8);
   padding: 0;
 }
+
 .marker-number-tooltip::before {
   display: none;
 }
@@ -363,4 +371,11 @@
 
 .trench-tooltip::before {
   border-top-color: rgba(15, 23, 42, 0.9) !important;
+}
+
+/* ── WMS Trench Layer ── */
+.wms-trench-layer {
+  filter: grayscale(100%) brightness(0.2) contrast(1);
+  mix-blend-mode: multiply;
+  opacity: 0.4;
 }

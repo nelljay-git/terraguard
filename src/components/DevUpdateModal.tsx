@@ -21,6 +21,7 @@ interface UpdateItem {
   badge: BadgeType;
   title: string;
   description: string;
+  quick_changes?: string;
 }
 
 interface UpdateData {
@@ -35,30 +36,35 @@ const UPDATE_DATA: UpdateData = {
   date: 'June 15, 2026',
   greeting:
     "We've been working hard to make TerraGuard better! Here's what's new in this update:",
+
   items: [
     {
       badge: 'new',
       title: 'PWA Support',
       description:
         'Install TerraGuard on your device for offline access and a native app experience.',
+      quick_changes: 'Added PWA installation support for a native app experience'
     },
     {
       badge: 'improved',
       title: 'Interactive Map',
       description:
         'Better marker clustering, heatmap overlays, and smoother pan/zoom performance.',
+      quick_changes: 'Interactive Map improvements'
     },
     {
       badge: 'fixed',
       title: 'News Feed',
       description:
         'Resolved issues with article loading and improved headline accuracy.',
+      quick_changes: 'News Feed improvements'
     },
     {
       badge: 'fixed',
       title: 'Bug Fixes',
       description:
         'Fixed various bugs and improved overall performance.',
+      quick_changes: 'Bug Fixes'
     },
   ],
 };

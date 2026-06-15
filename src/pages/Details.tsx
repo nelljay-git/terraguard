@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { fetchPhivolcsData, fetchEarthquakeDetails, fetchPhivolcsArchiveData, type PhivolcsEarthquake, type EarthquakeDetails } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
-import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
 import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, Map as MapIcon, Image as ImageIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -426,6 +426,14 @@ export function Details() {
                     <TileLayer
                       attribution='&copy; OpenStreetMap &copy; CARTO'
                       url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    />
+                    <WMSTileLayer
+                      url="https://gisweb.phivolcs.dost.gov.ph/arcgis/services/PHIVOLCSPublic/Trenches/MapServer/WMSServer"
+                      layers="0"
+                      format="image/png"
+                      transparent={true}
+                      version="1.3.0"
+                      className="wms-trench-layer"
                     />
                     {(() => {
                       const pulseSize = Math.max(mag * 30, 50);

@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MapContainer, TileLayer, Marker, CircleMarker, Tooltip, Popup, useMapEvents, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, CircleMarker, Tooltip, Popup, useMapEvents, WMSTileLayer } from 'react-leaflet';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { Expand, MapPin, X, ExternalLink } from 'lucide-react';
@@ -9,83 +9,8 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './InteractiveMap.css';
 
-// Define a strict type for your coordinates [Latitude, Longitude]
-type Coordinate = [number, number];
 
-export interface Trench {
-  name: string;
-  color: string;
-  coordinates: Coordinate[];
-}
 
-const TRENCH_COLOR = "#ef4444"; // Standard red for convergent boundaries/subduction zones
-
-export const PHILIPPINE_TRENCHES: Trench[] = [
-  {
-    name: "Philippine Trench",
-    color: TRENCH_COLOR,
-    coordinates: [
-      [15.50, 122.60], // Off Polillo Islands
-      [14.60, 123.60],
-      [13.80, 124.80], // North of Catanduanes
-      [12.90, 125.60], // East of Northern Samar
-      [12.00, 126.10], // East of Eastern Samar
-      [10.80, 126.60],
-      [9.50, 127.00],  // East of Siargao/Surigao
-      [8.00, 127.20],  // Deepest segments east of Davao Oriental
-      [6.80, 127.30],
-      [5.50, 127.20],  // Southeast of Mindanao
-      [4.20, 126.80],
-      [3.00, 126.40]   // Near Talaud Islands
-    ]
-  },
-  {
-    name: "Manila Trench",
-    color: TRENCH_COLOR,
-    coordinates: [
-      [21.50, 119.00], // South of Taiwan
-      [20.50, 119.30],
-      [19.00, 119.50], // West of Ilocos
-      [17.50, 119.30],
-      [16.00, 119.00], // West of Pangasinan/Zambales
-      [14.80, 119.10],
-      [13.80, 119.80], // Curving inwards near Lubang
-      [13.20, 120.20]  // West of Mindoro
-    ]
-  },
-  {
-    name: "Negros Trench",
-    color: TRENCH_COLOR,
-    coordinates: [
-      [10.60, 121.70], // Panay Gulf
-      [9.80, 122.00],  // West of Negros Island
-      [9.00, 122.30],
-      [8.30, 122.70]   // West of Zamboanga del Norte
-    ]
-  },
-  {
-    name: "Sulu Trench",
-    color: TRENCH_COLOR,
-    coordinates: [
-      [9.20, 118.20],  // Southeast of Palawan
-      [8.60, 119.00],
-      [8.00, 120.00],  // Sulu Sea basin
-      [7.60, 121.00]   // Approaching Zamboanga Peninsula
-    ]
-  },
-  {
-    name: "Cotabato Trench",
-    color: TRENCH_COLOR,
-    coordinates: [
-      [7.40, 123.30],  // Moro Gulf
-      [6.80, 123.60],
-      [6.10, 123.90],  // Off the coast of Sultan Kudarat
-      [5.40, 124.50],  // South of Sarangani / SOCCSKSARGEN
-      [4.80, 125.00],
-      [4.10, 125.50]   // Extending into the Celebes Sea
-    ]
-  }
-];
 
 type InteractiveMapProps = {
   earthquakes: PhivolcsEarthquake[];
@@ -377,15 +302,15 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
-          {PHILIPPINE_TRENCHES.map((trench, idx) => (
-            <Polyline
-              key={`trench-${idx}`}
-              positions={trench.coordinates}
-              pathOptions={{ color: trench.color, weight: 2, dashArray: '5, 8', opacity: 0.4 }}
-            >
-              <Tooltip sticky className="trench-tooltip">{trench.name}</Tooltip>
-            </Polyline>
-          ))}
+          <WMSTileLayer
+            url="https://gisweb.phivolcs.dost.gov.ph/arcgis/services/PHIVOLCSPublic/Trenches/MapServer/WMSServer"
+            layers="0"
+            format="image/png"
+            transparent={true}
+            version="1.3.0"
+            className="wms-trench-layer"
+          />
+
           {latestEarthquake && hasLatestCoords && (
             <Marker
               position={[latestLat, latestLng]}
@@ -442,15 +367,15 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                   url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                 />
-                {PHILIPPINE_TRENCHES.map((trench, idx) => (
-                  <Polyline
-                    key={`trench-full-${idx}`}
-                    positions={trench.coordinates}
-                    pathOptions={{ color: trench.color, weight: 2, dashArray: '5, 8', opacity: 0.4 }}
-                  >
-                    <Tooltip sticky className="trench-tooltip">{trench.name}</Tooltip>
-                  </Polyline>
-                ))}
+                <WMSTileLayer
+                  url="https://gisweb.phivolcs.dost.gov.ph/arcgis/services/PHIVOLCSPublic/Trenches/MapServer/WMSServer"
+                  layers="0"
+                  format="image/png"
+                  transparent={true}
+                  version="1.3.0"
+                  className="wms-trench-layer"
+                />
+
                 {latestEarthquake && hasLatestCoords && (
                   <Marker
                     position={[latestLat, latestLng]}
