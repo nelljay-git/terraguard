@@ -121,9 +121,6 @@ export function Details() {
   if (loading) {
     return (
       <div className="container flex-center" style={{ height: '50vh' }}>
-        <Helmet>
-          <title>Loading Details... | TerraGuard</title>
-        </Helmet>
         <div className="loading-screen">
           <div className="loading-spinner">
             <div className="spinner-ring"></div>

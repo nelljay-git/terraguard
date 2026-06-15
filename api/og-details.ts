@@ -12,15 +12,6 @@ function getSeverityLabel(magnitude: number) {
   return 'Great';
 }
 
-// Escape special characters so they don't break HTML attributes
-function escapeAttr(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
 export default async function handler(req: any, res: any) {
   const { id } = req.query;
 
@@ -34,6 +25,7 @@ export default async function handler(req: any, res: any) {
     const paddedId = pad ? id + '='.repeat(4 - pad) : id;
     const decodedStr = Buffer.from(paddedId, 'base64').toString('utf-8');
 
+    // Robust parsing (lat and lng are always the last two parts)
     const parts = decodedStr.split('-');
     const lngStr = parts.pop() || '0';
     const latStr = parts.pop() || '0';
@@ -61,6 +53,7 @@ export default async function handler(req: any, res: any) {
     }
     urlsToTry.push(`https://earthquake.phivolcs.dost.gov.ph/EQLatest-Monthly/${targetYear}/${targetYear}_${targetMonthName}.html`);
 
+    // Fallback previous month just in case
     const mIdx = MONTHS.indexOf(targetMonthName);
     const prevMonthIdx = mIdx === 0 ? 11 : mIdx - 1;
     const prevYear = mIdx === 0 ? targetYear - 1 : targetYear;
@@ -121,12 +114,10 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 3. Build meta values
-    const host = req.headers.host || 'terraguard.vercel.app';
-
+    // 3. Generate HTML
     let title = 'TerraGuard - Earthquake Monitoring';
     let description = 'Real-time earthquake monitoring and alerts for the Philippines. Track seismic activity, view interactive maps, and stay informed with TerraGuard.';
-    let imageUrl = `https://${host}/pwa-512x512.png`;
+    let imageUrl = `https://${req.headers.host || 'terraguard.vercel.app'}/pwa-512x512.png`;
 
     if (earthquake) {
       const mag = parseFloat(earthquake.magnitude);
@@ -139,64 +130,38 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    const safeTitle = escapeAttr(title);
-    const safeDesc = escapeAttr(description);
-    const safeImage = escapeAttr(imageUrl);
-    const canonicalUrl = `https://${host}/details/${id}`;
-
-    const metaTags = `<title>${safeTitle}</title>
-    <meta name="description" content="${safeDesc}" />
-    <meta property="og:type" content="article" />
-    <meta property="og:title" content="${safeTitle}" />
-    <meta property="og:description" content="${safeDesc}" />
-    <meta property="og:url" content="${canonicalUrl}" />
-    <meta property="og:image" content="${safeImage}" />
-    <meta property="og:image:width" content="600" />
-    <meta property="og:image:height" content="300" />
-    <meta property="og:site_name" content="TerraGuard" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${safeTitle}" />
-    <meta name="twitter:description" content="${safeDesc}" />
-    <meta name="twitter:image" content="${safeImage}" />`;
-
-    // 4. Fetch the actual React app index.html
-    let baseHtml = '';
-    try {
-      const htmlRes = await fetch(`https://${host}/`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/100.0.0.0 Safari/537.36'
-        }
-      });
-      if (htmlRes.ok) baseHtml = await htmlRes.text();
-    } catch (e) {
-      console.error('Failed to fetch base HTML', e);
-    }
-
-    let htmlResponse: string;
-
-    if (baseHtml) {
-      // Remove ALL existing <title>, <meta name="description">, and <meta property="og:*"> and <meta name="twitter:*"> tags
-      htmlResponse = baseHtml
-        .replace(/<title>[\s\S]*?<\/title>/gi, '')
-        .replace(/<meta\s+name="description"[^>]*>/gi, '')
-        .replace(/<meta\s+property="og:[^"]*"[^>]*>/gi, '')
-        .replace(/<meta\s+name="twitter:[^"]*"[^>]*>/gi, '')
-        .replace('</head>', `  ${metaTags}\n</head>`);
-    } else {
-      // Fallback if index.html fetch fails
-      htmlResponse = `<!DOCTYPE html>
+    const htmlResponse = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    ${metaTags}
+    <title>${title}</title>
+    <meta name="description" content="${description}" />
+    
+    <!-- Open Graph -->
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="${title}" />
+    <meta property="og:description" content="${description}" />
+    <meta property="og:url" content="https://${req.headers.host || 'terraguard.vercel.app'}/details/${id}" />
+    <meta property="og:image" content="${imageUrl}" />
+    <meta property="og:image:width" content="600" />
+    <meta property="og:image:height" content="300" />
+    <meta property="og:site_name" content="TerraGuard" />
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${title}" />
+    <meta name="twitter:description" content="${description}" />
+    <meta name="twitter:image" content="${imageUrl}" />
 </head>
 <body>
     <p>Redirecting to <a href="/details/${id}">TerraGuard Details</a>...</p>
-    <script>window.location.replace('/details/${id}');</script>
+    <script>
+      // Crawlers ignore this, but real browsers (if they somehow hit this endpoint) will redirect
+      window.location.replace('/details/${id}');
+    </script>
 </body>
 </html>`;
-    }
 
     res.setHeader('Content-Type', 'text/html');
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
