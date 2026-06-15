@@ -1,31 +1,25 @@
-/* PWA Install Prompt Banner */
 .install-prompt {
   position: fixed;
   bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+
+  margin-inline: auto;
+
+  width: min(440px, calc(100% - 32px));
+
   z-index: 9998;
-  width: calc(100% - 32px);
-  max-width: 440px;
+
   background: var(--bg-secondary);
   border: 1px solid rgba(99, 102, 241, 0.25);
   border-radius: 18px;
+
   box-shadow:
     0 20px 50px -10px rgba(0, 0, 0, 0.5),
     0 0 0 1px rgba(255, 255, 255, 0.04),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  overflow: hidden;
-}
 
-/* Top gradient line */
-.install-prompt::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6);
+  overflow: hidden;
 }
 
 .install-prompt-inner {
