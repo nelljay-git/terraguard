@@ -31,7 +31,7 @@ interface UpdateData {
 }
 
 const UPDATE_DATA: UpdateData = {
-  version: '2.1.0',
+  version: '2.1.2',
   date: 'June 15, 2026',
   greeting:
     "We've been working hard to make TerraGuard better! Here's what's new in this update:",
