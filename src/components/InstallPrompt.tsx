@@ -106,7 +106,7 @@ export function InstallPrompt() {
               <div className="install-prompt-sub">
                 {isIos
                   ? 'Tap Share → "Add to Home Screen"'
-                  : 'Faster access & offline support'}
+                  : 'Faster access'}
               </div>
             </div>
 
