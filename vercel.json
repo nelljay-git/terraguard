@@ -1,6 +1,15 @@
 {
   "rewrites": [
     {
+      "source": "/details/:id",
+      "has": [{ "type": "query", "key": "_spa" }],
+      "destination": "/index.html"
+    },
+    {
+      "source": "/details/:id",
+      "destination": "/api/og-details?id=:id"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

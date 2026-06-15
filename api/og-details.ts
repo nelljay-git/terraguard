@@ -130,6 +130,9 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    const canonicalUrl = `https://${req.headers.host || 'terraguard.vercel.app'}/details/${id}`;
+    const spaUrl = `${canonicalUrl}?_spa=1`;
+
     const htmlResponse = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -137,17 +140,20 @@ export default async function handler(req: any, res: any) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${title}</title>
     <meta name="description" content="${description}" />
-    
+
+    <!-- Instant redirect for human browsers (crawlers ignore this) -->
+    <meta http-equiv="refresh" content="0;url=${spaUrl}" />
+
     <!-- Open Graph -->
     <meta property="og:type" content="article" />
     <meta property="og:title" content="${title}" />
     <meta property="og:description" content="${description}" />
-    <meta property="og:url" content="https://${req.headers.host || 'terraguard.vercel.app'}/details/${id}" />
+    <meta property="og:url" content="${canonicalUrl}" />
     <meta property="og:image" content="${imageUrl}" />
     <meta property="og:image:width" content="600" />
     <meta property="og:image:height" content="300" />
     <meta property="og:site_name" content="TerraGuard" />
-    
+
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${title}" />
@@ -155,11 +161,8 @@ export default async function handler(req: any, res: any) {
     <meta name="twitter:image" content="${imageUrl}" />
 </head>
 <body>
-    <p>Redirecting to <a href="/details/${id}">TerraGuard Details</a>...</p>
-    <script>
-      // Crawlers ignore this, but real browsers (if they somehow hit this endpoint) will redirect
-      window.location.replace('/details/${id}');
-    </script>
+    <p>Redirecting to <a href="${spaUrl}">TerraGuard</a>...</p>
+    <script>window.location.replace('${spaUrl}');</script>
 </body>
 </html>`;
 

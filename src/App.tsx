@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom';
+import { useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { DevUpdateModal } from './components/DevUpdateModal';
 import { InstallPrompt } from './components/InstallPrompt';
@@ -12,6 +13,14 @@ import { History } from './pages/History';
 import './App.css';
 
 function App() {
+  // Strip the internal _spa query param used by the OG rewrite
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('_spa')) {
+      url.searchParams.delete('_spa');
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+    }
+  }, []);
   return (
     <div className="app-container">
       <DevUpdateModal />
