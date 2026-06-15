@@ -37,6 +37,17 @@ export function InstallPrompt() {
     const ios = isIOS();
     setIsIos(ios);
 
+    // Hide if the app gets installed through any method (address bar, OS, etc.)
+    const onAppInstalled = () => setVisible(false);
+    window.addEventListener('appinstalled', onAppInstalled);
+
+    // Also watch for display-mode changes (e.g., user opens the installed PWA)
+    const standaloneQuery = window.matchMedia('(display-mode: standalone)');
+    const onDisplayModeChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setVisible(false);
+    };
+    standaloneQuery.addEventListener('change', onDisplayModeChange);
+
     // Capture the Chrome/Edge install event
     const onBeforeInstall = (e: Event) => {
       e.preventDefault();
@@ -48,12 +59,15 @@ export function InstallPrompt() {
     // event fired — on iOS and in dev mode it won't fire, but we still
     // want to surface the install instructions.
     const timer = setTimeout(() => {
-      setVisible(true);
+      // Re-check standalone at the time the timer fires
+      if (!isInStandaloneMode()) setVisible(true);
     }, SHOW_DELAY_MS);
 
     return () => {
       clearTimeout(timer);
       window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+      window.removeEventListener('appinstalled', onAppInstalled);
+      standaloneQuery.removeEventListener('change', onDisplayModeChange);
     };
   }, []);
 
