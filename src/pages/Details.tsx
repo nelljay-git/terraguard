@@ -24,68 +24,83 @@ export function Details() {
   useEffect(() => {
     async function loadEq() {
       if (!id) return;
+
+      const months = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+
+      const matchId = (data: PhivolcsEarthquake[]) =>
+        data.find(eq =>
+          btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '') === id
+        ) || null;
+
       try {
+        // --- Decode the ID to find target year/month ---
         let targetYear = new Date().getFullYear();
-        let targetMonth = 'January';
-        let isHistorical = false;
+        let targetMonthIndex = new Date().getMonth();
 
         try {
           const pad = id.length % 4;
           const paddedId = pad ? id + '='.repeat(4 - pad) : id;
           const decodedStr = atob(paddedId);
           const datePart = decodedStr.split('-')[0].trim();
-          
           const match = datePart.match(/(\d+)\s+([A-Za-z]+)\s+(\d{4})/);
           if (match) {
-            targetMonth = match[2];
             targetYear = parseInt(match[3], 10);
-            
-            const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-            const monthIndex = months.findIndex(m => m.toLowerCase() === targetMonth.toLowerCase());
-            targetMonth = months[monthIndex !== -1 ? monthIndex : 0];
-
-            const current = new Date();
-            if (targetYear < current.getFullYear() || (targetYear === current.getFullYear() && monthIndex < current.getMonth())) {
-              isHistorical = true;
-            }
+            const idx = months.findIndex(m => m.toLowerCase() === match[2].toLowerCase());
+            if (idx !== -1) targetMonthIndex = idx;
           }
         } catch (e) {
-          console.warn("Could not decode ID for historical fetch", e);
+          console.warn('Could not decode ID for historical fetch', e);
         }
 
         let found = earthquake;
+
         if (!found) {
-          let res;
-          if (isHistorical) {
-            res = await fetchPhivolcsArchiveData(targetYear, targetMonth);
-          } else {
-            res = await fetchPhivolcsData();
-          }
+          // 1. Always try the live feed first (covers most recent events)
+          try {
+            const liveRes = await fetchPhivolcsData();
+            found = matchId(liveRes.data);
+          } catch { /* continue */ }
+        }
 
-          found = res.data.find(eq => {
-            const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
-            return eqId === id;
-          }) || null;
+        if (!found) {
+          // 2. Try the archive for the decoded month
+          try {
+            const archiveRes = await fetchPhivolcsArchiveData(targetYear, months[targetMonthIndex]);
+            found = matchId(archiveRes.data);
+          } catch { /* continue */ }
+        }
 
-          if (!found && !isHistorical) {
-             const archiveRes = await fetchPhivolcsArchiveData(targetYear, targetMonth);
-             found = archiveRes.data.find(eq => {
-               const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
-               return eqId === id;
-             }) || null;
-          }
+        if (!found) {
+          // 3. Try the previous month (handles month-boundary events)
+          const prevMonthIndex = targetMonthIndex === 0 ? 11 : targetMonthIndex - 1;
+          const prevYear = targetMonthIndex === 0 ? targetYear - 1 : targetYear;
+          try {
+            const prevRes = await fetchPhivolcsArchiveData(prevYear, months[prevMonthIndex]);
+            found = matchId(prevRes.data);
+          } catch { /* continue */ }
+        }
+
+        if (!found) {
+          // 4. Try next month (in case of time-zone edge cases)
+          const nextMonthIndex = (targetMonthIndex + 1) % 12;
+          const nextYear = targetMonthIndex === 11 ? targetYear + 1 : targetYear;
+          try {
+            const nextRes = await fetchPhivolcsArchiveData(nextYear, months[nextMonthIndex]);
+            found = matchId(nextRes.data);
+          } catch { /* continue */ }
         }
 
         if (found) {
           if (!earthquake) setEarthquake(found);
-          setLoading(false); // main data is ready!
-          
+          setLoading(false);
+
           if (found.link) {
             try {
               const det = await fetchEarthquakeDetails(found.link);
               if (det) setDetails(det);
             } catch (err) {
-              console.error("Failed to load extra details:", err);
+              console.error('Failed to load extra details:', err);
             }
           }
         } else {
