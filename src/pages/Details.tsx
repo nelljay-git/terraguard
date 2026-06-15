@@ -6,6 +6,7 @@ import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, Map as MapIcon, Image as ImageIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { ImageModal } from '../components/ImageModal';
 import './Details.css';
 
 export function Details() {
@@ -18,6 +19,7 @@ export function Details() {
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mapView, setMapView] = useState<'interactive' | 'official'>('interactive');
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
 
   useEffect(() => {
     async function loadEq() {
@@ -446,11 +448,13 @@ export function Details() {
                 )
               ) : (
                 <div className="official-map-container flex-center" style={{ height: '100%', padding: '10px' }}>
-                  <img 
-                    src={details?.mapUrl} 
-                    alt={`Official map for earthquake in ${earthquake.location}`} 
-                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} 
-                  />
+                  <div className="official-map-wrapper" onClick={() => setIsImageModalOpen(true)}>
+                    <img 
+                      src={details?.mapUrl} 
+                      alt={`Official map for earthquake in ${earthquake.location}`} 
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -609,6 +613,13 @@ export function Details() {
           </div>
         </div>
       </div>
+
+      <ImageModal
+        isOpen={isImageModalOpen}
+        onClose={() => setIsImageModalOpen(false)}
+        imageUrl={details?.mapUrl}
+        altText={`Official map for earthquake in ${earthquake.location}`}
+      />
     </motion.div>
   );
 }
