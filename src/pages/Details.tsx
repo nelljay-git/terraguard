@@ -7,6 +7,7 @@ import L from 'leaflet';
 import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, Map as MapIcon, Image as ImageIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
+import { FunFactLoader } from '../components/FunFactLoader';
 import './Details.css';
 
 export function Details() {
@@ -168,14 +169,11 @@ export function Details() {
   if (loading) {
     return (
       <div className="container flex-center" style={{ height: '50vh' }}>
-        <div className="loading-screen">
-          <div className="loading-spinner">
-            <div className="spinner-ring"></div>
-            <Activity size={28} className="spinner-icon" />
-          </div>
-          <p className="loading-text">Loading Details...</p>
-          <p className="loading-sub">Fetching event data from PHIVOLCS</p>
-        </div>
+        <FunFactLoader
+          title="Loading Details..."
+          subtitle="Fetching event data from PHIVOLCS"
+          icon={<Activity size={28} className="spinner-icon" />}
+        />
       </div>
     );
   }

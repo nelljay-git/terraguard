@@ -7,6 +7,7 @@ import { InteractiveMap } from '../components/InteractiveMap';
 import { ActivityFeed } from '../components/ActivityFeed';
 import { NewsFeed } from '../components/NewsFeed';
 import { Radio, RefreshCw, Shield } from 'lucide-react';
+import { FunFactLoader } from '../components/FunFactLoader';
 import './Dashboard.css';
 
 export function Dashboard() {
@@ -65,14 +66,11 @@ export function Dashboard() {
 
   if (loading) {
     return (
-      <div className="loading-screen">
-        <div className="loading-spinner">
-          <div className="spinner-ring"></div>
-          <Shield size={28} className="spinner-icon" />
-        </div>
-        <p className="loading-text">Connecting to PHIVOLCS...</p>
-        <p className="loading-sub">Fetching real-time seismic data</p>
-      </div>
+      <FunFactLoader
+        title="Connecting to PHIVOLCS..."
+        subtitle="Fetching real-time seismic data"
+        icon={<Shield size={28} className="spinner-icon" />}
+      />
     );
   }
 

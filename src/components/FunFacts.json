@@ -1,0 +1,324 @@
+{
+    "earthquakeFunFacts": [
+        {
+            "id": 1,
+            "fact": "Every day, Earth experiences around 55 earthquakes every hour. Most are too small for humans to notice."
+        },
+        {
+            "id": 2,
+            "fact": "The largest earthquake ever recorded was the 1960 Valdivia Earthquake in Chile at magnitude 9.5."
+        },
+        {
+            "id": 3,
+            "fact": "Earthquakes can make the ground move faster than a Formula 1 race car."
+        },
+        {
+            "id": 4,
+            "fact": "Some earthquakes last only a few seconds, while others can continue for several minutes."
+        },
+        {
+            "id": 5,
+            "fact": "Japan records thousands of earthquakes every year due to its location on multiple tectonic plate boundaries."
+        },
+        {
+            "id": 6,
+            "fact": "Animals have been reported behaving strangely before some earthquakes, though scientists still debate why."
+        },
+        {
+            "id": 7,
+            "fact": "The deepest recorded earthquake occurred about 700 kilometers beneath Earth's surface."
+        },
+        {
+            "id": 8,
+            "fact": "Earthquakes can temporarily change the length of a day by altering Earth's rotation."
+        },
+        {
+            "id": 9,
+            "fact": "A magnitude 8 earthquake releases about 32 times more energy than a magnitude 7."
+        },
+        {
+            "id": 10,
+            "fact": "The ground can crack open during powerful earthquakes, but movie-style giant chasms are rare."
+        },
+        {
+            "id": 11,
+            "fact": "Underwater earthquakes can generate tsunamis that travel across entire oceans."
+        },
+        {
+            "id": 12,
+            "fact": "The Pacific Ring of Fire is responsible for about 90% of the world's earthquakes."
+        },
+        {
+            "id": 13,
+            "fact": "Earthquakes can trigger landslides, avalanches, and even volcanic activity."
+        },
+        {
+            "id": 14,
+            "fact": "Scientists use seismic waves to study Earth's hidden interior."
+        },
+        {
+            "id": 15,
+            "fact": "A foreshock is a smaller earthquake that happens before a larger one."
+        },
+        {
+            "id": 16,
+            "fact": "Aftershocks can continue for days, months, or even years after a major quake."
+        },
+        {
+            "id": 17,
+            "fact": "The strongest shaking is not always directly above the epicenter."
+        },
+        {
+            "id": 18,
+            "fact": "Earthquakes have been detected on the Moon."
+        },
+        {
+            "id": 19,
+            "fact": "Mars experiences marsquakes, proving earthquakes aren't unique to Earth."
+        },
+        {
+            "id": 20,
+            "fact": "Some earthquakes are caused by human activities such as mining and reservoir filling."
+        },
+        {
+            "id": 21,
+            "fact": "The first seismometer was invented in China nearly 2,000 years ago."
+        },
+        {
+            "id": 22,
+            "fact": "Earthquakes can create new lakes by altering river paths."
+        },
+        {
+            "id": 23,
+            "fact": "The sound some people hear during earthquakes often comes from vibrating structures and ground movement."
+        },
+        {
+            "id": 24,
+            "fact": "Large earthquakes can permanently shift coastlines."
+        },
+        {
+            "id": 25,
+            "fact": "The 2004 Indian Ocean earthquake shortened Earth's day by a tiny fraction of a second."
+        },
+        {
+            "id": 26,
+            "fact": "Some faults stay quiet for centuries before producing a major earthquake."
+        },
+        {
+            "id": 27,
+            "fact": "Earthquakes can occur in every season and every type of weather."
+        },
+        {
+            "id": 28,
+            "fact": "Weather does not cause tectonic earthquakes."
+        },
+        {
+            "id": 29,
+            "fact": "The term 'Ring of Fire' refers to a horseshoe-shaped zone around the Pacific Ocean."
+        },
+        {
+            "id": 30,
+            "fact": "The Philippines sits within the Pacific Ring of Fire, making earthquakes common."
+        },
+        {
+            "id": 31,
+            "fact": "Earthquakes can make buildings sway even when people don't feel the shaking."
+        },
+        {
+            "id": 32,
+            "fact": "A seismic gap is an area that hasn't experienced a major earthquake for an unusually long time."
+        },
+        {
+            "id": 33,
+            "fact": "Liquefaction can make solid ground behave like a liquid during strong shaking."
+        },
+        {
+            "id": 34,
+            "fact": "Earthquakes have caused entire neighborhoods to sink several feet."
+        },
+        {
+            "id": 35,
+            "fact": "The Richter Scale is famous, but scientists now mostly use Moment Magnitude."
+        },
+        {
+            "id": 36,
+            "fact": "Seismic waves can travel through the entire planet."
+        },
+        {
+            "id": 37,
+            "fact": "P-waves are the fastest earthquake waves and arrive first."
+        },
+        {
+            "id": 38,
+            "fact": "S-waves cannot travel through liquid, helping scientists identify Earth's liquid outer core."
+        },
+        {
+            "id": 39,
+            "fact": "Some skyscrapers are designed to sway safely during earthquakes."
+        },
+        {
+            "id": 40,
+            "fact": "Earthquake-resistant buildings don't stop shaking; they survive it."
+        },
+        {
+            "id": 41,
+            "fact": "Certain bridges can move several feet during major earthquakes without collapsing."
+        },
+        {
+            "id": 42,
+            "fact": "The San Andreas Fault is over 1,200 kilometers long."
+        },
+        {
+            "id": 43,
+            "fact": "Most earthquakes occur less than 70 kilometers below the surface."
+        },
+        {
+            "id": 44,
+            "fact": "Deep earthquakes are often felt over wider areas than shallow ones."
+        },
+        {
+            "id": 45,
+            "fact": "Earthquakes can trigger fires by damaging gas lines and electrical systems."
+        },
+        {
+            "id": 46,
+            "fact": "The deadliest earthquake in history may have killed more than 800,000 people in China in 1556."
+        },
+        {
+            "id": 47,
+            "fact": "Modern earthquake early warning systems can provide a few seconds of notice before strong shaking arrives."
+        },
+        {
+            "id": 48,
+            "fact": "A few seconds of warning can stop trains and open fire station doors automatically."
+        },
+        {
+            "id": 49,
+            "fact": "Earthquakes cannot currently be predicted with exact dates and times."
+        },
+        {
+            "id": 50,
+            "fact": "Scientists can identify regions at risk, but not the precise moment a quake will occur."
+        },
+        {
+            "id": 51,
+            "fact": "The ocean floor is constantly moving due to plate tectonics."
+        },
+        {
+            "id": 52,
+            "fact": "Subduction zones produce many of the world's strongest earthquakes."
+        },
+        {
+            "id": 53,
+            "fact": "Megathrust earthquakes occur where one tectonic plate dives beneath another."
+        },
+        {
+            "id": 54,
+            "fact": "Some underwater earthquakes are so powerful they move entire sections of the seafloor."
+        },
+        {
+            "id": 55,
+            "fact": "A major earthquake can raise coastal land several meters almost instantly."
+        },
+        {
+            "id": 56,
+            "fact": "Tectonic uplift from earthquakes can expose coral reefs above sea level."
+        },
+        {
+            "id": 57,
+            "fact": "Earthquakes can alter groundwater levels in wells."
+        },
+        {
+            "id": 58,
+            "fact": "Some lakes have sloshed like giant bathtubs during earthquakes."
+        },
+        {
+            "id": 59,
+            "fact": "Earthquakes release energy accumulated over decades, centuries, or even millennia."
+        },
+        {
+            "id": 60,
+            "fact": "A magnitude 9 earthquake releases roughly 1,000 times more energy than a magnitude 7."
+        },
+        {
+            "id": 61,
+            "fact": "The strongest shaking is usually near the fault rupture, not necessarily the epicenter."
+        },
+        {
+            "id": 62,
+            "fact": "The epicenter is just the surface point above where the rupture starts underground."
+        },
+        {
+            "id": 63,
+            "fact": "Scientists locate earthquakes using arrival times from multiple seismic stations."
+        },
+        {
+            "id": 64,
+            "fact": "Three seismic stations are the minimum needed to pinpoint an epicenter accurately."
+        },
+        {
+            "id": 65,
+            "fact": "Some faults creep slowly without producing large earthquakes."
+        },
+        {
+            "id": 66,
+            "fact": "Earthquakes can occasionally trigger other earthquakes hundreds of kilometers away."
+        },
+        {
+            "id": 67,
+            "fact": "Large earthquakes have been known to shake the entire planet."
+        },
+        {
+            "id": 68,
+            "fact": "Sensitive instruments can detect earthquakes from the opposite side of Earth."
+        },
+        {
+            "id": 69,
+            "fact": "The ground can move vertically, horizontally, or both during a quake."
+        },
+        {
+            "id": 70,
+            "fact": "Not all faults produce visible cracks at the surface."
+        },
+        {
+            "id": 71,
+            "fact": "Earthquake lights have occasionally been reported before or during major earthquakes."
+        },
+        {
+            "id": 72,
+            "fact": "Scientists are still studying the cause of earthquake lights."
+        },
+        {
+            "id": 73,
+            "fact": "The 2011 Japan earthquake shifted the main island several meters eastward."
+        },
+        {
+            "id": 74,
+            "fact": "That same earthquake generated a devastating Pacific-wide tsunami."
+        },
+        {
+            "id": 75,
+            "fact": "Earthquakes can permanently alter maps."
+        },
+        {
+            "id": 76,
+            "fact": "The largest fault ruptures can extend for over 1,000 kilometers."
+        },
+        {
+            "id": 77,
+            "fact": "Seismologists sometimes call Earth a giant bell because large earthquakes make it vibrate globally."
+        },
+        {
+            "id": 78,
+            "fact": "Earth's crust is broken into giant moving tectonic plates."
+        },
+        {
+            "id": 79,
+            "fact": "Those plates move about as fast as human fingernails grow."
+        },
+        {
+            "id": 80,
+            "fact": "Every earthquake tells a story about how our planet is constantly changing beneath our feet."
+        }
+    ]
+}
