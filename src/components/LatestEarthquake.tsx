@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { MapPin, Clock, Activity, ArrowRight } from 'lucide-react';
@@ -10,8 +11,75 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
   const label = getSeverityLabel(mag);
   const eqId = btoa(`${earthquake.datetime}-${earthquake.latitude}-${earthquake.longitude}`).replace(/=/g, '');
 
+  // Track the previous earthquake's unique key to detect updates
+  const prevEqKeyRef = useRef<string | null>(null);
+  // Flag set to true once the user has interacted with the page
+  const userInteractedRef = useRef(false);
+  // If a sound was triggered before interaction, we queue it here
+  const pendingSoundRef = useRef(false);
+
+  // Listen for the first user interaction so queued sounds can fire
+  useEffect(() => {
+    const handleInteraction = () => {
+      if (!userInteractedRef.current) {
+        userInteractedRef.current = true;
+
+        // Play the queued alert if one was missed due to autoplay restriction
+        if (pendingSoundRef.current) {
+          pendingSoundRef.current = false;
+          triggerSound();
+        }
+      }
+    };
+
+    window.addEventListener('click', handleInteraction, { once: false });
+    window.addEventListener('keydown', handleInteraction, { once: false });
+    window.addEventListener('touchstart', handleInteraction, { once: false });
+
+    return () => {
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
+      window.removeEventListener('touchstart', handleInteraction);
+    };
+  }, []);
+
+  useEffect(() => {
+    const currentKey = `${earthquake.datetime}-${earthquake.latitude}-${earthquake.longitude}`;
+
+    // Only play sound when the earthquake actually changes (not on first mount)
+    // and magnitude is 3.0 or above
+    if (prevEqKeyRef.current !== null && prevEqKeyRef.current !== currentKey && mag >= 2.5) {
+      playAlertSound();
+    }
+
+    prevEqKeyRef.current = currentKey;
+  }, [earthquake.datetime, earthquake.latitude, earthquake.longitude]);
+
+  const triggerSound = () => {
+    try {
+      const audio = new Audio('/alert.mp3');
+      audio.volume = 0.7;
+      audio.play().catch((err) => {
+        console.error('Failed to play alert sound:', err);
+      });
+    } catch (err) {
+      console.error('Failed to initialize alert audio:', err);
+    }
+  };
+
+  const playAlertSound = () => {
+    if (userInteractedRef.current) {
+      // User has already interacted — play immediately
+      triggerSound();
+    } else {
+      // Queue it; will fire on the next user interaction
+      pendingSoundRef.current = true;
+      console.info('Alert sound queued — waiting for user interaction.');
+    }
+  };
+
   const generateSeismographPath = (magnitude: number) => {
-    const amp = Math.min(Math.max((magnitude - 2) * 12, 4), 45); // Amplitude scaled with magnitude
+    const amp = Math.min(Math.max((magnitude - 2) * 12, 4), 45);
     return `M 0 50 
             Q 30 50, 60 ${50 - amp * 0.2} 
             T 120 ${50 + amp * 0.4} 
@@ -93,8 +161,6 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
         </div>
       </div>
 
-
-
       {/* Dynamic Seismograph Animation */}
       <div className="seismograph-container">
         <svg
@@ -106,10 +172,8 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
             width: '100%',
             height: '200px',
           }}
-
         >
           <defs>
-            {/* Right-side fade */}
             <linearGradient id="fadeRight" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="white" stopOpacity="1" />
               <stop offset="0%" stopColor="white" stopOpacity="1" />
@@ -128,7 +192,6 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
             </mask>
           </defs>
 
-          {/* Baseline */}
           <path
             className="seismograph-line-static"
             d="M 0 100 L 600 100"
@@ -138,7 +201,6 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
             mask="url(#fadeMask)"
           />
 
-          {/* Seismograph Wave */}
           <path
             className="seismograph-line"
             d={generateSeismographPath(mag)}
@@ -155,8 +217,6 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
           />
         </svg>
       </div>
-
-
-    </div >
+    </div>
   );
 }
