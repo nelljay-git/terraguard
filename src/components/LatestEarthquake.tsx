@@ -13,68 +13,28 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
 
   // Track the previous earthquake's unique key to detect updates
   const prevEqKeyRef = useRef<string | null>(null);
-  // Flag set to true once the user has interacted with the page
-  const userInteractedRef = useRef(false);
-  // If a sound was triggered before interaction, we queue it here
-  const pendingSoundRef = useRef(false);
-
-  // Listen for the first user interaction so queued sounds can fire
-  useEffect(() => {
-    const handleInteraction = () => {
-      if (!userInteractedRef.current) {
-        userInteractedRef.current = true;
-
-        // Play the queued alert if one was missed due to autoplay restriction
-        if (pendingSoundRef.current) {
-          pendingSoundRef.current = false;
-          triggerSound();
-        }
-      }
-    };
-
-    window.addEventListener('click', handleInteraction, { once: false });
-    window.addEventListener('keydown', handleInteraction, { once: false });
-    window.addEventListener('touchstart', handleInteraction, { once: false });
-
-    return () => {
-      window.removeEventListener('click', handleInteraction);
-      window.removeEventListener('keydown', handleInteraction);
-      window.removeEventListener('touchstart', handleInteraction);
-    };
-  }, []);
 
   useEffect(() => {
     const currentKey = `${earthquake.datetime}-${earthquake.latitude}-${earthquake.longitude}`;
 
     // Only play sound when the earthquake actually changes (not on first mount)
-    // and magnitude is 3.0 or above
-    if (prevEqKeyRef.current !== null && prevEqKeyRef.current !== currentKey && mag >= 2.5) {
+    if (prevEqKeyRef.current !== null && prevEqKeyRef.current !== currentKey) {
       playAlertSound();
     }
 
     prevEqKeyRef.current = currentKey;
   }, [earthquake.datetime, earthquake.latitude, earthquake.longitude]);
 
-  const triggerSound = () => {
+  const playAlertSound = () => {
     try {
       const audio = new Audio('/alert.mp3');
       audio.volume = 0.7;
       audio.play().catch((err) => {
-        console.error('Failed to play alert sound:', err);
+        // Browsers may block autoplay until the user has interacted with the page
+        console.warn('Alert sound could not be played:', err);
       });
     } catch (err) {
       console.error('Failed to initialize alert audio:', err);
-    }
-  };
-
-  const playAlertSound = () => {
-    if (userInteractedRef.current) {
-      // User has already interacted — play immediately
-      triggerSound();
-    } else {
-      // Queue it; will fire on the next user interaction
-      pendingSoundRef.current = true;
-      console.info('Alert sound queued — waiting for user interaction.');
     }
   };
 
