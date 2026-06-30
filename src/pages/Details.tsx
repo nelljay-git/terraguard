@@ -8,6 +8,7 @@ import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, C
 import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
 import { FunFactLoader } from '../components/FunFactLoader';
+import { ActiveFaultsLayer } from '../components/ActiveFaultsLayer';
 import './Details.css';
 
 export function Details() {
@@ -498,6 +499,7 @@ export function Details() {
                       version="1.3.0"
                       className="wms-trench-layer"
                     />
+                    <ActiveFaultsLayer />
                     {(() => {
                       const pulseSize = Math.max(mag * 30, 50);
                       const coreSize = Math.max(mag * 4, 12);

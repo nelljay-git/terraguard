@@ -7,6 +7,7 @@ import { Expand, MapPin, X, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { ActiveFaultsLayer } from './ActiveFaultsLayer';
 import './InteractiveMap.css';
 
 
@@ -310,6 +311,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
             version="1.3.0"
             className="wms-trench-layer"
           />
+          <ActiveFaultsLayer />
 
           {latestEarthquake && hasLatestCoords && (
             <Marker
@@ -375,6 +377,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
                   version="1.3.0"
                   className="wms-trench-layer"
                 />
+                <ActiveFaultsLayer />
 
                 {latestEarthquake && hasLatestCoords && (
                   <Marker
