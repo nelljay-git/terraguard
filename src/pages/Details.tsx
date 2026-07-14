@@ -11,6 +11,30 @@ import { FunFactLoader } from '../components/FunFactLoader';
 import { ActiveFaultsLayer } from '../components/ActiveFaultsLayer';
 import './Details.css';
 
+// Match earthquakes even when PHIVOLCS revises the data (e.g. coordinates change),
+// which would otherwise invalidate shared /details links. We fall back to matching
+// on the event's datetime, the portion PHIVOLCS keeps stable.
+function normalizeDatetime(s: string): string {
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+function decodeEqId(id: string): { datetime?: string } {
+  try {
+    const pad = id.length % 4;
+    const paddedId = pad ? id + '='.repeat(4 - pad) : id;
+    const decoded = atob(paddedId);
+    const parts = decoded.split('-');
+    if (parts.length >= 3) {
+      // Latitude and longitude are always the last two segments
+      const datetime = parts.slice(0, parts.length - 2).join('-').trim();
+      return { datetime };
+    }
+  } catch {
+    /* ignore decode errors */
+  }
+  return {};
+}
+
 export function Details() {
   const { id } = useParams<{ id: string }>();
   const { state } = useLocation();
@@ -78,10 +102,22 @@ export function Details() {
       const months = ['January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December'];
 
-      const matchId = (data: PhivolcsEarthquake[]) =>
-        data.find(eq =>
+      const matchId = (data: PhivolcsEarthquake[]) => {
+        // 1. Exact match (data unchanged since the link was created)
+        const exact = data.find(eq =>
           btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '') === id
-        ) || null;
+        );
+        if (exact) return exact;
+
+        // 2. Fallback: PHIVOLCS likely revised the event (coords/depth/magnitude),
+        //    so match on the stable datetime portion of the original ID.
+        const decoded = decodeEqId(id);
+        if (decoded.datetime) {
+          const target = normalizeDatetime(decoded.datetime);
+          return data.find(eq => normalizeDatetime(eq.datetime) === target) || null;
+        }
+        return null;
+      };
 
       try {
         // --- Decode the ID to find target year/month ---

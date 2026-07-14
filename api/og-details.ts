@@ -61,6 +61,20 @@ export default async function handler(req: any, res: any) {
 
     let earthquake = null;
 
+    // Collect all rows first so we can fall back to datetime matching if the
+    // exact ID no longer matches (PHIVOLCS may revise coordinate data).
+    const allRows = [];
+    let fallbackDatetime = null;
+    try {
+      const pad = id.length % 4;
+      const paddedId = pad ? id + '='.repeat(4 - pad) : id;
+      const decodedStr = Buffer.from(paddedId, 'base64').toString('utf-8');
+      const dParts = decodedStr.split('-');
+      if (dParts.length >= 3) {
+        fallbackDatetime = dParts.slice(0, dParts.length - 2).join('-').replace(/\s+/g, ' ').trim();
+      }
+    } catch { /* ignore */ }
+
     for (const targetUrl of urlsToTry) {
       try {
         const response = await fetch(targetUrl, {
@@ -92,17 +106,19 @@ export default async function handler(req: any, res: any) {
             const rowMag = cells[4];
             const rowLoc = cells[5];
 
+            allRows.push({
+              datetime: rowDatetime,
+              latitude: rowLat,
+              longitude: rowLng,
+              depth: rowDepth,
+              magnitude: rowMag,
+              location: rowLoc
+            });
+
             const rowId = Buffer.from(`${rowDatetime}-${rowLat}-${rowLng}`).toString('base64').replace(/=/g, '');
 
             if (rowId === id) {
-              earthquake = {
-                datetime: rowDatetime,
-                latitude: rowLat,
-                longitude: rowLng,
-                depth: rowDepth,
-                magnitude: rowMag,
-                location: rowLoc
-              };
+              earthquake = allRows[allRows.length - 1];
               break;
             }
           }
@@ -112,6 +128,12 @@ export default async function handler(req: any, res: any) {
       } catch (err) {
         // Continue to next URL
       }
+    }
+
+    // Fallback: match by the stable datetime portion of the original ID so
+    // shared links keep working even after PHIVOLCS revises the event data.
+    if (!earthquake && fallbackDatetime) {
+      earthquake = allRows.find(r => r.datetime.replace(/\s+/g, ' ').trim() === fallbackDatetime) || null;
     }
 
     // 3. Build meta content
