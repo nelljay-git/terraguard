@@ -70,6 +70,33 @@ function extractEarthquakes(html: string, req: any): Earthquake[] {
   return earthquakes;
 }
 
+// ---------------------------------------------------------------------------
+// In-memory response cache
+// ---------------------------------------------------------------------------
+// We keep the last successful scrape result in memory (per requested path) so
+// that repeated requests within a short window don't hammer the PHIVOLCS site.
+//
+// How it works:
+//   1. Each cache entry stores the JSON payload and the timestamp it was made.
+//   2. When a request comes in, we check for a fresh entry (< 60s old). If one
+//      exists, we return it immediately without scraping again.
+//   3. If the entry is missing or stale (>= 60s), we scrape PHIVOLCS, then
+//      store the new result and its timestamp before returning it.
+//   4. If scraping fails but we still have a cached entry (even a stale one),
+//      we return that cached entry instead of surfacing an error.
+//
+// Note: this cache lives in the server process's memory, so it is shared across
+// requests handled by the same instance and is cleared when the process restarts.
+const CACHE_TTL_MS = 60 * 1000; // Cache lifetime: 60 seconds
+
+type CacheEntry = {
+  timestamp: number; // When this payload was scraped (ms since epoch)
+  payload: { success: true; count: number; data: Earthquake[] };
+};
+
+// Keyed by the requested path so live data and archive pages cache separately.
+const responseCache = new Map<string, CacheEntry>();
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -83,8 +110,17 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
+  const pathQuery = (req.query.path as string) || '';
+  const cacheKey = pathQuery || '__live__';
+
+  // Step 1: Serve from cache if we have a fresh (< 60s old) entry.
+  const cached = responseCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(200).json(cached.payload);
+  }
+
   try {
-    const pathQuery = req.query.path as string;
     const targetUrl = pathQuery 
       ? `https://earthquake.phivolcs.dost.gov.ph/${pathQuery}`
       : 'https://earthquake.phivolcs.dost.gov.ph/';
@@ -103,13 +139,26 @@ export default async function handler(req: any, res: any) {
     const html = await response.text();
     const earthquakes = extractEarthquakes(html, req);
 
-    res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({
-      success: true,
+    const payload = {
+      success: true as const,
       count: earthquakes.length,
       data: earthquakes,
-    });
+    };
+
+    // Step 2: Scrape succeeded, so refresh the cache with the new result.
+    responseCache.set(cacheKey, { timestamp: Date.now(), payload });
+
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(200).json(payload);
   } catch (error) {
+    // Step 3: Scrape failed. If we have any cached response (even stale),
+    // return it instead of an error so the client still gets usable data.
+    const stale = responseCache.get(cacheKey);
+    if (stale) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json(stale.payload);
+    }
+
     const message = error instanceof Error ? error.message : 'Unknown error';
     return res.status(200).json({
       success: false,
