@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { fetchPhivolcsData, fetchEarthquakeDetails, fetchPhivolcsArchiveData, type PhivolcsEarthquake, type EarthquakeDetails } from '../api/phivolcs';
+import { fetchPhivolcsData, fetchEarthquakeDetails, fetchPhivolcsArchiveData, fetchBulletins, type PhivolcsEarthquake, type EarthquakeDetails, type BulletinRef } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
@@ -16,6 +16,15 @@ import './Details.css';
 // on the event's datetime, the portion PHIVOLCS keeps stable.
 function normalizeDatetime(s: string): string {
   return s.replace(/\s+/g, ' ').trim();
+}
+
+// Extract the PHIVOLCS Information/Bulletin number from the event's detail link.
+// e.g. ".../2026_0714_154928_B1.html" -> No. 1, ".../2026_0714_1549_B2F.html" -> No. 2 (Final)
+function extractBulletin(link: string | undefined): { no: number; final: boolean } | null {
+  if (!link) return null;
+  const m = /_B(\d+)(F)?/i.exec(link);
+  if (!m) return null;
+  return { no: parseInt(m[1], 10), final: m[2]?.toUpperCase() === 'F' };
 }
 
 function decodeEqId(id: string): { datetime?: string } {
@@ -46,6 +55,8 @@ export function Details() {
   const [copied, setCopied] = useState(false);
   const [mapView, setMapView] = useState<'interactive' | 'official'>('interactive');
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [bulletins, setBulletins] = useState<BulletinRef[]>([]);
+  const [activeLink, setActiveLink] = useState<string | undefined>(earthquake?.link);
 
   // Set document title immediately and update when data arrives
   useEffect(() => {
@@ -180,6 +191,7 @@ export function Details() {
         if (found) {
           if (!earthquake) setEarthquake(found);
           setLoading(false);
+          setActiveLink(found.link);
 
           if (found.link) {
             try {
@@ -236,6 +248,35 @@ export function Details() {
   const lat = parseFloat(earthquake.latitude);
   const lng = parseFloat(earthquake.longitude);
   const isSevere = mag >= 6.0;
+  const bulletin = extractBulletin(activeLink);
+
+  // Discover all bulletins PHIVOLCS published for this earthquake sequence
+  useEffect(() => {
+    if (!earthquake?.link) return;
+    let cancelled = false;
+    fetchBulletins(earthquake.link)
+      .then(list => { if (!cancelled) setBulletins(list); })
+      .catch(() => { if (!cancelled) setBulletins([]); });
+    return () => { cancelled = true; };
+  }, [earthquake?.link]);
+
+  const loadBulletinDetails = async (url: string) => {
+    setDetailsLoading(true);
+    try {
+      const det = await fetchEarthquakeDetails(url);
+      if (det) setDetails(det);
+    } catch (err) {
+      console.error('Failed to load bulletin details:', err);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const handleSelectBulletin = (b: BulletinRef) => {
+    if (b.url === activeLink) return;
+    setActiveLink(b.url);
+    loadBulletinDetails(b.url);
+  };
 
 
   // Energy Calculation: E = 10^(1.5 * M + 4.8) Joules
@@ -465,6 +506,29 @@ export function Details() {
         <div style={{ position: 'absolute', bottom: '20px', left: '5%', float: 'left', color: '#424242ff', fontSize: '12px' }}>Source data: PHIVOLCS</div>
       </div>
 
+      {/* Bulletin navigation across the earthquake sequence */}
+      {bulletins.length > 1 && (
+        <div className="details-card glass bulletin-nav">
+          <div className="flex-between" style={{ marginBottom: '14px' }}>
+            <h3 className="card-title" style={{ marginBottom: 0 }}>Information Bulletins</h3>
+            <span className="text-muted" style={{ fontSize: '0.8rem' }}>{bulletins.length} released</span>
+          </div>
+          <div className="bulletin-chips">
+            {bulletins.map((b) => (
+              <button
+                key={b.url}
+                type="button"
+                className={`bulletin-chip ${activeLink === b.url ? 'active' : ''}`}
+                style={activeLink === b.url ? { background: color, borderColor: color, color: '#fff' } : undefined}
+                onClick={() => handleSelectBulletin(b)}
+              >
+                No. {b.no}{b.final ? ' (Final)' : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="details-grid">
         <div className="details-main-pane">
 
@@ -601,6 +665,15 @@ export function Details() {
                   <div className="info-value">PHIVOLCS-DOST</div>
                 </div>
               </div>
+              {bulletin && (
+                <div className="info-item glass-card" style={{ gridColumn: 'span 2' }}>
+                  <Info size={20} className="info-icon" style={{ color }} />
+                  <div>
+                    <div className="info-label">Information Bulletin</div>
+                    <div className="info-value">No. {bulletin.no}{bulletin.final ? ' (Final)' : ''}</div>
+                  </div>
+                </div>
+              )}
               {detailsLoading ? (
                 <div className="info-item glass-card flex-center" style={{ gridColumn: 'span 2', minHeight: '60px' }}>
                   <div className="pulse-loader" style={{ width: '20px', height: '20px', borderColor: color, borderWidth: '2px' }}></div>

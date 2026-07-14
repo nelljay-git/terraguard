@@ -23,6 +23,12 @@ export interface EarthquakeDetails {
   mapUrl: string;
 }
 
+export interface BulletinRef {
+  no: number;
+  final: boolean;
+  url: string;
+}
+
 const CACHE_KEY = 'terraguard_phivolcs_cache';
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -196,6 +202,52 @@ export async function fetchPhivolcsArchiveData(year: number, monthName: string):
 
 export function getSignificantEarthquakes(data: PhivolcsEarthquake[]): PhivolcsEarthquake[] {
   return data.filter(eq => parseFloat(eq.magnitude) >= 4.5);
+}
+
+// Discover all bulletins (Information No. 1, 2, ... Final) PHIVOLCS published for
+// the same earthquake sequence by probing candidate URLs derived from the link.
+export async function fetchBulletins(link: string): Promise<BulletinRef[]> {
+  const m = /^(.+)_B(\d+)(F)?\.html$/i.exec(link);
+  if (!m) return [];
+
+  const prefix = m[1];
+  const build = (n: number, final: boolean) => `${prefix}_B${n}${final ? 'F' : ''}.html`;
+
+  // In production, let the serverless function do the probing (no CORS / rate limits).
+  if (!import.meta.env?.DEV) {
+    try {
+      const res = await fetch(`/api/bulletins?url=${encodeURIComponent(link)}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) return json.data as BulletinRef[];
+      }
+    } catch (e) {
+      console.warn('Failed to fetch bulletins from API', e);
+    }
+    return [];
+  }
+
+  // In dev, probe candidate URLs through the Vite PHIVOLCS proxy.
+  const exists = async (url: string): Promise<boolean> => {
+    try {
+      const local = url.replace('https://earthquake.phivolcs.dost.gov.ph', '/api/phivolcs');
+      const res = await fetch(local);
+      if (!res.ok) return false;
+      const html = await res.text();
+      return /EARTHQUAKE INFORMATION/i.test(html);
+    } catch {
+      return false;
+    }
+  };
+
+  const results: BulletinRef[] = [];
+  for (let n = 1; n <= 30; n++) {
+    const [plain, final] = await Promise.all([exists(build(n, false)), exists(build(n, true))]);
+    if (!plain && !final) break;
+    if (plain) results.push({ no: n, final: false, url: build(n, false) });
+    if (final) results.push({ no: n, final: true, url: build(n, true) });
+  }
+  return results;
 }
 
 export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDetails | null> {
