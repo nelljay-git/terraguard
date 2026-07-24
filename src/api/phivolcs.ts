@@ -29,6 +29,11 @@ export interface BulletinRef {
   url: string;
 }
 
+import { apiUrl } from '../lib/apiBase';
+import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
+
+const PHIVOLCS_BASE = 'https://earthquake.phivolcs.dost.gov.ph';
+
 const CACHE_KEY = 'terraguard_phivolcs_cache';
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -59,7 +64,10 @@ async function fetchOnce(): Promise<PhivolcsResponse> {
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const res = await fetch('/api/phivolcs', { signal: controller.signal });
+    // Native: scrape PHIVOLCS directly (no CORS-blocking proxy needed).
+    // Web/dev: use the local Vite proxy.
+    const url = IS_NATIVE ? `${PHIVOLCS_BASE}/` : '/api/phivolcs';
+    const res = await nativeHttpGet(url);
     clearTimeout(timeout);
     if (!res.ok) throw new Error(`Failed to fetch from proxy (${res.status})`);
     const contentType = res.headers.get('content-type') || '';
@@ -136,15 +144,18 @@ export async function fetchPhivolcsData(): Promise<PhivolcsResponse> {
 
 export async function fetchPhivolcsArchiveData(year: number, monthName: string): Promise<PhivolcsResponse> {
   const path = `EQLatest-Monthly/${year}/${year}_${monthName}.html`;
-  // In dev, Vite proxy handles the path routing. In prod, Vercel serverless function expects a ?path= query.
-  const url = import.meta.env?.DEV 
-    ? `/api/phivolcs/${path}` 
-    : `/api/phivolcs?path=${encodeURIComponent(path)}`;
+  // Native: scrape the archive page directly from PHIVOLCS.
+  // Dev: Vite proxy handles the path routing. Prod web: Vercel serverless function (?path=).
+  const url = IS_NATIVE
+    ? `${PHIVOLCS_BASE}/${path}`
+    : import.meta.env?.DEV
+      ? `/api/phivolcs/${path}`
+      : apiUrl(`/api/phivolcs?path=${encodeURIComponent(path)}`);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await nativeHttpGet(url);
     clearTimeout(timeout);
     if (!res.ok) throw new Error(`Failed to fetch archive from proxy (${res.status})`);
     
@@ -213,10 +224,33 @@ export async function fetchBulletins(link: string): Promise<BulletinRef[]> {
   const prefix = m[1];
   const build = (n: number, final: boolean) => `${prefix}_B${n}${final ? 'F' : ''}.html`;
 
-  // In production, let the serverless function do the probing (no CORS / rate limits).
+  // In a native shell, probe candidate URLs by scraping PHIVOLCS directly (CORS-free).
+  if (IS_NATIVE) {
+    const exists = async (url: string): Promise<boolean> => {
+      try {
+        const res = await nativeHttpGet(url);
+        if (!res.ok) return false;
+        const html = await res.text();
+        return /EARTHQUAKE INFORMATION/i.test(html);
+      } catch {
+        return false;
+      }
+    };
+
+    const results: BulletinRef[] = [];
+    for (let n = 1; n <= 30; n++) {
+      const [plain, final] = await Promise.all([exists(build(n, false)), exists(build(n, true))]);
+      if (!plain && !final) break;
+      if (plain) results.push({ no: n, final: false, url: build(n, false) });
+      if (final) results.push({ no: n, final: true, url: build(n, true) });
+    }
+    return results;
+  }
+
+  // In production web, let the serverless function do the probing (no CORS / rate limits).
   if (!import.meta.env?.DEV) {
     try {
-      const res = await fetch(`/api/bulletins?url=${encodeURIComponent(link)}`);
+      const res = await fetch(apiUrl(`/api/bulletins?url=${encodeURIComponent(link)}`));
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) return json.data as BulletinRef[];
@@ -252,10 +286,18 @@ export async function fetchBulletins(link: string): Promise<BulletinRef[]> {
 
 export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDetails | null> {
   try {
-    // Try Vercel serverless function only in production
+    // In a native shell, scrape the details page directly from PHIVOLCS (CORS-free).
+    if (IS_NATIVE) {
+      const htmlRes = await nativeHttpGet(url);
+      if (!htmlRes.ok) throw new Error('Failed to fetch details HTML');
+      const html = await htmlRes.text();
+      return parseDetailsHtml(html, url);
+    }
+
+    // Try Vercel serverless function only in production web
     // This prevents Vite from erroneously trying to compile api/details.ts
     if (!import.meta.env?.DEV) {
-      const res = await fetch(`/api/details?url=${encodeURIComponent(url)}`);
+      const res = await fetch(apiUrl(`/api/details?url=${encodeURIComponent(url)}`));
       if (res.ok) {
         const contentType = res.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
@@ -264,58 +306,61 @@ export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDet
         }
       }
     }
-    
+
     // Fallback for local Vite dev environment
     // Use the Vite proxy to fetch the HTML directly
     const localProxyUrl = url.replace('https://earthquake.phivolcs.dost.gov.ph', '/api/phivolcs');
     const htmlRes = await fetch(localProxyUrl);
     if (!htmlRes.ok) throw new Error('Failed to fetch details HTML');
     const html = await htmlRes.text();
-    
-    const cleanText = html
-      .replace(/&nbsp;/g, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    const originMatch = /Origin\s*:\s*(.*?)\s*Magnitude/i.exec(cleanText);
-    const origin = originMatch ? originMatch[1].trim() : 'Unknown';
-
-    const reportedMatch = /Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
-    let reported = reportedMatch ? reportedMatch[1].replace(/^[a-zA-Z0-9_.\s]+Intensity/i, 'Intensity').trim() : '';
-
-    const instrumentalMatch = /Instrumental Intensities\s*:?\s*(.*?)(?:This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
-    const instrumental = instrumentalMatch ? instrumentalMatch[1].trim() : '';
-
-    const noteMatch = /(This is an aftershock.*?)(?:Expecting Damage|$)/i.exec(cleanText);
-    const note = noteMatch ? noteMatch[1].trim() : '';
-
-    const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
-    let imgMatch;
-    let mapUrl = '';
-    while ((imgMatch = imgRegex.exec(html)) !== null) {
-      const src = imgMatch[1].trim();
-      if (!src.toLowerCase().includes('logo') && !src.toLowerCase().includes('header')) {
-        mapUrl = src;
-        break;
-      }
-    }
-
-    if (mapUrl && !mapUrl.startsWith('http')) {
-      const urlObj = new URL(url);
-      mapUrl = urlObj.origin + urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf('/') + 1) + mapUrl;
-    }
-
-    return {
-      origin,
-      reportedIntensities: reported,
-      instrumentalIntensities: instrumental,
-      note,
-      mapUrl
-    };
+    return parseDetailsHtml(html, url);
   } catch (error) {
     console.warn('Failed to fetch earthquake details:', error);
   }
   return null;
+}
+
+function parseDetailsHtml(html: string, url: string): EarthquakeDetails {
+  const cleanText = html
+    .replace(/&nbsp;/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const originMatch = /Origin\s*:\s*(.*?)\s*Magnitude/i.exec(cleanText);
+  const origin = originMatch ? originMatch[1].trim() : 'Unknown';
+
+  const reportedMatch = /Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
+  let reported = reportedMatch ? reportedMatch[1].replace(/^[a-zA-Z0-9_.\s]+Intensity/i, 'Intensity').trim() : '';
+
+  const instrumentalMatch = /Instrumental Intensities\s*:?\s*(.*?)(?:This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
+  const instrumental = instrumentalMatch ? instrumentalMatch[1].trim() : '';
+
+  const noteMatch = /(This is an aftershock.*?)(?:Expecting Damage|$)/i.exec(cleanText);
+  const note = noteMatch ? noteMatch[1].trim() : '';
+
+  const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+  let imgMatch;
+  let mapUrl = '';
+  while ((imgMatch = imgRegex.exec(html)) !== null) {
+    const src = imgMatch[1].trim();
+    if (!src.toLowerCase().includes('logo') && !src.toLowerCase().includes('header')) {
+      mapUrl = src;
+      break;
+    }
+  }
+
+  if (mapUrl && !mapUrl.startsWith('http')) {
+    const urlObj = new URL(url);
+    mapUrl = urlObj.origin + urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf('/') + 1) + mapUrl;
+  }
+
+  return {
+    origin,
+    reportedIntensities: reported,
+    instrumentalIntensities: instrumental,
+    note,
+    mapUrl
+  };
 }
 

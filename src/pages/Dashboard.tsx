@@ -8,6 +8,7 @@ import { ActivityFeed } from '../components/ActivityFeed';
 import { NewsFeed } from '../components/NewsFeed';
 import { Radio, RefreshCw, Shield } from 'lucide-react';
 import { FunFactLoader } from '../components/FunFactLoader';
+import { checkAlerts } from '../lib/alertSystem';
 import './Dashboard.css';
 
 export function Dashboard() {
@@ -29,6 +30,7 @@ export function Dashboard() {
         setEarthquakes(res.data);
         setSigEarthquakes(getSignificantEarthquakes(res.data));
         setLastSync(new Date());
+        checkAlerts(res.data);
       }
     } catch (err) {
       console.error("Failed to fetch dashboard data", err);

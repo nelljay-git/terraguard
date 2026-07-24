@@ -34,32 +34,32 @@ interface UpdateData {
 // Added "quick_changes" field to each item for easy copy paste on history page
 
 const UPDATE_DATA: UpdateData = {
-  version: '1.5',
-  date: 'June 15, 2026',
+  version: '1.6',
+  date: 'July 24, 2026',
   greeting:
     "We've been working hard to make TerraGuard better! Here's what's new in this update:",
 
   items: [
     {
       badge: 'new',
-      title: 'PWA Support',
+      title: 'Earthquake Alert Zones',
       description:
-        'Install TerraGuard on your device for offline access and a native app experience.',
-      quick_changes: 'Added PWA installation support for a native app experience'
+        'Define geographic zones with custom magnitude thresholds. Get browser push notifications the moment a matching earthquake is detected.',
+      quick_changes: 'Added earthquake alert zones with push notifications'
+    },
+    {
+      badge: 'new',
+      title: 'Aftershock Tracker',
+      description:
+        'View nearby smaller-magnitude events that occurred after a major earthquake, shown automatically on the earthquake details page.',
+      quick_changes: 'Added aftershock tracker on earthquake details page'
     },
     {
       badge: 'improved',
-      title: 'Interactive Map',
+      title: 'PWA Support',
       description:
-        'Better marker clustering, heatmap overlays, and smoother pan/zoom performance.',
-      quick_changes: 'Interactive Map improvements'
-    },
-    {
-      badge: 'fixed',
-      title: 'News Feed',
-      description:
-        'Resolved issues with article loading and improved headline accuracy.',
-      quick_changes: 'News Feed improvements'
+        'Install TerraGuard on your device for offline access and a native app experience.',
+      quick_changes: 'PWA installation support for a native app experience'
     },
     {
       badge: 'fixed',

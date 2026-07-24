@@ -12,6 +12,12 @@ export interface NewsResponse {
   error?: string;
 }
 
+import { apiUrl } from '../lib/apiBase';
+import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
+
+const GOOGLE_NEWS_RSS = 'https://news.google.com/rss/search?q=' +
+  encodeURIComponent('earthquake location:Philippines') + '&hl=en-PH&gl=PH&ceid=PH:en';
+
 const NEWS_CACHE_KEY = 'terraguard_news_cache';
 const NEWS_CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -50,7 +56,10 @@ export async function fetchNews(): Promise<NewsResponse> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
-    const res = await fetch('/api/news', { signal: controller.signal });
+    // Native: scrape the Google News RSS feed directly (CORS-free via plugin).
+    // Web/dev: use the Vercel function or local Vite proxy.
+    const url = IS_NATIVE ? GOOGLE_NEWS_RSS : apiUrl('/api/news');
+    const res = await nativeHttpGet(url);
     clearTimeout(timeout);
 
     if (!res.ok) throw new Error(`News API responded with ${res.status}`);
@@ -62,7 +71,7 @@ export async function fetchNews(): Promise<NewsResponse> {
       // Vercel serverless function returns JSON
       result = (await res.json()) as NewsResponse;
     } else {
-      // Vite dev proxy returns raw RSS XML — parse it in the browser
+      // Native / Vite dev proxy returns raw RSS XML — parse it
       const xml = await res.text();
       const parser = new DOMParser();
       const doc = parser.parseFromString(xml, 'text/xml');

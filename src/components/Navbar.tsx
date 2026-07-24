@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, Globe2, BarChart2, Newspaper, HelpCircle } from 'lucide-react';
+import { Activity, Globe2, BarChart2, Newspaper, Bell, HelpCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import logoSrc from '../assets/logo.png';
 import './Navbar.css';
@@ -12,6 +12,7 @@ export function Navbar() {
     { name: 'Archive', path: '/archive', icon: Globe2 },
     { name: 'Statistics', path: '/stats', icon: BarChart2 },
     { name: 'News', path: '/news', icon: Newspaper },
+    { name: 'Alerts', path: '/alerts', icon: Bell },
   ];
 
   return (

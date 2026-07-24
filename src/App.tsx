@@ -10,6 +10,7 @@ import { Stats } from './pages/Stats';
 import { News } from './pages/News';
 import { About } from './pages/About';
 import { History } from './pages/History';
+import { Alerts } from './pages/Alerts';
 import './App.css';
 
 function App() {
@@ -33,6 +34,7 @@ function App() {
           <Route path="/details/:id" element={<Details />} />
           <Route path="/stats" element={<Stats />} />
           <Route path="/news" element={<News />} />
+          <Route path="/alerts" element={<Alerts />} />
           <Route path="/about" element={<About />} />
           <Route path="/history" element={<History />} />
         </Routes>

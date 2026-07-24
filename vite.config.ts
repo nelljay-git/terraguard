@@ -3,10 +3,26 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
+
+// A set VITE_API_BASE signals a native (Capacitor) build: the WebView
+// points at the deployed Vercel app for /api/*, and the PWA service
+// worker is disabled (it would intercept/break API fetches inside the WebView).
+const IS_NATIVE = !!process.env.VITE_API_BASE;
+
 export default defineConfig({
+  // Base API URL for the serverless proxy (Vercel /api/* functions).
+  // In the native (Capacitor) build this points at the deployed Vercel app so
+  // the WebView can reach the same proxy that the web app uses in production.
+  // Empty in dev → the Vite dev proxy (/api/*) is used instead.
+  define: {
+    'import.meta.env.VITE_API_BASE': JSON.stringify(process.env.VITE_API_BASE || ''),
+  },
   plugins: [
     react(),
     VitePWA({
+      // Disable the service worker entirely for native builds — it must not
+      // register inside the Capacitor WebView (would intercept /api/* fetches).
+      disable: IS_NATIVE,
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'logo.png'],
       manifest: {

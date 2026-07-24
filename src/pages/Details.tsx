@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
 import { FunFactLoader } from '../components/FunFactLoader';
 import { ActiveFaultsLayer } from '../components/ActiveFaultsLayer';
+import { AftershockTracker } from '../components/AftershockTracker';
 import './Details.css';
 
 // Match earthquakes even when PHIVOLCS revises the data (e.g. coordinates change),
@@ -215,50 +216,50 @@ export function Details() {
     loadEq();
   }, [id]);
 
-  if (loading) {
-    return (
-      <div className="container flex-center" style={{ height: '50vh' }}>
-        <FunFactLoader
-          title="Loading Details..."
-          subtitle="Fetching event data from PHIVOLCS"
-          icon={<Activity size={28} className="spinner-icon" />}
-        />
-      </div>
-    );
-  }
+   // Discover all bulletins PHIVOLCS published for this earthquake sequence
+   useEffect(() => {
+     if (!earthquake?.link) return;
+     let cancelled = false;
+     fetchBulletins(earthquake.link)
+       .then(list => { if (!cancelled) setBulletins(list); })
+       .catch(() => { if (!cancelled) setBulletins([]); });
+     return () => { cancelled = true; };
+   }, [earthquake?.link]);
 
-  if (error || !earthquake) {
-    return (
-      <div className="container flex-center" style={{ height: '50vh', flexDirection: 'column', gap: '16px' }}>
-        <div className="error-icon-wrapper">
-          <AlertTriangle size={48} color="var(--color-strong)" />
-        </div>
-        <h2>Earthquake Details Unavailable</h2>
-        <p className="text-muted" style={{ textAlign: 'center', maxWidth: '400px' }}>
-          This event may be historical or currently unavailable in the recent PHIVOLCS feed.
-        </p>
-        <Link to="/archive" className="back-btn glass">Back to Archive</Link>
-      </div>
-    );
-  }
+   if (loading) {
+     return (
+       <div className="container flex-center" style={{ height: '50vh' }}>
+         <FunFactLoader
+           title="Loading Details..."
+           subtitle="Fetching event data from PHIVOLCS"
+           icon={<Activity size={28} className="spinner-icon" />}
+         />
+       </div>
+     );
+   }
 
-  const mag = parseFloat(earthquake.magnitude);
-  const color = getSeverityColor(mag);
-  const severityLabel = getSeverityLabel(mag);
-  const lat = parseFloat(earthquake.latitude);
-  const lng = parseFloat(earthquake.longitude);
-  const isSevere = mag >= 6.0;
-  const bulletin = extractBulletin(activeLink);
+   if (error || !earthquake) {
+     return (
+       <div className="container flex-center" style={{ height: '50vh', flexDirection: 'column', gap: '16px' }}>
+         <div className="error-icon-wrapper">
+           <AlertTriangle size={48} color="var(--color-strong)" />
+         </div>
+         <h2>Earthquake Details Unavailable</h2>
+         <p className="text-muted" style={{ textAlign: 'center', maxWidth: '400px' }}>
+           This event may be historical or currently unavailable in the recent PHIVOLCS feed.
+         </p>
+         <Link to="/archive" className="back-btn glass">Back to Archive</Link>
+       </div>
+     );
+   }
 
-  // Discover all bulletins PHIVOLCS published for this earthquake sequence
-  useEffect(() => {
-    if (!earthquake?.link) return;
-    let cancelled = false;
-    fetchBulletins(earthquake.link)
-      .then(list => { if (!cancelled) setBulletins(list); })
-      .catch(() => { if (!cancelled) setBulletins([]); });
-    return () => { cancelled = true; };
-  }, [earthquake?.link]);
+   const mag = parseFloat(earthquake.magnitude);
+   const color = getSeverityColor(mag);
+   const severityLabel = getSeverityLabel(mag);
+   const lat = parseFloat(earthquake.latitude);
+   const lng = parseFloat(earthquake.longitude);
+   const isSevere = mag >= 6.0;
+   const bulletin = extractBulletin(activeLink);
 
   const loadBulletinDetails = async (url: string) => {
     setDetailsLoading(true);
@@ -737,6 +738,9 @@ export function Details() {
               </div>
             </div>
           </div>
+
+          {/* Aftershock Tracker */}
+          <AftershockTracker currentEarthquake={earthquake} />
 
           {/* Intensities from PHIVOLCS */}
           {detailsLoading ? (
