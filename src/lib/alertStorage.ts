@@ -71,7 +71,7 @@ export function purgeStaleNotifications(): void {
 }
 
 export function wasAlreadyNotified(key: string): boolean {
-  return getNotifiedEvents().some(e => e.key === key);
+  return getNotifiedEvents().some(e => e.key === key && Date.now() - e.timestamp < NOTIFIED_TTL_MS);
 }
 
 export function markAsNotified(key: string): void {
