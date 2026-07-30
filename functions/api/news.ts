@@ -1,17 +1,18 @@
-export async function onRequest(request: Request): Promise<Response> {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json',
-  };
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
 
-  if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers });
-  }
+export async function onRequest(context: { request: Request }) {
+  const { request } = context;
 
+  if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   if (request.method !== 'GET') {
-    return new Response(JSON.stringify({ success: false, error: 'Method not allowed' }), { status: 405, headers });
+    return new Response(JSON.stringify({ success: false, error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
   }
 
   try {
@@ -19,7 +20,9 @@ export async function onRequest(request: Request): Promise<Response> {
     const rssUrl = `https://news.google.com/rss/search?q=${query}&hl=en-PH&gl=PH&ceid=PH:en`;
 
     const response = await fetch(rssUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      },
     });
 
     if (!response.ok) throw new Error(`Google News responded with ${response.status}`);
@@ -45,16 +48,20 @@ export async function onRequest(request: Request): Promise<Response> {
       if (title && link) {
         items.push({ title, link, pubDate, source });
       }
-
       if (items.length >= 20) break;
     }
 
     return new Response(JSON.stringify({ success: true, count: items.length, data: items }), {
-      status: 200,
-      headers: { ...headers, 'Cache-Control': 's-maxage=600, stale-while-revalidate=300' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 's-maxage=600, stale-while-revalidate=300',
+        ...corsHeaders,
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(JSON.stringify({ success: false, count: 0, data: [], error: message }), { status: 200, headers });
+    return new Response(JSON.stringify({ success: false, count: 0, data: [], error: message }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
   }
 }

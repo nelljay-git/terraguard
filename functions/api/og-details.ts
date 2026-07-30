@@ -1,4 +1,8 @@
-// @ts-nocheck
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -11,29 +15,36 @@ function getSeverityLabel(magnitude: number) {
   return 'Great';
 }
 
-export async function onRequest(request: Request): Promise<Response> {
+function decodeBase64(str: string): string {
+  const pad = str.length % 4;
+  const padded = pad ? str + '='.repeat(4 - pad) : str;
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function encodeBase64(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/=/g, '');
+}
+
+export async function onRequest(context: { request: Request }) {
+  const { request } = context;
   const url = new URL(request.url);
+  const host = request.headers.get('host') || 'terraguard.vercel.app';
+
+  if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+
   const id = url.searchParams.get('id');
-
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-
-  if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
-
-  if (!id || typeof id !== 'string') {
-    return new Response('Missing ID', { status: 400, headers: corsHeaders });
+  if (!id) {
+    return new Response('Missing ID', { status: 400 });
   }
 
   try {
-    const pad = id.length % 4;
-    const paddedId = pad ? id + '='.repeat(4 - pad) : id;
-    const decodedStr = atob(paddedId);
-
+    const decodedStr = decodeBase64(id);
     const parts = decodedStr.split('-');
     const lngStr = parts.pop() || '0';
     const latStr = parts.pop() || '0';
@@ -66,14 +77,11 @@ export async function onRequest(request: Request): Promise<Response> {
     urlsToTry.push(`https://earthquake.phivolcs.dost.gov.ph/EQLatest-Monthly/${prevYear}/${prevYear}_${MONTHS[prevMonthIdx]}.html`);
 
     let earthquake: { datetime: string; latitude: string; longitude: string; depth: string; magnitude: string; location: string } | null = null;
-    const allRows: Array<{ datetime: string; latitude: string; longitude: string; depth: string; magnitude: string; location: string }> = [];
-    let fallbackDatetime: string | null = null;
 
+    const allRows: typeof earthquake[] = [];
+    let fallbackDatetime: string | null = null;
     try {
-      const pad2 = id.length % 4;
-      const paddedId2 = pad2 ? id + '='.repeat(4 - pad2) : id;
-      const decodedStr2 = atob(paddedId2);
-      const dParts = decodedStr2.split('-');
+      const dParts = decodedStr.split('-');
       if (dParts.length >= 3) {
         fallbackDatetime = dParts.slice(0, dParts.length - 2).join('-').replace(/\s+/g, ' ').trim();
       }
@@ -84,17 +92,18 @@ export async function onRequest(request: Request): Promise<Response> {
         const response = await fetch(targetUrl, {
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
+
         if (!response.ok) continue;
 
         const html = await response.text();
         const rowRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
-        let rowMatch;
+        let rowMatch: RegExpExecArray | null;
 
         while ((rowMatch = rowRegex.exec(html)) !== null) {
           const rowHtml = rowMatch[1];
           const cellRegex = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;
           const cells: string[] = [];
-          let cellMatch;
+          let cellMatch: RegExpExecArray | null;
 
           while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
             cells.push(cellMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
@@ -104,13 +113,17 @@ export async function onRequest(request: Request): Promise<Response> {
             const rowDatetime = cells[0];
             const rowLat = cells[1];
             const rowLng = cells[2];
-            const rowDepth = cells[3];
-            const rowMag = cells[4];
-            const rowLoc = cells[5];
 
-            allRows.push({ datetime: rowDatetime, latitude: rowLat, longitude: rowLng, depth: rowDepth, magnitude: rowMag, location: rowLoc });
+            allRows.push({
+              datetime: rowDatetime,
+              latitude: rowLat,
+              longitude: rowLng,
+              depth: cells[3],
+              magnitude: cells[4],
+              location: cells[5],
+            });
 
-            const rowId = btoa(`${rowDatetime}-${rowLat}-${rowLng}`).replace(/=/g, '');
+            const rowId = encodeBase64(`${rowDatetime}-${rowLat}-${rowLng}`);
             if (rowId === id) {
               earthquake = allRows[allRows.length - 1];
               break;
@@ -119,22 +132,21 @@ export async function onRequest(request: Request): Promise<Response> {
         }
 
         if (earthquake) break;
-      } catch { /* continue to next URL */ }
+      } catch { /* continue */ }
     }
 
     if (!earthquake && fallbackDatetime) {
       earthquake = allRows.find(r => r.datetime.replace(/\s+/g, ' ').trim() === fallbackDatetime) || null;
     }
 
-    const origin = url.origin;
     let title = 'TerraGuard - Earthquake Monitoring';
     let description = 'Real-time earthquake monitoring and alerts for the Philippines. Track seismic activity, view interactive maps, and stay informed with TerraGuard.';
-    let imageUrl = `${origin}/pwa-512x512.png`;
+    let imageUrl = `https://${host}/pwa-512x512.png`;
 
     if (earthquake) {
       const mag = parseFloat(earthquake.magnitude);
       const severityLabel = getSeverityLabel(mag);
-      title = `M${earthquake.magnitude} Earthquake - ${earthquake.location}`;
+      title = `M${earthquake.magnitude} Earthquake – ${earthquake.location}`;
       description = `A magnitude ${earthquake.magnitude} (${severityLabel}) earthquake occurred at ${earthquake.location} on ${earthquake.datetime}. Depth: ${earthquake.depth} km. View details on TerraGuard.`;
 
       if (!isNaN(lat) && !isNaN(lng)) {
@@ -142,14 +154,17 @@ export async function onRequest(request: Request): Promise<Response> {
       }
     }
 
-    const canonicalUrl = `${origin}/details/${id}`;
+    const canonicalUrl = `https://${host}/details/${id}`;
     const spaUrl = `${canonicalUrl}?_spa=1`;
 
     const ua = (request.headers.get('user-agent') || '').toLowerCase();
     const isBot = /bot|crawl|spider|slurp|facebookexternalhit|facebot|twitterbot|rogerbot|linkedinbot|embedly|quora|pinterest|slackbot|vkshare|discordbot|whatsapp|telegrambot|viber|outbrain|w3c_validator|redditbot|applebot|yandex|baiduspider|bingpreview|semrushbot|ahrefsbot|mj12bot|seznambot|duckduckbot|ia_archiver|mediapartners|google(?!chrome)/i.test(ua);
 
     if (!isBot) {
-      return new Response(null, { status: 302, headers: { ...corsHeaders, 'Location': spaUrl, 'Cache-Control': 'no-cache' } });
+      return new Response(null, {
+        status: 302,
+        headers: { Location: spaUrl, 'Cache-Control': 'no-cache', ...corsHeaders },
+      });
     }
 
     const htmlResponse = `<!DOCTYPE html>
@@ -179,10 +194,14 @@ export async function onRequest(request: Request): Promise<Response> {
 </html>`;
 
     return new Response(htmlResponse, {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'text/html', 'Cache-Control': 's-maxage=3600, stale-while-revalidate' },
+      headers: {
+        'Content-Type': 'text/html',
+        'Cache-Control': 's-maxage=3600, stale-while-revalidate',
+        ...corsHeaders,
+      },
     });
   } catch (err) {
-    return new Response('Internal Server Error', { status: 500, headers: corsHeaders });
+    console.error('OG API Error:', err);
+    return new Response('Internal Server Error', { status: 500 });
   }
 }

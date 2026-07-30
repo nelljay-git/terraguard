@@ -1,31 +1,28 @@
-// @ts-nocheck
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
 
-export async function onRequest(request: Request): Promise<Response> {
+export async function onRequest(context: { request: Request }) {
+  const { request } = context;
   const url = new URL(request.url);
-  const eventUrl = url.searchParams.get('url');
 
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json',
-  };
+  if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
-  if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers });
+  const targetUrl = url.searchParams.get('url');
+  if (!targetUrl) {
+    return new Response(JSON.stringify({ success: false, error: 'Missing or invalid URL parameter' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
   }
 
-  if (request.method !== 'GET') {
-    return new Response(JSON.stringify({ success: false, error: 'Method not allowed' }), { status: 405, headers });
-  }
-
-  if (!eventUrl || typeof eventUrl !== 'string') {
-    return new Response(JSON.stringify({ success: false, error: 'Missing or invalid URL parameter' }), { status: 400, headers });
-  }
-
-  const m = /^(.+)_B(\d+)(F)?\.html$/i.exec(eventUrl);
+  const m = /^(.+)_B(\d+)(F)?\.html$/i.exec(targetUrl);
   if (!m) {
-    return new Response(JSON.stringify({ success: true, data: [] }), { status: 200, headers });
+    return new Response(JSON.stringify({ success: true, data: [] }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
   }
 
   const prefix = m[1];
@@ -34,7 +31,9 @@ export async function onRequest(request: Request): Promise<Response> {
   const exists = async (candidate: string): Promise<boolean> => {
     try {
       const r = await fetch(candidate, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' },
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        },
       });
       if (!r.ok) return false;
       const html = await r.text();
@@ -46,14 +45,17 @@ export async function onRequest(request: Request): Promise<Response> {
 
   const results: { no: number; final: boolean; url: string }[] = [];
   for (let n = 1; n <= 30; n++) {
-    const [plain, last] = await Promise.all([exists(build(n, false)), exists(build(n, true))]);
-    if (!plain && !last) break;
+    const [plain, final] = await Promise.all([exists(build(n, false)), exists(build(n, true))]);
+    if (!plain && !final) break;
     if (plain) results.push({ no: n, final: false, url: build(n, false) });
-    if (last) results.push({ no: n, final: true, url: build(n, true) });
+    if (final) results.push({ no: n, final: true, url: build(n, true) });
   }
 
   return new Response(JSON.stringify({ success: true, data: results }), {
-    status: 200,
-    headers: { ...headers, 'Cache-Control': 's-maxage=3600, stale-while-revalidate' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 's-maxage=3600, stale-while-revalidate',
+      ...corsHeaders,
+    },
   });
 }
