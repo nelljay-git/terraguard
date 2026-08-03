@@ -403,15 +403,41 @@ returns table (
   content text,
   author text,
   created_at timestamptz,
-  verified boolean
+  verified boolean,
+  avatar_url text
 )
 language sql
 security definer set search_path = public
 as $$
   select c.id, c.user_id, c.eq_id, c.content, c.author, c.created_at,
-         coalesce(p.verified, false) as verified
+         coalesce(p.verified, false) as verified,
+         p.avatar_url
     from public.comments c
     left join public.profiles p on p.id = c.user_id
    where c.eq_id = p_eq_id
    order by c.created_at desc;
 $$;
+
+-- -----------------------------------------------------------------------------
+-- Profile photos (verified users only)
+-- -----------------------------------------------------------------------------
+alter table public.profiles add column if not exists avatar_url text;
+
+-- Server-side enforcement: only verified users may set an avatar URL.
+create or replace function public.protect_avatar_url()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if new.avatar_url is distinct from old.avatar_url and not old.verified then
+    raise exception 'Only verified users can set a profile photo.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists protect_avatar_url_trg on public.profiles;
+create trigger protect_avatar_url_trg
+  before update on public.profiles
+  for each row execute procedure public.protect_avatar_url();

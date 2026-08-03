@@ -170,6 +170,38 @@
   border-radius: 12px;
 }
 
+/* Profile photo section */
+.settings-avatar-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.settings-avatar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.settings-avatar-row .settings-field-label {
+  margin-bottom: 0;
+}
+
+.settings-avatar-preview {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #3b82f6;
+  flex-shrink: 0;
+}
+
+.settings-avatar-save {
+  margin-top: 12px;
+}
+
 .settings-modal-footer {
   padding: 24px;
 }

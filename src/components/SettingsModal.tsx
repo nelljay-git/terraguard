@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import './SettingsModal.css';
 
 const USERNAME_COOLDOWN_MS = 60 * 24 * 60 * 60 * 1000;
-const USERNAME_PATTERN = /^[a-zA-Z0-9_]{3,20}$/;
+const USERNAME_PATTERN = /^[a-zA-Z0-9_ ]{3,20}$/;
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
@@ -17,13 +17,18 @@ function formatDate(iso: string): string {
 }
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
-  const { profile, updateUsername } = useAuth();
+  const { profile, updateUsername, updateAvatarUrl } = useAuth();
   const [value, setValue] = useState(profile?.username ?? '');
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [now] = useState(() => Date.now());
+
+  const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url ?? '');
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarSuccess, setAvatarSuccess] = useState<string | null>(null);
 
   const lastChanged = profile?.username_changed_at ?? null;
   const cooldownUntil = lastChanged
@@ -45,7 +50,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
     const name = value.trim();
     if (!USERNAME_PATTERN.test(name)) {
-      setError('Username must be 3-20 characters using letters, numbers, or underscores.');
+      setError('Username must be 3-20 characters using letters, numbers, underscores, or spaces.');
       return;
     }
     if (name === profile?.username) {
@@ -66,6 +71,27 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       setError(err);
     } else {
       setSuccess('Username updated.');
+    }
+  };
+
+  const handleAvatarSave = async () => {
+    setAvatarError(null);
+    setAvatarSuccess(null);
+
+    const url = avatarUrl.trim();
+    if (url && !/^https?:\/\/\S+$/i.test(url)) {
+      setAvatarError('Enter a valid link starting with http:// or https://');
+      return;
+    }
+
+    setAvatarSaving(true);
+    const err = await updateAvatarUrl(url || null);
+    setAvatarSaving(false);
+
+    if (err) {
+      setAvatarError(err);
+    } else {
+      setAvatarSuccess(url ? 'Profile photo updated.' : 'Profile photo removed.');
     }
   };
 
@@ -124,7 +150,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             spellCheck={false}
           />
           <p className="settings-hint">
-            Shown on your comments. Letters, numbers, and underscores only (3-20 chars).
+            Shown on your comments. Letters, numbers, underscores, and spaces only (3-20 chars).
           </p>
 
           {onCooldown && cooldownUntil && (
@@ -139,6 +165,55 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
           {error && <div className="settings-error">{error}</div>}
           {success && <div className="settings-success">{success}</div>}
+
+          {profile?.verified && (
+            <div className="settings-avatar-section">
+              <div className="settings-avatar-row">
+                <label className="settings-field-label" htmlFor="settings-avatar">
+                  Profile Photo (link)
+                </label>
+                {avatarUrl.trim() && (
+                  <img
+                    className="settings-avatar-preview"
+                    src={avatarUrl.trim()}
+                    alt="Profile preview"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                )}
+              </div>
+              <input
+                id="settings-avatar"
+                className="settings-input"
+                type="text"
+                value={avatarUrl}
+                onChange={(e) => {
+                  setAvatarUrl(e.target.value);
+                  setAvatarError(null);
+                  setAvatarSuccess(null);
+                }}
+                placeholder="https://example.com/photo.jpg"
+                disabled={avatarSaving}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <p className="settings-hint">
+                Shown as your profile picture on comments. Verified users only. Leave empty to
+                remove.
+              </p>
+              {avatarError && <div className="settings-error">{avatarError}</div>}
+              {avatarSuccess && <div className="settings-success">{avatarSuccess}</div>}
+              <button
+                className="settings-save-btn settings-avatar-save"
+                onClick={handleAvatarSave}
+                disabled={avatarSaving}
+              >
+                <Save size={16} />
+                {avatarSaving ? 'Saving…' : 'Save Photo'}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="settings-modal-footer">

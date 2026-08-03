@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { supabase, updateUsername as dbUpdateUsername } from '../lib/supabase';
+import { supabase, updateUsername as dbUpdateUsername, updateAvatarUrl as dbUpdateAvatarUrl } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 
 export interface Profile {
@@ -8,6 +8,7 @@ export interface Profile {
   username: string | null;
   username_changed_at: string | null;
   verified: boolean;
+  avatar_url: string | null;
 }
 
 interface AuthContextValue {
@@ -18,6 +19,7 @@ interface AuthContextValue {
   signUp: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation: boolean }>;
   signOut: () => Promise<void>;
   updateUsername: (username: string) => Promise<string | null>;
+  updateAvatarUrl: (url: string | null) => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -30,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function loadProfile(uid: string, email: string) {
     const { data } = await supabase
       .from('profiles')
-      .select('id, email, username, username_changed_at, verified')
+      .select('id, email, username, username_changed_at, verified, avatar_url')
       .eq('id', uid)
       .maybeSingle();
 
@@ -43,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: inserted, error } = await supabase
       .from('profiles')
       .upsert({ id: uid, email, username: email.split('@')[0] ?? 'user' })
-      .select('id, email, username, username_changed_at, verified')
+      .select('id, email, username, username_changed_at, verified, avatar_url')
       .single();
 
     if (!error && inserted) {
@@ -55,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         username: email.split('@')[0] ?? 'user',
         username_changed_at: null,
         verified: false,
+        avatar_url: null,
       });
     }
   }
@@ -120,9 +123,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
+  const updateAvatarUrl = async (url: string | null): Promise<string | null> => {
+    if (!user) return 'Not signed in.';
+    const error = await dbUpdateAvatarUrl(user.id, url);
+    if (error) return error;
+    await loadProfile(user.id, user.email ?? '');
+    return null;
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, profile, loading, signIn, signUp, signOut, updateUsername }}
+      value={{ user, profile, loading, signIn, signUp, signOut, updateUsername, updateAvatarUrl }}
     >
       {children}
     </AuthContext.Provider>

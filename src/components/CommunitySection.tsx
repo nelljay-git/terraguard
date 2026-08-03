@@ -141,7 +141,10 @@ export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
     setPosting(true);
     try {
       const comment = await addComment(eqId, content);
-      setComments((prev) => [{ ...comment, verified: profile?.verified ?? false }, ...prev]);
+      setComments((prev) => [
+        { ...comment, verified: profile?.verified ?? false, avatar_url: profile?.avatar_url ?? null },
+        ...prev,
+      ]);
       setDraft('');
       setCooldown(POST_COOLDOWN_SECONDS);
     } catch (err) {
@@ -182,7 +185,7 @@ export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
     const d = new Date(iso);
     const diff = current - d.getTime();
     const minutes = Math.floor(diff / 60000);
-    if (minutes < 1) return 'just now';
+    if (minutes < 1) return 'Just now';
     if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h ago`;
@@ -318,24 +321,38 @@ export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
         ) : (
           sortedComments.map((c) => (
             <div key={c.id} className="community-comment">
-              <div className="comment-avatar">{c.author?.[0]?.toUpperCase() ?? 'U'}</div>
+              <div className={`comment-avatar${c.avatar_url ? ' has-photo' : ''}`}>
+                <span className="comment-avatar-letter">{c.author?.[0]?.toUpperCase() ?? 'U'}</span>
+                {c.avatar_url && (
+                  <img
+                    src={c.avatar_url}
+                    alt={c.author ?? 'User'}
+                    loading="lazy"
+                    className="comment-avatar-img"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                )}
+              </div>
               <div className="comment-body">
                 <div className="comment-meta">
                   <span className="comment-author-row">
                     <span className="comment-author">{c.author ?? 'User'}</span>
                     {c.verified && (
-                      <span title="Verified user" className="comment-verified-wrap">
-                        <BadgeCheck size={14} className="comment-verified" />
-                      </span>
+                      <>
+                        <span title="Verified user" className="comment-verified-wrap">
+                          <BadgeCheck size={14} className="comment-verified" />
+                        </span>
+                        <span className="comment-pinned" title="Comment pinned for verified users">
+                          <Pin size={12} />
+                        </span>
+                      </>
                     )}
                   </span>
-                  <span className="comment-time text-muted">{formatDate(c.created_at, now)}</span>
-                  {c.verified && (
-                    <span className="comment-pinned" title="Comment pinned for verified users">
-                      <Pin size={11} />
-                      Pinned
-                    </span>
-                  )}
+                  <span className="comment-meta-sub">
+                    <span className="comment-time text-muted">{formatDate(c.created_at, now)}</span>
+                  </span>
                 </div>
                 <p className="comment-content">{c.content}</p>
                 <div className="comment-footer">

@@ -26,6 +26,7 @@ export interface EventComment {
   author: string | null;
   created_at: string;
   verified: boolean;
+  avatar_url: string | null;
 }
 
 export interface EngagementState {
@@ -268,5 +269,10 @@ export async function deleteStar(eqId: string): Promise<void> {
 
 export async function updateUsername(uid: string, username: string): Promise<string | null> {
   const { error } = await supabase.from('profiles').update({ username }).eq('id', uid);
+  return error ? getErrorMessage(error) : null;
+}
+
+export async function updateAvatarUrl(uid: string, url: string | null): Promise<string | null> {
+  const { error } = await supabase.from('profiles').update({ avatar_url: url }).eq('id', uid);
   return error ? getErrorMessage(error) : null;
 }
