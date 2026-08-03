@@ -320,3 +320,46 @@
 .spin {
   animation: spin 0.9s linear infinite;
 }
+
+/* Verified badge next to comment author */
+.comment-author-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.comment-verified-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #3b82f6;
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+.comment-verified {
+  width: 16px;
+  height: 16px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+/* Pinned chip for verified (auto-pinned) comments */
+.comment-pinned {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 999px;
+  flex-shrink: 0;
+}

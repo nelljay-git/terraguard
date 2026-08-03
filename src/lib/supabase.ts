@@ -25,6 +25,7 @@ export interface EventComment {
   content: string;
   author: string | null;
   created_at: string;
+  verified: boolean;
 }
 
 export interface EngagementState {
@@ -152,13 +153,9 @@ export async function toggleLike(eqId: string): Promise<{ liked: boolean; count:
 }
 
 export async function fetchComments(eqId: string): Promise<EventComment[]> {
-  const { data, error } = await supabase
-    .from('comments')
-    .select('*')
-    .eq('eq_id', eqId)
-    .order('created_at', { ascending: false });
+  const { data, error } = await supabase.rpc('get_comments', { p_eq_id: eqId });
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as EventComment[];
 }
 
 export async function addComment(eqId: string, content: string): Promise<EventComment> {

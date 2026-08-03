@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Star, Heart, Send, Trash2, LogIn, Loader2, Users, ShieldAlert, X } from 'lucide-react';
+import { Star, Heart, Send, Trash2, LogIn, Loader2, Users, ShieldAlert, X, BadgeCheck, Pin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   getEngagement,
@@ -24,7 +24,7 @@ interface CommunitySectionProps {
 }
 
 export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const color = getSeverityColor(parseFloat(earthquake.magnitude));
 
@@ -141,7 +141,7 @@ export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
     setPosting(true);
     try {
       const comment = await addComment(eqId, content);
-      setComments((prev) => [comment, ...prev]);
+      setComments((prev) => [{ ...comment, verified: profile?.verified ?? false }, ...prev]);
       setDraft('');
       setCooldown(POST_COOLDOWN_SECONDS);
     } catch (err) {
@@ -190,6 +190,17 @@ export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
     if (days < 7) return `${days}d ago`;
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   };
+
+  // Verified users' comments float to the top; newest first within each group.
+  const sortedComments = useMemo(
+    () =>
+      [...comments].sort(
+        (a, b) =>
+          Number(b.verified) - Number(a.verified) ||
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ),
+    [comments]
+  );
 
   return (
     <div className="community-section glass">
@@ -305,13 +316,26 @@ export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
             No comments yet. Be the first to react to this event.
           </p>
         ) : (
-          comments.map((c) => (
+          sortedComments.map((c) => (
             <div key={c.id} className="community-comment">
               <div className="comment-avatar">{c.author?.[0]?.toUpperCase() ?? 'U'}</div>
               <div className="comment-body">
                 <div className="comment-meta">
-                  <span className="comment-author">{c.author ?? 'User'}</span>
+                  <span className="comment-author-row">
+                    <span className="comment-author">{c.author ?? 'User'}</span>
+                    {c.verified && (
+                      <span title="Verified user" className="comment-verified-wrap">
+                        <BadgeCheck size={14} className="comment-verified" />
+                      </span>
+                    )}
+                  </span>
                   <span className="comment-time text-muted">{formatDate(c.created_at, now)}</span>
+                  {c.verified && (
+                    <span className="comment-pinned" title="Comment pinned for verified users">
+                      <Pin size={11} />
+                      Pinned
+                    </span>
+                  )}
                 </div>
                 <p className="comment-content">{c.content}</p>
                 <div className="comment-footer">

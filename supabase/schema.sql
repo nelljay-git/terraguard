@@ -386,3 +386,32 @@ drop trigger if exists protect_username_change_trg on public.profiles;
 create trigger protect_username_change_trg
   before update on public.profiles
   for each row execute procedure public.protect_username_change();
+
+-- -----------------------------------------------------------------------------
+-- Verified users. Flag is set manually by the project owner, e.g.:
+--   update public.profiles set verified = true where email = 'me@example.com';
+-- -----------------------------------------------------------------------------
+alter table public.profiles add column if not exists verified boolean not null default false;
+
+-- Comments with a live verified flag (joined from profiles at read time so the
+-- badge always reflects the current flag, independent of the author snapshot).
+create or replace function public.get_comments(p_eq_id text)
+returns table (
+  id uuid,
+  user_id uuid,
+  eq_id text,
+  content text,
+  author text,
+  created_at timestamptz,
+  verified boolean
+)
+language sql
+security definer set search_path = public
+as $$
+  select c.id, c.user_id, c.eq_id, c.content, c.author, c.created_at,
+         coalesce(p.verified, false) as verified
+    from public.comments c
+    left join public.profiles p on p.id = c.user_id
+   where c.eq_id = p_eq_id
+   order by c.created_at desc;
+$$;

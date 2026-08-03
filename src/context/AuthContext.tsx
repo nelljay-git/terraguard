@@ -7,6 +7,7 @@ export interface Profile {
   email: string;
   username: string | null;
   username_changed_at: string | null;
+  verified: boolean;
 }
 
 interface AuthContextValue {
@@ -29,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function loadProfile(uid: string, email: string) {
     const { data } = await supabase
       .from('profiles')
-      .select('id, email, username, username_changed_at')
+      .select('id, email, username, username_changed_at, verified')
       .eq('id', uid)
       .maybeSingle();
 
@@ -42,13 +43,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: inserted, error } = await supabase
       .from('profiles')
       .upsert({ id: uid, email, username: email.split('@')[0] ?? 'user' })
-      .select('id, email, username, username_changed_at')
+      .select('id, email, username, username_changed_at, verified')
       .single();
 
     if (!error && inserted) {
       setProfile(inserted as Profile);
     } else {
-      setProfile({ id: uid, email, username: email.split('@')[0] ?? 'user', username_changed_at: null });
+      setProfile({
+        id: uid,
+        email,
+        username: email.split('@')[0] ?? 'user',
+        username_changed_at: null,
+        verified: false,
+      });
     }
   }
 
