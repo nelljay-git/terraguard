@@ -10,6 +10,7 @@ import { ImageModal } from '../components/ImageModal';
 import { FunFactLoader } from '../components/FunFactLoader';
 import { ActiveFaultsLayer } from '../components/ActiveFaultsLayer';
 import { AftershockTracker } from '../components/AftershockTracker';
+import { SeismicWaveLayer } from '../components/SeismicWaveLayer';
 import './Details.css';
 
 // Match earthquakes even when PHIVOLCS revises the data (e.g. coordinates change),
@@ -58,6 +59,7 @@ export function Details() {
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [bulletins, setBulletins] = useState<BulletinRef[]>([]);
   const [activeLink, setActiveLink] = useState<string | undefined>(earthquake?.link);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Set document title immediately and update when data arrives
   useEffect(() => {
@@ -584,7 +586,7 @@ export function Details() {
               )}
             </div>
             
-            <div className="details-map-container" style={{ flex: 1, minHeight: '380px' }}>
+            <div className="details-map-container" ref={mapContainerRef} style={{ flex: 1, minHeight: '380px' }}>
               {mapView === 'interactive' ? (
                 !isNaN(lat) && !isNaN(lng) ? (
                   <MapContainer center={[lat, lng]} zoom={8} scrollWheelZoom={false} style={{ height: '100%', width: '100%', zIndex: 0 }}>
@@ -616,6 +618,13 @@ export function Details() {
                         />
                       );
                     })()}
+                    <SeismicWaveLayer
+                      lat={lat}
+                      lng={lng}
+                      magnitude={mag}
+                      color={color}
+                      containerRef={mapContainerRef}
+                    />
                   </MapContainer>
                 ) : (
                   <div className="flex-center" style={{ height: '100%' }}>Invalid Coordinates</div>
