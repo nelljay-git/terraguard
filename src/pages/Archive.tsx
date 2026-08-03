@@ -3,6 +3,7 @@ import { fetchPhivolcsData, fetchPhivolcsArchiveData, getCachedData, type Phivol
 import { getSeverityColor } from '../lib/utils';
 import { Search, Filter, Clock, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { StarButton } from '../components/StarButton';
 import './Archive.css';
 
 export function Archive() {
@@ -186,22 +187,25 @@ export function Archive() {
           const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
 
           return (
-            <Link to={`/details/${eqId}`} state={{ earthquake: eq }} key={i} className="archive-card glass-card">
-              <div className="archive-card-mag" style={{ backgroundColor: `${color}20`, color }}>
-                {eq.magnitude}
-              </div>
-              <div className="archive-card-info">
-                <h3 className="archive-card-loc">{eq.location}</h3>
-                <div className="archive-card-meta">
-                  <span className="flex-center" style={{ gap: '4px' }}>
-                    <Clock size={14} /> {eq.datetime}
-                  </span>
-                  <span className="flex-center" style={{ gap: '4px' }}>
-                    <Activity size={14} /> {eq.depth} km depth
-                  </span>
+            <div key={i} className="archive-card glass-card">
+              <Link to={`/details/${eqId}`} state={{ earthquake: eq }} className="archive-card-link">
+                <div className="archive-card-mag" style={{ backgroundColor: `${color}20`, color }}>
+                  {eq.magnitude}
                 </div>
-              </div>
-            </Link>
+                <div className="archive-card-info">
+                  <h3 className="archive-card-loc">{eq.location}</h3>
+                  <div className="archive-card-meta">
+                    <span className="flex-center" style={{ gap: '4px' }}>
+                      <Clock size={14} /> {eq.datetime}
+                    </span>
+                    <span className="flex-center" style={{ gap: '4px' }}>
+                      <Activity size={14} /> {eq.depth} km depth
+                    </span>
+                  </div>
+                </div>
+              </Link>
+              <StarButton earthquake={eq} />
+            </div>
           );
         })}
       </div>

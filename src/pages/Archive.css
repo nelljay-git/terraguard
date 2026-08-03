@@ -72,6 +72,14 @@
   cursor: pointer;
 }
 
+.archive-card-link {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
 .archive-card:hover {
   border-color: rgba(255, 255, 255, 0.15);
 }

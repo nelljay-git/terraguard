@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { DevUpdateModal } from './components/DevUpdateModal';
 import { InstallPrompt } from './components/InstallPrompt';
+import { AuthProvider } from './context/AuthContext';
 import { Dashboard } from './pages/Dashboard';
 import { Archive } from './pages/Archive';
 import { Details } from './pages/Details';
@@ -11,6 +12,8 @@ import { News } from './pages/News';
 import { About } from './pages/About';
 import { History } from './pages/History';
 import { Alerts } from './pages/Alerts';
+import { Auth } from './pages/Auth';
+import { Stars } from './pages/Stars';
 import './App.css';
 
 function App() {
@@ -23,23 +26,27 @@ function App() {
     }
   }, []);
   return (
-    <div className="app-container">
-      <DevUpdateModal />
-      <InstallPrompt />
-      <Navbar />
-      <main className="main-content">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/archive" element={<Archive />} />
-          <Route path="/details/:id" element={<Details />} />
-          <Route path="/stats" element={<Stats />} />
-          <Route path="/news" element={<News />} />
-          <Route path="/alerts" element={<Alerts />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/history" element={<History />} />
-        </Routes>
-      </main>
-    </div>
+    <AuthProvider>
+      <div className="app-container">
+        <DevUpdateModal />
+        <InstallPrompt />
+        <Navbar />
+        <main className="main-content">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/archive" element={<Archive />} />
+            <Route path="/details/:id" element={<Details />} />
+            <Route path="/stats" element={<Stats />} />
+            <Route path="/news" element={<News />} />
+            <Route path="/alerts" element={<Alerts />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/history" element={<History />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/stars" element={<Stars />} />
+          </Routes>
+        </main>
+      </div>
+    </AuthProvider>
   );
 }
 

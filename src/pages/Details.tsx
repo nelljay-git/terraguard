@@ -11,6 +11,7 @@ import { FunFactLoader } from '../components/FunFactLoader';
 import { ActiveFaultsLayer } from '../components/ActiveFaultsLayer';
 import { AftershockTracker } from '../components/AftershockTracker';
 import { SeismicWaveLayer } from '../components/SeismicWaveLayer';
+import { CommunitySection } from '../components/CommunitySection';
 import './Details.css';
 
 // Match earthquakes even when PHIVOLCS revises the data (e.g. coordinates change),
@@ -808,6 +809,9 @@ export function Details() {
           </div>
         </div>
       </div>
+
+      {/* Community: star, like, comments */}
+      {id && <CommunitySection eqId={id} earthquake={earthquake} />}
 
       <ImageModal
         isOpen={isImageModalOpen}
