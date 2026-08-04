@@ -441,3 +441,8 @@ drop trigger if exists protect_avatar_url_trg on public.profiles;
 create trigger protect_avatar_url_trg
   before update on public.profiles
   for each row execute procedure public.protect_avatar_url();
+
+-- -----------------------------------------------------------------------------
+-- Theme preference ('dark' | 'light' | 'system')
+-- -----------------------------------------------------------------------------
+alter table public.profiles add column if not exists theme text not null default 'system';

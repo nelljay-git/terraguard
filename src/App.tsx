@@ -14,6 +14,9 @@ import { History } from './pages/History';
 import { Alerts } from './pages/Alerts';
 import { Auth } from './pages/Auth';
 import { Stars } from './pages/Stars';
+import { Forum } from './pages/Forum';
+import { ForumPost } from './pages/ForumPost';
+import { ForumEdit } from './pages/ForumEdit';
 import './App.css';
 
 function App() {
@@ -43,6 +46,10 @@ function App() {
             <Route path="/history" element={<History />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/stars" element={<Stars />} />
+            <Route path="/forum" element={<Forum />} />
+            <Route path="/forum/new" element={<ForumEdit />} />
+            <Route path="/forum/:id" element={<ForumPost />} />
+            <Route path="/forum/:id/edit" element={<ForumEdit />} />
           </Routes>
         </main>
       </div>

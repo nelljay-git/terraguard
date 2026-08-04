@@ -1,6 +1,13 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { supabase, updateUsername as dbUpdateUsername, updateAvatarUrl as dbUpdateAvatarUrl } from '../lib/supabase';
+import {
+  supabase,
+  updateUsername as dbUpdateUsername,
+  updateAvatarUrl as dbUpdateAvatarUrl,
+  updateTheme as dbUpdateTheme,
+} from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
+
+export type ThemePreference = 'system' | 'dark' | 'light';
 
 export interface Profile {
   id: string;
@@ -9,6 +16,7 @@ export interface Profile {
   username_changed_at: string | null;
   verified: boolean;
   avatar_url: string | null;
+  theme: ThemePreference;
 }
 
 interface AuthContextValue {
@@ -20,6 +28,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   updateUsername: (username: string) => Promise<string | null>;
   updateAvatarUrl: (url: string | null) => Promise<string | null>;
+  updateTheme: (theme: ThemePreference) => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -32,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function loadProfile(uid: string, email: string) {
     const { data } = await supabase
       .from('profiles')
-      .select('id, email, username, username_changed_at, verified, avatar_url')
+      .select('id, email, username, username_changed_at, verified, avatar_url, theme')
       .eq('id', uid)
       .maybeSingle();
 
@@ -45,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: inserted, error } = await supabase
       .from('profiles')
       .upsert({ id: uid, email, username: email.split('@')[0] ?? 'user' })
-      .select('id, email, username, username_changed_at, verified, avatar_url')
+      .select('id, email, username, username_changed_at, verified, avatar_url, theme')
       .single();
 
     if (!error && inserted) {
@@ -58,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         username_changed_at: null,
         verified: false,
         avatar_url: null,
+        theme: 'system',
       });
     }
   }
@@ -131,9 +141,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
+  const updateTheme = async (theme: ThemePreference): Promise<string | null> => {
+    if (!user) return 'Not signed in.';
+    const error = await dbUpdateTheme(user.id, theme);
+    if (error) return error;
+    await loadProfile(user.id, user.email ?? '');
+    return null;
+  };
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = profile?.theme ?? 'system';
+  }, [profile?.theme]);
+
   return (
     <AuthContext.Provider
-      value={{ user, profile, loading, signIn, signUp, signOut, updateUsername, updateAvatarUrl }}
+      value={{ user, profile, loading, signIn, signUp, signOut, updateUsername, updateAvatarUrl, updateTheme }}
     >
       {children}
     </AuthContext.Provider>

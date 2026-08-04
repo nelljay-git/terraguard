@@ -276,3 +276,8 @@ export async function updateAvatarUrl(uid: string, url: string | null): Promise<
   const { error } = await supabase.from('profiles').update({ avatar_url: url }).eq('id', uid);
   return error ? getErrorMessage(error) : null;
 }
+
+export async function updateTheme(uid: string, theme: string): Promise<string | null> {
+  const { error } = await supabase.from('profiles').update({ theme }).eq('id', uid);
+  return error ? getErrorMessage(error) : null;
+}

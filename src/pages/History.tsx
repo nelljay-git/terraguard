@@ -4,6 +4,26 @@ import './History.css';
 
 const VERSION_HISTORY = [
   {
+    version: '1.7',
+    date: 'August 4, 2026',
+    changes: [
+      'Added community forum with posts, reactions, bookmarking, and image attachments',
+      'Added comments and replies with notification deep-links to the exact comment',
+      'Added light/dark/system theme preference saved to your account',
+      'Improved notifications with one-tap navigation to your posts and earthquakes',
+      'Fixed bugs and improved overall performance'
+    ]
+  },
+  {
+    version: '1.6',
+    date: 'July 24, 2026',
+    changes: [
+      'Added earthquake alert zones with push notifications',
+      'Added aftershock tracker on earthquake details page',
+      'PWA installation support for a native app experience'
+    ]
+  },
+  {
     version: '1.5',
     date: 'June 15, 2026',
     changes: [

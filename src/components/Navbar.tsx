@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, Globe2, BarChart2, Newspaper, Bell, HelpCircle, User, LogOut, Star, Menu, X, Settings } from 'lucide-react';
+import { Activity, Globe2, BarChart2, Newspaper, Bell, HelpCircle, User, LogOut, Star, Menu, X, Settings, MessagesSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { SettingsModal } from './SettingsModal';
+import { Notifications } from './Notifications';
 import logoSrc from '../assets/logo.png';
 import './Navbar.css';
 
@@ -23,6 +24,7 @@ export function Navbar() {
     { name: 'Statistics', path: '/stats', icon: BarChart2 },
     { name: 'News', path: '/news', icon: Newspaper },
     { name: 'Alerts', path: '/alerts', icon: Bell },
+    { name: 'Forum', path: '/forum', icon: MessagesSquare },
   ];
 
   const closeMenu = () => setMenuOpen(false);
@@ -95,6 +97,8 @@ export function Navbar() {
         </div>
 
         <div className="nav-right-actions">
+          <Notifications />
+
           <div className="nav-user-area" ref={menuRef}>
             {user ? (
               <>

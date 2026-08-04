@@ -34,39 +34,46 @@ interface UpdateData {
 // Added "quick_changes" field to each item for easy copy paste on history page
 
 const UPDATE_DATA: UpdateData = {
-  version: '1.6',
-  date: 'July 24, 2026',
+  version: '1.7',
+  date: 'August 4, 2026',
   greeting:
     "We've been working hard to make TerraGuard better! Here's what's new in this update:",
 
   items: [
     {
       badge: 'new',
-      title: 'Earthquake Alert Zones',
+      title: 'Community Forum',
       description:
-        'Define geographic zones with custom magnitude thresholds. Get browser push notifications the moment a matching earthquake is detected.',
-      quick_changes: 'Added earthquake alert zones with push notifications'
+        'Create earthquake posts, share updates, and discuss with the community. Like, bookmark, pin comments, and attach images to your posts.',
+      quick_changes: 'Added community forum with posts, reactions, and images'
     },
     {
       badge: 'new',
-      title: 'Aftershock Tracker',
+      title: 'Comments & Replies',
       description:
-        'View nearby smaller-magnitude events that occurred after a major earthquake, shown automatically on the earthquake details page.',
-      quick_changes: 'Added aftershock tracker on earthquake details page'
+        'Comment and reply on earthquakes, posts, and news. Tap a notification to jump straight to the comment.',
+      quick_changes: 'Added comments, replies, and notification deep-links'
+    },
+    {
+      badge: 'new',
+      title: 'Light & Dark Theme',
+      description:
+        'Choose between Light, Dark, or System theme from Settings. Your preference is saved to your account.',
+      quick_changes: 'Added light/dark theme preference saved to your account'
     },
     {
       badge: 'improved',
-      title: 'PWA Support',
+      title: 'Notifications',
       description:
-        'Install TerraGuard on your device for offline access and a native app experience.',
-      quick_changes: 'PWA installation support for a native app experience'
+        'Get notified when someone reacts to or comments on your posts and earthquakes, with one-tap navigation to the exact comment.',
+      quick_changes: 'Improved notifications with one-tap navigation'
     },
     {
       badge: 'fixed',
       title: 'Bug Fixes',
       description:
-        'Fixed various bugs and improved overall performance.',
-      quick_changes: 'Bug Fixes'
+        'Fixed comment deletion refreshing, theme-aware post cards, and various performance improvements.',
+      quick_changes: 'Fixed bugs and improved performance'
     },
   ],
 };

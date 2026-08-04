@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
-import { X, User, Save, Clock } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { X, User, Save, Clock, Sun, Moon, Monitor } from 'lucide-react';
+import { useAuth, type ThemePreference } from '../context/AuthContext';
 import './SettingsModal.css';
 
 const USERNAME_COOLDOWN_MS = 60 * 24 * 60 * 60 * 1000;
@@ -17,7 +17,7 @@ function formatDate(iso: string): string {
 }
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
-  const { profile, updateUsername, updateAvatarUrl } = useAuth();
+  const { profile, updateUsername, updateAvatarUrl, updateTheme } = useAuth();
   const [value, setValue] = useState(profile?.username ?? '');
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -29,6 +29,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [avatarSaving, setAvatarSaving] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [avatarSuccess, setAvatarSuccess] = useState<string | null>(null);
+
+  const [theme, setTheme] = useState<ThemePreference>(profile?.theme ?? 'system');
+  const [themeSaving, setThemeSaving] = useState(false);
+  const [themeError, setThemeError] = useState<string | null>(null);
+  const [themeSuccess, setThemeSuccess] = useState<string | null>(null);
 
   const lastChanged = profile?.username_changed_at ?? null;
   const cooldownUntil = lastChanged
@@ -94,6 +99,26 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       setAvatarSuccess(url ? 'Profile photo updated.' : 'Profile photo removed.');
     }
   };
+
+  const handleThemeSave = async (next: ThemePreference) => {
+    setThemeError(null);
+    setThemeSuccess(null);
+    setThemeSaving(true);
+    const err = await updateTheme(next);
+    setThemeSaving(false);
+    if (err) {
+      setThemeError(err);
+    } else {
+      setTheme(next);
+      setThemeSuccess('Theme preference saved.');
+    }
+  };
+
+  const themeOptions: { value: ThemePreference; label: string; icon: ReactElement }[] = [
+    { value: 'light', label: 'Light', icon: <Sun size={15} /> },
+    { value: 'dark', label: 'Dark', icon: <Moon size={15} /> },
+    { value: 'system', label: 'System', icon: <Monitor size={15} /> },
+  ];
 
   return createPortal(
     <motion.div
@@ -214,6 +239,29 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </button>
             </div>
           )}
+
+          <div className="settings-theme-section">
+            <label className="settings-field-label">Theme</label>
+            <div className="settings-theme-options">
+              {themeOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`settings-theme-btn${theme === opt.value ? ' active' : ''}`}
+                  onClick={() => handleThemeSave(opt.value)}
+                  disabled={themeSaving}
+                >
+                  {opt.icon}
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="settings-hint">
+              Choose how Terra Guard looks for you. This is saved to your account.
+            </p>
+            {themeError && <div className="settings-error">{themeError}</div>}
+            {themeSuccess && <div className="settings-success">{themeSuccess}</div>}
+          </div>
         </div>
 
         <div className="settings-modal-footer">

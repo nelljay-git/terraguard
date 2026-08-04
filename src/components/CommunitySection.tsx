@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Star, Heart, Send, Trash2, LogIn, Loader2, Users, ShieldAlert, X, BadgeCheck, Pin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -26,6 +26,8 @@ interface CommunitySectionProps {
 export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const focusCommentId = searchParams.get('comment');
   const color = getSeverityColor(parseFloat(earthquake.magnitude));
 
   const [starCount, setStarCount] = useState(0);
@@ -34,6 +36,7 @@ export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
   const [liked, setLiked] = useState(false);
   const [comments, setComments] = useState<EventComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(5);
   const [draft, setDraft] = useState('');
   const [posting, setPosting] = useState(false);
   const [busy, setBusy] = useState<null | 'star' | 'like'>(null);
@@ -205,6 +208,56 @@ export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
     [comments]
   );
 
+  const visibleComments = useMemo(
+    () => sortedComments.slice(0, visibleCount),
+    [sortedComments, visibleCount]
+  );
+  const hasMoreComments = visibleCount < sortedComments.length;
+
+  const commentsListRef = useRef<HTMLDivElement>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+
+  // Reveal 5 more comments when the sentinel scrolls into view inside the list.
+  useEffect(() => {
+    const el = loadMoreSentinelRef.current;
+    const root = commentsListRef.current;
+    if (!el || !root || !hasMoreComments) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((c) => c + 5);
+        }
+      },
+      { root, rootMargin: '80px 0px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMoreComments, visibleComments]);
+
+  // Reset pagination when the event changes.
+  useEffect(() => {
+    setVisibleCount(5);
+  }, [eqId]);
+
+  const commentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const focusedOnce = useRef(false);
+
+  // Deep-link from a "liked your comment" notification: scroll to + highlight it.
+  useEffect(() => {
+    if (!focusCommentId || comments.length === 0) return;
+    const idx = sortedComments.findIndex((c) => c.id === focusCommentId);
+    if (idx >= 0 && idx >= visibleCount) {
+      setVisibleCount(idx + 1);
+    }
+    if (!focusedOnce.current) {
+      const el = commentRefs.current.get(focusCommentId);
+      if (el) {
+        focusedOnce.current = true;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [focusCommentId, sortedComments, visibleCount, comments]);
+
   return (
     <div className="community-section glass">
       <div className="community-header">
@@ -309,7 +362,7 @@ export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
         </div>
       )}
 
-      <div className="community-comments">
+      <div className="community-comments" ref={commentsListRef}>
         {commentsLoading ? (
           <div className="community-loading flex-center">
             <div className="pulse-loader" style={{ width: '22px', height: '22px' }}></div>
@@ -319,8 +372,18 @@ export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
             No comments yet. Be the first to react to this event.
           </p>
         ) : (
-          sortedComments.map((c) => (
-            <div key={c.id} className="community-comment">
+          <>
+            {visibleComments.map((c) => (
+            <div
+              key={c.id}
+              className={`community-comment${
+                c.id === focusCommentId ? ' community-comment-focus' : ''
+              }`}
+              ref={(el) => {
+                if (el) commentRefs.current.set(c.id, el);
+                else commentRefs.current.delete(c.id);
+              }}
+            >
               <div className={`comment-avatar${c.avatar_url ? ' has-photo' : ''}`}>
                 <span className="comment-avatar-letter">{c.author?.[0]?.toUpperCase() ?? 'U'}</span>
                 {c.avatar_url && (
@@ -387,6 +450,16 @@ export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
               </div>
             </div>
           ))
+            }
+            {hasMoreComments && (
+              <div
+                ref={loadMoreSentinelRef}
+                className="community-load-more"
+              >
+                Scroll for more comments
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
