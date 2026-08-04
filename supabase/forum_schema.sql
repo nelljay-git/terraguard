@@ -104,6 +104,7 @@ create table if not exists public.forum_comments (
   content text not null check (char_length(content) between 1 and 2000),
   author text,
   pinned boolean not null default false,
+  closed boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   edited_at timestamptz
@@ -114,6 +115,9 @@ create index if not exists forum_comments_parent_idx on public.forum_comments (p
 
 -- Upgrade existing installs: allow admin to pin comments.
 alter table public.forum_comments add column if not exists pinned boolean not null default false;
+
+-- Upgrade existing installs: allow admin to close comments (no new replies).
+alter table public.forum_comments add column if not exists closed boolean not null default false;
 
 create or replace function public.set_forum_comment_author()
 returns trigger
@@ -386,6 +390,21 @@ create policy "users can insert own forum comment"
     and not exists (
       select 1 from public.forum_posts p where p.id = post_id and p.closed
     )
+    and (
+      parent_id is null
+      or not exists (
+        with recursive ancestors as (
+          select c.id, c.parent_id, c.closed
+            from public.forum_comments c
+           where c.id = parent_id
+          union all
+          select c.id, c.parent_id, c.closed
+            from public.forum_comments c
+            join ancestors a on c.id = a.parent_id
+        )
+        select 1 from ancestors where closed
+      )
+    )
   );
 
 drop policy if exists "users can update own forum comment" on public.forum_comments;
@@ -596,6 +615,7 @@ returns table (
   verified boolean,
   avatar_url text,
   pinned boolean,
+  closed boolean,
   created_at timestamptz,
   updated_at timestamptz,
   edited_at timestamptz,
@@ -612,6 +632,7 @@ as $$
     c.id, c.author_id, c.parent_id, c.content, c.author,
     coalesce(p.verified, false) as verified, p.avatar_url,
     c.pinned,
+    c.closed,
     c.created_at, c.updated_at, c.edited_at,
     (select count(*) from public.forum_comments ch where ch.parent_id = c.id)::bigint as reply_count,
     (select r.reaction from public.forum_reactions r
@@ -648,6 +669,7 @@ returns table (
   verified boolean,
   avatar_url text,
   pinned boolean,
+  closed boolean,
   created_at timestamptz,
   updated_at timestamptz,
   edited_at timestamptz,
@@ -664,6 +686,7 @@ as $$
     c.id, c.author_id, c.parent_id, c.content, c.author,
     coalesce(p.verified, false) as verified, p.avatar_url,
     c.pinned,
+    c.closed,
     c.created_at, c.updated_at, c.edited_at,
     (select count(*) from public.forum_comments ch where ch.parent_id = c.id)::bigint as reply_count,
     (select r.reaction from public.forum_reactions r
@@ -787,6 +810,32 @@ begin
 
   return query
     select pinned from public.forum_comments where id = p_comment_id;
+end;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- RPC: admin closes/reopens a comment. While closed, no new replies can be added
+-- (enforced by the RLS insert policy), but reactions still work.
+-- -----------------------------------------------------------------------------
+create or replace function public.toggle_forum_comment_closed(p_comment_id uuid)
+returns boolean
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_closed boolean;
+begin
+  if not exists (select 1 from public.profiles where id = v_uid and email = 'gianganwneljae@gmail.com') then
+    raise exception 'Only the administrator can close comments.';
+  end if;
+
+  update public.forum_comments
+     set closed = not closed
+   where id = p_comment_id;
+
+  select closed into v_closed from public.forum_comments where id = p_comment_id;
+  return v_closed;
 end;
 $$;
 

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   ChevronDown,
   Loader2,
+  Lock,
+  LockOpen,
   PencilLine,
   Pin,
   PinOff,
@@ -18,6 +20,7 @@ import {
   updateForumComment,
   deleteForumComment,
   toggleForumCommentPin,
+  toggleForumCommentClosed,
   formatForumTime,
   getErrorMessage,
 } from '../lib/forum';
@@ -54,8 +57,7 @@ export function ForumComment({
   onDelete,
   onPinToggle,
 }: ForumCommentProps) {
-  const [data, setData] = useState<ForumCommentType>(comment);
-  const [children, setChildren] = useState<ForumCommentType[] | null>(null);
+  const [data, setData] = useState<ForumCommentType>(comment);  const [children, setChildren] = useState<ForumCommentType[] | null>(null);
   const [loadingReplies, setLoadingReplies] = useState(false);
   const [replying, setReplying] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -65,6 +67,7 @@ export function ForumComment({
   const [busy, setBusy] = useState<ForumReaction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pinBusy, setPinBusy] = useState(false);
+  const [closeBusy, setCloseBusy] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const canManage = currentUserId === data.author_id || isAdmin;
@@ -210,6 +213,22 @@ export function ForumComment({
     }
   };
 
+  const handleCloseComment = async () => {
+    if (!isAdmin) return;
+    setCloseBusy(true);
+    setError(null);
+    try {
+      const closed = await toggleForumCommentClosed(data.id);
+      setData((prev) => ({ ...prev, closed }));
+      if (closed) setReplying(false);
+    } catch (err) {
+      console.error(err);
+      setError(getErrorMessage(err));
+    } finally {
+      setCloseBusy(false);
+    }
+  };
+
   const renderChildren = (child: ForumCommentType) => (
     <ForumComment
       key={child.id}
@@ -221,7 +240,7 @@ export function ForumComment({
       requireAuth={requireAuth}
       focusPath={childFocus && childFocus[0] === child.id ? childFocus : null}
       parentAuthor={data.author ?? null}
-      closed={closed}
+      closed={closed || data.closed}
       onAddReply={onAddReply}
       onPinToggle={onPinToggle}
       onDeleteReply={onDeleteReply}
@@ -271,6 +290,12 @@ export function ForumComment({
                 Pinned
               </span>
             )}
+            {data.closed && (
+              <span className="forum-comment-closed-badge">
+                <Lock size={10} />
+                Closed
+              </span>
+            )}
           </div>
 
           {parentAuthor && (
@@ -316,7 +341,7 @@ export function ForumComment({
               onReact={handleReact}
             />
 
-            {!closed && (
+            {!(closed || data.closed) && (
               <button
                 type="button"
                 className="forum-reply-btn"
@@ -340,6 +365,25 @@ export function ForumComment({
               >
                 {pinBusy ? <Loader2 size={13} className="spin" /> : data.pinned ? <PinOff size={13} /> : <Pin size={13} />}
                 {data.pinned ? 'Unpin' : 'Pin'}
+              </button>
+            )}
+
+            {isAdmin && (
+              <button
+                type="button"
+                className={`forum-comment-pin${data.closed ? ' active' : ''}`}
+                onClick={handleCloseComment}
+                disabled={closeBusy}
+                title={data.closed ? 'Reopen comment' : 'Close comment (no new replies)'}
+              >
+                {closeBusy ? (
+                  <Loader2 size={13} className="spin" />
+                ) : data.closed ? (
+                  <LockOpen size={13} />
+                ) : (
+                  <Lock size={13} />
+                )}
+                {data.closed ? 'Reopen' : 'Close'}
               </button>
             )}
 

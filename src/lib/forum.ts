@@ -36,6 +36,7 @@ export interface ForumComment {
   verified: boolean;
   avatar_url: string | null;
   pinned: boolean;
+  closed: boolean;
   created_at: string;
   updated_at: string;
   edited_at: string | null;
@@ -275,6 +276,14 @@ export async function toggleForumCommentPin(
   });
   if (error) throw error;
   return (data?.[0] ?? { pinned: false }) as { pinned: boolean };
+}
+
+export async function toggleForumCommentClosed(commentId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('toggle_forum_comment_closed', {
+    p_comment_id: commentId,
+  });
+  if (error) throw error;
+  return (data ?? false) as boolean;
 }
 
 export async function deleteForumComment(id: string): Promise<void> {
