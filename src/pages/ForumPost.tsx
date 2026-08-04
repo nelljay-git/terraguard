@@ -521,6 +521,7 @@ export function ForumPost() {
                 requireAuth={requireAuth}
                 focusPath={focusPath?.[0] === root.id ? focusPath : null}
                 onAddReply={() => setCommentCount((c) => c + 1)}
+                onDeleteReply={() => setCommentCount((c) => Math.max(0, c - 1))}
                 onPinToggle={(id, pinned) => {
                   setRoots((prev) => {
                     const next = prev.map((r) => (r.id === id ? { ...r, pinned } : r));

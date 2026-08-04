@@ -33,6 +33,7 @@ interface ForumCommentProps {
   focusPath?: string[] | null;
   parentAuthor?: string | null;
   onAddReply: () => void;
+  onDeleteReply?: () => void;
   onDelete: () => void;
   onPinToggle?: (id: string, pinned: boolean) => void;
 }
@@ -47,6 +48,7 @@ export function ForumComment({
   focusPath,
   parentAuthor,
   onAddReply,
+  onDeleteReply,
   onDelete,
   onPinToggle,
 }: ForumCommentProps) {
@@ -219,9 +221,10 @@ export function ForumComment({
       parentAuthor={data.author ?? null}
       onAddReply={onAddReply}
       onPinToggle={onPinToggle}
+      onDeleteReply={onDeleteReply}
       onDelete={() => {
         setChildren((prev) => prev?.filter((c) => c.id !== child.id) ?? null);
-        onDelete();
+        onDeleteReply?.();
       }}
     />
   );
@@ -251,12 +254,6 @@ export function ForumComment({
           <div className="forum-comment-meta">
             <span className="forum-comment-author">
               {data.author ?? 'User'}
-              {parentAuthor && (
-                <span className="forum-replied-to">
-                  {' '}
-                  replied to <strong>{parentAuthor}</strong>
-                </span>
-              )}
               {data.edited_at && <span className="forum-edited-tag">(edited)</span>}
               {data.verified && (
                 <span title="Verified user">
@@ -272,6 +269,12 @@ export function ForumComment({
               </span>
             )}
           </div>
+
+          {parentAuthor && (
+            <div className="forum-replied-to">
+              replied to <strong>{parentAuthor}</strong>
+            </div>
+          )}
 
           {editing ? (
             <form className="forum-composer" onSubmit={handleEditSubmit}>
