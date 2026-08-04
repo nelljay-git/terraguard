@@ -31,6 +31,7 @@ interface ForumCommentProps {
   now: number;
   requireAuth: () => boolean;
   focusPath?: string[] | null;
+  parentAuthor?: string | null;
   onAddReply: () => void;
   onDelete: () => void;
   onPinToggle?: (id: string, pinned: boolean) => void;
@@ -44,6 +45,7 @@ export function ForumComment({
   now,
   requireAuth,
   focusPath,
+  parentAuthor,
   onAddReply,
   onDelete,
   onPinToggle,
@@ -214,6 +216,7 @@ export function ForumComment({
       now={now}
       requireAuth={requireAuth}
       focusPath={childFocus && childFocus[0] === child.id ? childFocus : null}
+      parentAuthor={data.author ?? null}
       onAddReply={onAddReply}
       onPinToggle={onPinToggle}
       onDelete={() => {
@@ -248,6 +251,12 @@ export function ForumComment({
           <div className="forum-comment-meta">
             <span className="forum-comment-author">
               {data.author ?? 'User'}
+              {parentAuthor && (
+                <span className="forum-replied-to">
+                  {' '}
+                  replied to <strong>{parentAuthor}</strong>
+                </span>
+              )}
               {data.edited_at && <span className="forum-edited-tag">(edited)</span>}
               {data.verified && (
                 <span title="Verified user">

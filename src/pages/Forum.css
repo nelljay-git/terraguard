@@ -738,6 +738,18 @@
   gap: 4px;
 }
 
+.forum-replied-to {
+  opacity: 0.7;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.forum-replied-to strong {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
 .forum-comment-time {
   font-size: 0.76rem;
   color: var(--text-muted);
