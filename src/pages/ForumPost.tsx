@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   BadgeCheck,
   Bookmark,
   BookmarkCheck,
+  ImagePlus,
   Loader2,
   Lock,
   LockOpen,
@@ -24,6 +25,7 @@ import {
   toggleForumReaction,
   toggleForumBookmark,
   addForumComment,
+  uploadForumImage,
   togglePinForumPost,
   toggleForumPostClosed,
   deleteForumPost,
@@ -78,6 +80,9 @@ export function ForumPost() {
 
   const [commentCount, setCommentCount] = useState(0);
   const [draft, setDraft] = useState('');
+  const [draftImage, setDraftImage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const [posting, setPosting] = useState(false);
   const [busy, setBusy] = useState<ForumReaction | null>(null);
   const [bookmarkBusy, setBookmarkBusy] = useState(false);
@@ -313,7 +318,7 @@ export function ForumPost() {
     setError(null);
     setPosting(true);
     try {
-      const created = await addForumComment(post.id, null, content);
+      const created = await addForumComment(post.id, null, content, draftImage);
       const full: ForumCommentType = {
         ...created,
         parent_id: null,
@@ -329,12 +334,38 @@ export function ForumPost() {
       setRoots((prev) => [full, ...prev]);
       setCommentCount((c) => c + 1);
       setDraft('');
+      setDraftImage(null);
       setCooldown(POST_COOLDOWN_SECONDS);
     } catch (err) {
       console.error(err);
       setError(getErrorMessage(err));
     } finally {
       setPosting(false);
+    }
+  };
+
+  const handlePickImage = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Please choose an image file.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be 5MB or smaller.');
+      return;
+    }
+    setError(null);
+    setUploading(true);
+    try {
+      const url = await uploadForumImage(file);
+      setDraftImage(url);
+    } catch (err) {
+      console.error(err);
+      setError(getErrorMessage(err));
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -535,8 +566,47 @@ export function ForumPost() {
               maxLength={2000}
               disabled={!user}
             />
+            {draftImage && (
+              <div className="forum-form-image-preview">
+                <img src={draftImage} alt="Comment image preview" />
+                <div className="forum-form-image-actions">
+                  <button
+                    type="button"
+                    className="forum-icon-btn danger"
+                    onClick={() => setDraftImage(null)}
+                    title="Remove image"
+                  >
+                    <Trash2 size={15} />
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="forum-composer-row">
-              {cooldown > 0 && <span className="forum-cooldown">You can comment again in {cooldown}s</span>}
+              <div className="forum-composer-left">
+                {admin && (
+                  <>
+                    <button
+                      type="button"
+                      className="forum-composer-attach"
+                      onClick={() => fileRef.current?.click()}
+                      disabled={uploading}
+                      title="Attach an image (admin)"
+                    >
+                      {uploading ? <Loader2 size={15} className="spin" /> : <ImagePlus size={15} />}
+                      {uploading ? 'Uploading...' : draftImage ? 'Replace image' : 'Attach image'}
+                    </button>
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePickImage}
+                      style={{ display: 'none' }}
+                    />
+                  </>
+                )}
+                {cooldown > 0 && <span className="forum-cooldown">You can comment again in {cooldown}s</span>}
+              </div>
               <button
                 type="submit"
                 className="forum-composer-submit"

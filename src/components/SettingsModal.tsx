@@ -17,7 +17,7 @@ function formatDate(iso: string): string {
 }
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
-  const { profile, updateUsername, updateAvatarUrl, updateTheme } = useAuth();
+  const { profile, updateUsername, updateAvatarUrl, updateTheme, updatePreferredApi } = useAuth();
   const [value, setValue] = useState(profile?.username ?? '');
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -34,6 +34,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [themeSaving, setThemeSaving] = useState(false);
   const [themeError, setThemeError] = useState<string | null>(null);
   const [themeSuccess, setThemeSuccess] = useState<string | null>(null);
+
+  const [preferredApi, setPreferredApi] = useState<'phivolcs' | 'usgs'>(profile?.preferred_api ?? 'phivolcs');
+  const [apiSaving, setApiSaving] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiSuccess, setApiSuccess] = useState<string | null>(null);
 
   const lastChanged = profile?.username_changed_at ?? null;
   const cooldownUntil = lastChanged
@@ -111,6 +116,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     } else {
       setTheme(next);
       setThemeSuccess('Theme preference saved.');
+    }
+  };
+
+  const handleApiSave = async (next: 'phivolcs' | 'usgs') => {
+    setApiError(null);
+    setApiSuccess(null);
+    setApiSaving(true);
+    const err = await updatePreferredApi(next);
+    setApiSaving(false);
+    if (err) {
+      setApiError(err);
+    } else {
+      setPreferredApi(next);
+      setApiSuccess('Preferred API saved.');
     }
   };
 
@@ -261,6 +280,33 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             </p>
             {themeError && <div className="settings-error">{themeError}</div>}
             {themeSuccess && <div className="settings-success">{themeSuccess}</div>}
+          </div>
+
+          <div className="settings-api-section">
+            <label className="settings-field-label">Preferred API</label>
+            <div className="settings-api-options">
+              <button
+                type="button"
+                className={`settings-api-btn${preferredApi === 'phivolcs' ? ' active' : ''}`}
+                onClick={() => handleApiSave('phivolcs')}
+                disabled={apiSaving}
+              >
+                PHIVOLCS
+              </button>
+              <button
+                type="button"
+                className={`settings-api-btn${preferredApi === 'usgs' ? ' active' : ''}`}
+                onClick={() => handleApiSave('usgs')}
+                disabled={apiSaving}
+              >
+                USGS
+              </button>
+            </div>
+            <p className="settings-hint">
+              Choose your preferred earthquake data source. This is saved to your account.
+            </p>
+            {apiError && <div className="settings-error">{apiError}</div>}
+            {apiSuccess && <div className="settings-success">{apiSuccess}</div>}
           </div>
         </div>
 

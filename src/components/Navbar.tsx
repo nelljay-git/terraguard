@@ -4,6 +4,7 @@ import { Activity, Globe2, BarChart2, Newspaper, Bell, HelpCircle, User, LogOut,
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
+import { getPreferredApi, PREFERRED_API_CHANGE_EVENT } from '../lib/apiPreference';
 import { SettingsModal } from './SettingsModal';
 import { Notifications } from './Notifications';
 import logoSrc from '../assets/logo.png';
@@ -16,7 +17,18 @@ export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [apiSource, setApiSource] = useState<'phivolcs' | 'usgs'>(() => getPreferredApi());
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const sync = () => setApiSource(getPreferredApi());
+    window.addEventListener(PREFERRED_API_CHANGE_EVENT, sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener(PREFERRED_API_CHANGE_EVENT, sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
 
   const links = [
     { name: 'Dashboard', path: '/', icon: Activity },
@@ -91,9 +103,9 @@ export function Navbar() {
           })}
         </div>
 
-        <div className="nav-source-badge">
+        <div className={`nav-source-badge${apiSource === 'usgs' ? ' nav-source-badge--usgs' : ''}`}>
           <span className="source-dot"></span>
-          PHIVOLCS
+          {apiSource === 'usgs' ? 'USGS' : 'PHIVOLCS'}
         </div>
 
         <div className="nav-right-actions">

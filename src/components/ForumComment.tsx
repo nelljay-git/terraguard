@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   ChevronDown,
+  ImagePlus,
   Loader2,
   Lock,
   LockOpen,
@@ -19,12 +20,14 @@ import {
   addForumComment,
   updateForumComment,
   deleteForumComment,
+  uploadForumImage,
   toggleForumCommentPin,
   toggleForumCommentClosed,
   formatForumTime,
   getErrorMessage,
 } from '../lib/forum';
 import { ForumReactions } from './ForumReactions';
+import { ImageLightbox } from './ImageLightbox';
 
 interface ForumCommentProps {
   comment: ForumCommentType;
@@ -62,12 +65,16 @@ export function ForumComment({
   const [replying, setReplying] = useState(false);
   const [editing, setEditing] = useState(false);
   const [replyText, setReplyText] = useState('');
+  const [replyImage, setReplyImage] = useState<string | null>(null);
+  const [uploadingReply, setUploadingReply] = useState(false);
+  const replyFileRef = useRef<HTMLInputElement | null>(null);
   const [editText, setEditText] = useState(data.content);
   const [posting, setPosting] = useState(false);
   const [busy, setBusy] = useState<ForumReaction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pinBusy, setPinBusy] = useState(false);
   const [closeBusy, setCloseBusy] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const canManage = currentUserId === data.author_id || isAdmin;
@@ -138,7 +145,7 @@ export function ForumComment({
     setError(null);
     setPosting(true);
     try {
-      const created = await addForumComment(postId, data.id, content);
+      const created = await addForumComment(postId, data.id, content, replyImage);
       const full: ForumCommentType = {
         ...created,
         parent_id: data.id,
@@ -153,6 +160,7 @@ export function ForumComment({
       };
       setChildren((prev) => (prev ? [...prev, full] : [full]));
       setReplyText('');
+      setReplyImage(null);
       setReplying(false);
       onAddReply();
     } catch (err) {
@@ -160,6 +168,31 @@ export function ForumComment({
       setError(getErrorMessage(err));
     } finally {
       setPosting(false);
+    }
+  };
+
+  const handlePickReplyImage = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Please choose an image file.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be 5MB or smaller.');
+      return;
+    }
+    setError(null);
+    setUploadingReply(true);
+    try {
+      const url = await uploadForumImage(file);
+      setReplyImage(url);
+    } catch (err) {
+      console.error(err);
+      setError(getErrorMessage(err));
+    } finally {
+      setUploadingReply(false);
     }
   };
 
@@ -328,7 +361,36 @@ export function ForumComment({
               </div>
             </form>
           ) : (
-            <p className="forum-comment-content">{data.content}</p>
+            <>
+              <p className="forum-comment-content">{data.content}</p>
+              {data.image_url && (
+                <button
+                  type="button"
+                  className="forum-comment-image-btn"
+                  onClick={() => setLightboxOpen(true)}
+                  aria-label="View full image"
+                >
+                  <img
+                    src={data.image_url}
+                    alt="Comment image"
+                    className="forum-comment-image"
+                    loading="lazy"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                </button>
+              )}
+              {data.image_url && (
+                <ImageLightbox
+                  src={data.image_url}
+                  alt="Comment image"
+                  caption={`Image by ${data.author ?? 'User'}`}
+                  open={lightboxOpen}
+                  onClose={() => setLightboxOpen(false)}
+                />
+              )}
+            </>
           )}
 
           <div className="forum-comment-actions">
@@ -436,10 +498,49 @@ export function ForumComment({
                 maxLength={2000}
                 autoFocus
               />
+              {replyImage && (
+                <div className="forum-form-image-preview">
+                  <img src={replyImage} alt="Reply image preview" />
+                  <div className="forum-form-image-actions">
+                    <button
+                      type="button"
+                      className="forum-icon-btn danger"
+                      onClick={() => setReplyImage(null)}
+                      title="Remove image"
+                    >
+                      <Trash2 size={15} />
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="forum-composer-row">
-                <button type="button" className="forum-form-cancel" onClick={() => setReplying(false)}>
-                  Cancel
-                </button>
+                <div className="forum-composer-left">
+                  <button type="button" className="forum-form-cancel" onClick={() => setReplying(false)}>
+                    Cancel
+                  </button>
+                  {isAdmin && (
+                    <>
+                      <button
+                        type="button"
+                        className="forum-composer-attach"
+                        onClick={() => replyFileRef.current?.click()}
+                        disabled={uploadingReply}
+                        title="Attach an image (admin)"
+                      >
+                        {uploadingReply ? <Loader2 size={15} className="spin" /> : <ImagePlus size={15} />}
+                        {uploadingReply ? 'Uploading...' : replyImage ? 'Replace image' : 'Attach image'}
+                      </button>
+                      <input
+                        ref={replyFileRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePickReplyImage}
+                        style={{ display: 'none' }}
+                      />
+                    </>
+                  )}
+                </div>
                 <button
                   type="submit"
                   className="forum-composer-submit"

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { fetchPhivolcsData, fetchPhivolcsArchiveData, getCachedData, type PhivolcsEarthquake } from '../api/phivolcs';
+import { fetchEarthquakeData, fetchArchiveData, getCachedData, normalizeEarthquakes, type NormalizedEarthquake } from '../api/phivolcs';
+import { getPreferredApi } from '../lib/apiPreference';
 import { getSeverityColor } from '../lib/utils';
 import { Search, Filter, Clock, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -8,8 +9,9 @@ import './Archive.css';
 
 export function Archive() {
   const initialCache = getCachedData();
-  const [earthquakes, setEarthquakes] = useState<PhivolcsEarthquake[]>(initialCache?.data ?? []);
-  const [loading, setLoading] = useState(!initialCache?.data?.length);
+  const initialData = initialCache?.data ? normalizeEarthquakes(initialCache.data) : [];
+  const [earthquakes, setEarthquakes] = useState<NormalizedEarthquake[]>(initialData);
+  const [loading, setLoading] = useState(initialData.length === 0);
 
   const [search, setSearch] = useState(() => sessionStorage.getItem('archive_search') || "");
   const [dateSearch, setDateSearch] = useState(() => sessionStorage.getItem('archive_dateSearch') || "");
@@ -21,6 +23,7 @@ export function Archive() {
   const [visibleCount, setVisibleCount] = useState(10);
 
   const currentYear = new Date().getFullYear();
+  const sourceName = getPreferredApi() === 'usgs' ? 'USGS' : 'PHIVOLCS';
   const [fetchMode, setFetchMode] = useState<'latest' | 'archive'>(() => {
     return (sessionStorage.getItem('archive_fetchMode') as 'latest' | 'archive') || 'latest';
   });
@@ -54,12 +57,12 @@ export function Archive() {
       try {
         let res;
         if (fetchMode === 'latest') {
-          res = await fetchPhivolcsData();
+          res = await fetchEarthquakeData();
         } else {
-          res = await fetchPhivolcsArchiveData(selectedYear, selectedMonth);
+          res = await fetchArchiveData(selectedYear, selectedMonth);
         }
         if (res && res.data) {
-          setEarthquakes(res.data);
+          setEarthquakes(normalizeEarthquakes(res.data));
         } else {
           setEarthquakes([]);
         }
@@ -111,7 +114,7 @@ export function Archive() {
     <div className="archive-container container">
       <div className="archive-header">
         <h1 className="archive-title">Earthquake Database</h1>
-        <p className="archive-subtitle">Search and filter recent seismic events from PHIVOLCS.</p>
+        <p className="archive-subtitle">Search and filter recent seismic events from {sourceName}.</p>
       </div>
 
       <div className="filters-container glass">
@@ -177,7 +180,7 @@ export function Archive() {
         </div>
       </div>
       <div style={{ marginTop: '5px', textAlign: 'center', color: '#707070ff' }}>
-        {fetchMode === 'archive' ? `Archive Results for ${selectedMonth} ${selectedYear}` : 'Recent Activities'}
+        {fetchMode === 'archive' ? `Archive Results for ${selectedMonth} ${selectedYear} (${sourceName})` : 'Recent Activities'}
       </div>
       <div className="archive-grid">
         {filteredData.slice(0, visibleCount).map((eq, i) => {

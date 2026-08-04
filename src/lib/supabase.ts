@@ -281,3 +281,8 @@ export async function updateTheme(uid: string, theme: string): Promise<string | 
   const { error } = await supabase.from('profiles').update({ theme }).eq('id', uid);
   return error ? getErrorMessage(error) : null;
 }
+
+export async function updatePreferredApi(uid: string, api: 'phivolcs' | 'usgs'): Promise<string | null> {
+  const { error } = await supabase.from('profiles').update({ preferred_api: api }).eq('id', uid);
+  return error ? getErrorMessage(error) : null;
+}

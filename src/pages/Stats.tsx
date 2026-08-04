@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { parse, isValid, startOfDay, subDays, subMonths, format } from 'date-fns';
-import { fetchPhivolcsData, getCachedData, type PhivolcsEarthquake } from '../api/phivolcs';
+import { fetchEarthquakeData, getCachedData, normalizeEarthquakes, type NormalizedEarthquake } from '../api/phivolcs';
 import { getSeverityLabel } from '../lib/utils';
 import { InteractiveMap } from '../components/InteractiveMap';
 import {
@@ -32,6 +32,22 @@ const TIME_RANGES = [
 
 type TimeRangeKey = typeof TIME_RANGES[number]['key'];
 
+function getEarthquakeMag(eq: NormalizedEarthquake): number {
+  return Number.parseFloat(eq.magnitude);
+}
+
+function getEarthquakeDepth(eq: NormalizedEarthquake): number {
+  return Number.parseFloat(eq.depth);
+}
+
+function getEarthquakeLocation(eq: NormalizedEarthquake): string {
+  return eq.location;
+}
+
+function getEarthquakeDatetime(eq: NormalizedEarthquake): string {
+  return eq.datetime;
+}
+
 function parseEarthquakeDate(datetime: string): Date | null {
   const datePart = datetime.split(' - ')[0]?.trim();
   if (!datePart) return null;
@@ -42,8 +58,9 @@ function parseEarthquakeDate(datetime: string): Date | null {
 
 export function Stats() {
   const initialCache = getCachedData();
-  const [earthquakes, setEarthquakes] = useState<PhivolcsEarthquake[]>(initialCache?.data ?? []);
-  const [loading, setLoading] = useState(!initialCache?.data?.length);
+  const initialData = initialCache?.data ? normalizeEarthquakes(initialCache.data) : [];
+  const [earthquakes, setEarthquakes] = useState<NormalizedEarthquake[]>(initialData);
+  const [loading, setLoading] = useState(initialData.length === 0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('day');
@@ -52,9 +69,9 @@ export function Stats() {
   const loadData = useCallback(async () => {
     setSyncing(true);
     try {
-      const res = await fetchPhivolcsData();
+      const res = await fetchEarthquakeData();
       if (res.data.length > 0) {
-        setEarthquakes(res.data);
+        setEarthquakes(normalizeEarthquakes(res.data));
         setLastSync(new Date());
       }
     } catch (err) {
@@ -83,7 +100,7 @@ export function Stats() {
             : subMonths(now, 1);
 
     return earthquakes.filter(eq => {
-      const parsedDate = parseEarthquakeDate(eq.datetime);
+      const parsedDate = parseEarthquakeDate(getEarthquakeDatetime(eq));
       return parsedDate ? parsedDate >= lowerBound : false;
     });
   }, [earthquakes, timeRange]);
@@ -113,8 +130,10 @@ export function Stats() {
     SEVERITY_ORDER.forEach(s => (magCounts[s] = 0));
 
     for (const eq of filteredEarthquakes) {
-      const mag = Number.parseFloat(eq.magnitude);
-      const depth = Number.parseFloat(eq.depth);
+      const mag = getEarthquakeMag(eq);
+      const depth = getEarthquakeDepth(eq);
+      const location = getEarthquakeLocation(eq);
+      const datetime = getEarthquakeDatetime(eq);
 
       if (!Number.isNaN(mag)) {
         const label = getSeverityLabel(mag);
@@ -129,18 +148,18 @@ export function Stats() {
         maxDepth = Math.max(maxDepth, depth);
       }
 
-      const parts = eq.location.split(/,|\(/).map(s => s.trim().replace(')', ''));
-      const region = parts[parts.length - 1] || eq.location;
+      const parts = location.split(/,|\(/).map(s => s.trim().replace(')', ''));
+      const region = parts[parts.length - 1] || location;
       regionCounts[region] = (regionCounts[region] || 0) + 1;
 
-      const datePart = eq.datetime.split(' - ')[0]?.trim();
+      const datePart = datetime.split(' - ')[0]?.trim();
       if (datePart) {
         dayCounts[datePart] = (dayCounts[datePart] || 0) + 1;
       }
 
-      const timePart = eq.datetime.includes(' - ') ? eq.datetime.split(' - ')[1] : eq.datetime;
+      const timePart = datetime.includes(' - ') ? datetime.split(' - ')[1] : datetime;
       magTimelinePoints.push({
-        date: eq.datetime.split(' - ')[0]?.trim() || '',
+        date: datetime.split(' - ')[0]?.trim() || '',
         time: timePart,
         magnitude: Number.isNaN(mag) ? 0 : mag,
       });
@@ -168,7 +187,7 @@ export function Stats() {
       maxMag,
       maxDepth,
       avgMag: magCount > 0 ? magSum / magCount : 0,
-      significantCount: filteredEarthquakes.filter(eq => Number.parseFloat(eq.magnitude) >= 4.5).length,
+      significantCount: filteredEarthquakes.filter(eq => getEarthquakeMag(eq) >= 4.5).length,
     };
   }, [filteredEarthquakes]);
 

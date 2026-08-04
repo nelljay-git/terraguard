@@ -114,6 +114,10 @@
   animation: source-blink 2s ease-in-out infinite;
 }
 
+.nav-source-badge--usgs .source-dot {
+  background: #f59e0b;
+}
+
 @keyframes source-blink {
 
   0%,

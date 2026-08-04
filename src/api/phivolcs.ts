@@ -15,6 +15,33 @@ export interface PhivolcsResponse {
   error?: string;
 }
 
+export type Earthquake = PhivolcsEarthquake | UsgsEarthquake;
+
+export interface NormalizedEarthquake extends PhivolcsEarthquake {
+  source: 'phivolcs' | 'usgs';
+}
+
+export function normalizeEarthquake(eq: Earthquake): NormalizedEarthquake {
+  if ('properties' in eq) {
+    return {
+      source: 'usgs',
+      datetime: format(new Date(eq.properties.time), "d MMMM yyyy - hh:mm a"),
+      latitude: (Math.round(eq.geometry.coordinates[1] * 100) / 100).toFixed(2),
+      longitude: (Math.round(eq.geometry.coordinates[0] * 100) / 100).toFixed(2),
+      depth: String(Math.round(eq.geometry.coordinates[2])),
+      magnitude: (Math.round(eq.properties.mag * 10) / 10).toFixed(1),
+      location: eq.properties.place,
+      link: eq.properties.url,
+    };
+  }
+  return { source: 'phivolcs', ...eq };
+}
+
+export function normalizeEarthquakes(list: Earthquake[]): NormalizedEarthquake[] {
+  if (!Array.isArray(list)) return [];
+  return list.map(normalizeEarthquake);
+}
+
 export interface EarthquakeDetails {
   origin: string;
   reportedIntensities: string;
@@ -31,27 +58,31 @@ export interface BulletinRef {
 
 import { apiUrl } from '../lib/apiBase';
 import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
+import { type UsgsEarthquake, fetchUsgsData, getCachedUsgsData, fetchUsgsArchiveData } from './usgs';
+import { getPreferredApi } from '../lib/apiPreference';
+import { format } from 'date-fns';
 
 const PHIVOLCS_BASE = 'https://earthquake.phivolcs.dost.gov.ph';
 
-const CACHE_KEY = 'terraguard_phivolcs_cache';
+const PHIVOLCS_CACHE_KEY = 'terraguard_phivolcs_cache';
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
 const FETCH_TIMEOUT_MS = 8000;
 
-export function getCachedData(): PhivolcsResponse | null {
+export function getCachedPhivolcsData(): PhivolcsResponse | null {
   try {
-    const cached = localStorage.getItem(CACHE_KEY);
+    const cached = localStorage.getItem(PHIVOLCS_CACHE_KEY);
     if (cached) {
-      return JSON.parse(cached) as PhivolcsResponse;
+      const parsed = JSON.parse(cached) as PhivolcsResponse;
+      if (Array.isArray(parsed.data)) return parsed;
     }
   } catch { /* ignore parse errors */ }
   return null;
 }
 
-function setCachedData(data: PhivolcsResponse): void {
+function setPhivolcsCachedData(data: PhivolcsResponse): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+    localStorage.setItem(PHIVOLCS_CACHE_KEY, JSON.stringify(data));
   } catch { /* ignore storage errors */ }
 }
 
@@ -59,7 +90,8 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function fetchOnce(): Promise<PhivolcsResponse> {
+
+async function fetchPhivolcsOnce(): Promise<PhivolcsResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -122,8 +154,8 @@ async function fetchOnce(): Promise<PhivolcsResponse> {
 export async function fetchPhivolcsData(): Promise<PhivolcsResponse> {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const result = await fetchOnce();
-      setCachedData(result);
+      const result = await fetchPhivolcsOnce();
+      setPhivolcsCachedData(result);
       return result;
     } catch (error) {
       console.warn(`PHIVOLCS fetch attempt ${attempt}/${MAX_RETRIES} failed:`, error);
@@ -133,13 +165,42 @@ export async function fetchPhivolcsData(): Promise<PhivolcsResponse> {
     }
   }
 
-  const cached = getCachedData();
+  const cached = getCachedPhivolcsData();
   if (cached && cached.data.length > 0) {
     console.info('Using cached PHIVOLCS data');
     return cached;
   }
 
   return { success: false, count: 0, data: [] };
+}
+
+export async function fetchEarthquakeData(): Promise<
+  PhivolcsResponse | { success: boolean; count: number; data: UsgsEarthquake[] }
+> {
+  if (getPreferredApi() === 'usgs') {
+    const usgsData = await fetchUsgsData();
+    return { success: true, count: usgsData.length, data: usgsData };
+  }
+  return fetchPhivolcsData();
+}
+
+export function getCachedData(): PhivolcsResponse | { success: boolean; count: number; data: UsgsEarthquake[] } | null {
+  if (getPreferredApi() === 'usgs') {
+    const usgsData = getCachedUsgsData();
+    return { success: true, count: usgsData.length, data: usgsData };
+  }
+  return getCachedPhivolcsData();
+}
+
+export async function fetchArchiveData(
+  year: number,
+  monthName: string
+): Promise<PhivolcsResponse | { success: boolean; count: number; data: UsgsEarthquake[] }> {
+  if (getPreferredApi() === 'usgs') {
+    const usgsData = await fetchUsgsArchiveData(year, monthName);
+    return { success: true, count: usgsData.length, data: usgsData };
+  }
+  return fetchPhivolcsArchiveData(year, monthName);
 }
 
 export async function fetchPhivolcsArchiveData(year: number, monthName: string): Promise<PhivolcsResponse> {
@@ -211,8 +272,15 @@ export async function fetchPhivolcsArchiveData(year: number, monthName: string):
   }
 }
 
-export function getSignificantEarthquakes(data: PhivolcsEarthquake[]): PhivolcsEarthquake[] {
-  return data.filter(eq => parseFloat(eq.magnitude) >= 4.5);
+export function getSignificantEarthquakes<T extends Earthquake>(data: T[]): T[] {
+  return data.filter(eq => {
+    if ('magnitude' in eq) {
+      return parseFloat(eq.magnitude) >= 4.5;
+    } else if ('properties' in eq) {
+      return eq.properties.mag >= 4.5;
+    }
+    return false;
+  });
 }
 
 // Discover all bulletins (Information No. 1, 2, ... Final) PHIVOLCS published for
@@ -285,6 +353,35 @@ export async function fetchBulletins(link: string): Promise<BulletinRef[]> {
 }
 
 export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDetails | null> {
+  // USGS event links don't map to PHIVOLCS pages; pull the event from the USGS
+  // GeoJSON API instead (CORS is open on the USGS feeds).
+  if (/earthquake\.usgs\.gov/.test(url)) {
+    try {
+      const idMatch = /eventpage\/([^/?#]+)/.exec(url);
+      if (idMatch) {
+        const res = await fetch(
+          `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&eventid=${encodeURIComponent(idMatch[1])}`
+        );
+        if (res.ok) {
+          const feature = await res.json();
+          const p = feature?.properties;
+          if (p) {
+            return {
+              origin: p.time ? new Date(p.time).toLocaleString() : 'Unknown',
+              reportedIntensities: p.mmi != null ? `MMI ${p.mmi}` : '',
+              instrumentalIntensities: p.alert ? `USGS alert level: ${p.alert}` : '',
+              note: '',
+              mapUrl: p.url || '',
+            };
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to fetch USGS details:', error);
+    }
+    return null;
+  }
+
   try {
     // In a native shell, scrape the details page directly from PHIVOLCS (CORS-free).
     if (IS_NATIVE) {
@@ -331,7 +428,7 @@ function parseDetailsHtml(html: string, url: string): EarthquakeDetails {
   const origin = originMatch ? originMatch[1].trim() : 'Unknown';
 
   const reportedMatch = /Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
-  let reported = reportedMatch ? reportedMatch[1].replace(/^[a-zA-Z0-9_.\s]+Intensity/i, 'Intensity').trim() : '';
+  const reported = reportedMatch ? reportedMatch[1].replace(/^[a-zA-Z0-9_.\s]+Intensity/i, 'Intensity').trim() : '';
 
   const instrumentalMatch = /Instrumental Intensities\s*:?\s*(.*?)(?:This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
   const instrumental = instrumentalMatch ? instrumentalMatch[1].trim() : '';

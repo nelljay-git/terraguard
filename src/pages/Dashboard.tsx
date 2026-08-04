@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { parse, isValid, isSameMonth } from 'date-fns';
-import { fetchPhivolcsData, getSignificantEarthquakes, getCachedData, type PhivolcsEarthquake } from '../api/phivolcs';
+import { fetchEarthquakeData, getSignificantEarthquakes, getCachedData, normalizeEarthquakes, type NormalizedEarthquake } from '../api/phivolcs';
+import { getPreferredApi } from '../lib/apiPreference';
 import { SummaryCards } from '../components/SummaryCards';
 import { LatestEarthquake } from '../components/LatestEarthquake';
 import { InteractiveMap } from '../components/InteractiveMap';
@@ -14,23 +15,25 @@ import './Dashboard.css';
 export function Dashboard() {
   // Try to load cached data instantly so the user sees something right away
   const initialCache = getCachedData();
-  const [earthquakes, setEarthquakes] = useState<PhivolcsEarthquake[]>(initialCache?.data ?? []);
-  const [sigEarthquakes, setSigEarthquakes] = useState<PhivolcsEarthquake[]>(
-    initialCache?.data ? getSignificantEarthquakes(initialCache.data) : []
+  const initialData = initialCache?.data ? normalizeEarthquakes(initialCache.data) : [];
+  const [earthquakes, setEarthquakes] = useState<NormalizedEarthquake[]>(initialData);
+  const [sigEarthquakes, setSigEarthquakes] = useState<NormalizedEarthquake[]>(
+    initialData.length > 0 ? getSignificantEarthquakes(initialData) : []
   );
-  const [loading, setLoading] = useState(!initialCache?.data?.length);
+  const [loading, setLoading] = useState(initialData.length === 0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
 
   const loadData = useCallback(async () => {
     setSyncing(true);
     try {
-      const res = await fetchPhivolcsData();
+      const res = await fetchEarthquakeData();
       if (res.data.length > 0) {
-        setEarthquakes(res.data);
-        setSigEarthquakes(getSignificantEarthquakes(res.data));
+        const normalized = normalizeEarthquakes(res.data);
+        setEarthquakes(normalized);
+        setSigEarthquakes(getSignificantEarthquakes(normalized));
         setLastSync(new Date());
-        checkAlerts(res.data);
+        checkAlerts(normalized);
       }
     } catch (err) {
       console.error("Failed to fetch dashboard data", err);
@@ -58,6 +61,7 @@ export function Dashboard() {
   }, [loadData]);
 
   const currentMonth = new Date();
+  const sourceName = getPreferredApi() === 'usgs' ? 'USGS' : 'PHIVOLCS';
   const monthlyEarthquakes = earthquakes.filter(eq => {
     const datePart = eq.datetime.split(' - ')[0]?.trim();
     if (!datePart) return false;
@@ -69,7 +73,7 @@ export function Dashboard() {
   if (loading) {
     return (
       <FunFactLoader
-        title="Connecting to PHIVOLCS..."
+        title={`Connecting to ${sourceName}...`}
         subtitle="Fetching real-time seismic data"
         icon={<Shield size={28} className="spinner-icon" />}
       />
@@ -79,7 +83,7 @@ export function Dashboard() {
   if (earthquakes.length === 0) return (
     <div className="container flex-center" style={{ height: '50vh', flexDirection: 'column', gap: '16px' }}>
       <Shield size={48} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
-      <h2>Connecting to PHIVOLCS...</h2>
+      <h2>Connecting to {sourceName}...</h2>
       <p className="text-muted">The data source is temporarily unavailable. Retrying automatically.</p>
       <button
         className="dash-refresh-btn"

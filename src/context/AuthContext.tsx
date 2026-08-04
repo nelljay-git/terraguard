@@ -4,7 +4,9 @@ import {
   updateUsername as dbUpdateUsername,
   updateAvatarUrl as dbUpdateAvatarUrl,
   updateTheme as dbUpdateTheme,
+  updatePreferredApi as dbUpdatePreferredApi,
 } from '../lib/supabase';
+import { setPreferredApi } from '../lib/apiPreference';
 import type { User } from '@supabase/supabase-js';
 
 export type ThemePreference = 'system' | 'dark' | 'light';
@@ -17,6 +19,7 @@ export interface Profile {
   verified: boolean;
   avatar_url: string | null;
   theme: ThemePreference;
+  preferred_api: 'phivolcs' | 'usgs';
 }
 
 interface AuthContextValue {
@@ -29,6 +32,7 @@ interface AuthContextValue {
   updateUsername: (username: string) => Promise<string | null>;
   updateAvatarUrl: (url: string | null) => Promise<string | null>;
   updateTheme: (theme: ThemePreference) => Promise<string | null>;
+  updatePreferredApi: (api: 'phivolcs' | 'usgs') => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -41,12 +45,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function loadProfile(uid: string, email: string) {
     const { data } = await supabase
       .from('profiles')
-      .select('id, email, username, username_changed_at, verified, avatar_url, theme')
+      .select('id, email, username, username_changed_at, verified, avatar_url, theme, preferred_api')
       .eq('id', uid)
       .maybeSingle();
 
     if (data) {
-      setProfile(data as Profile);
+      const profile = data as Profile;
+      setProfile(profile);
+      if (profile.preferred_api) setPreferredApi(profile.preferred_api);
       return;
     }
 
@@ -54,11 +60,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: inserted, error } = await supabase
       .from('profiles')
       .upsert({ id: uid, email, username: email.split('@')[0] ?? 'user' })
-      .select('id, email, username, username_changed_at, verified, avatar_url, theme')
+      .select('id, email, username, username_changed_at, verified, avatar_url, theme, preferred_api')
       .single();
 
     if (!error && inserted) {
-      setProfile(inserted as Profile);
+      const profile = inserted as Profile;
+      setProfile(profile);
+      if (profile.preferred_api) setPreferredApi(profile.preferred_api);
     } else {
       setProfile({
         id: uid,
@@ -68,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         verified: false,
         avatar_url: null,
         theme: 'system',
+        preferred_api: 'phivolcs',
       });
     }
   }
@@ -149,13 +158,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
+  const updatePreferredApi = async (api: 'phivolcs' | 'usgs'): Promise<string | null> => {
+    if (!user) return 'Not signed in.';
+    const error = await dbUpdatePreferredApi(user.id, api);
+    if (error) return error;
+    setPreferredApi(api);
+    await loadProfile(user.id, user.email ?? '');
+    return null;
+  };
+
   useEffect(() => {
     document.documentElement.dataset.theme = profile?.theme ?? 'system';
   }, [profile?.theme]);
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, loading, signIn, signUp, signOut, updateUsername, updateAvatarUrl, updateTheme }}
+      value={{ user, profile, loading, signIn, signUp, signOut, updateUsername, updateAvatarUrl, updateTheme, updatePreferredApi }}
     >
       {children}
     </AuthContext.Provider>

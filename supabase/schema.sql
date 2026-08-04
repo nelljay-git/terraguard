@@ -446,3 +446,18 @@ create trigger protect_avatar_url_trg
 -- Theme preference ('dark' | 'light' | 'system')
 -- -----------------------------------------------------------------------------
 alter table public.profiles add column if not exists theme text not null default 'system';
+
+-- -----------------------------------------------------------------------------
+-- Preferred earthquake data source ('phivolcs' | 'usgs'). Defaults to PHIVOLCS.
+-- -----------------------------------------------------------------------------
+alter table public.profiles add column if not exists preferred_api text not null default 'phivolcs';
+
+-- Constrain the value to the two supported sources.
+alter table public.profiles drop constraint if exists profiles_preferred_api_check;
+alter table public.profiles
+  add constraint profiles_preferred_api_check
+  check (preferred_api in ('phivolcs', 'usgs'));
+
+-- Grant existing rows the default (no-op for brand-new profiles, but covers
+-- profiles created before this migration).
+update public.profiles set preferred_api = 'phivolcs' where preferred_api is null;

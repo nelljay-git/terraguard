@@ -13,7 +13,7 @@ export function About() {
 
         <div className="about-content">
           <p className="about-description">
-            TerraGuard is a modern seismic monitoring dashboard that provides real-time updates and analytics on earthquake activity in the Philippines, powered by data from PHIVOLCS.
+            TerraGuard is a modern seismic monitoring dashboard that provides real-time updates and analytics on earthquake activities, powered by data from PHIVOLCS/USGS.
           </p>
 
           <Link to="/history" className="version-history-btn glass">

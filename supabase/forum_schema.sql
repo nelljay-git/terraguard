@@ -119,6 +119,9 @@ alter table public.forum_comments add column if not exists pinned boolean not nu
 -- Upgrade existing installs: allow admin to close comments (no new replies).
 alter table public.forum_comments add column if not exists closed boolean not null default false;
 
+-- Upgrade existing installs: allow the admin to attach an image to a comment.
+alter table public.forum_comments add column if not exists image_url text;
+
 create or replace function public.set_forum_comment_author()
 returns trigger
 language plpgsql
@@ -387,6 +390,7 @@ create policy "users can insert own forum comment"
   on public.forum_comments for insert
   with check (
     auth.uid() = author_id
+    and (image_url is null or public.is_forum_admin())
     and (
       public.is_forum_admin()
       or (
@@ -415,7 +419,11 @@ create policy "users can insert own forum comment"
 drop policy if exists "users can update own forum comment" on public.forum_comments;
 create policy "users can update own forum comment"
   on public.forum_comments for update
-  using (auth.uid() = author_id or public.is_forum_admin());
+  using (auth.uid() = author_id or public.is_forum_admin())
+  with check (
+    (auth.uid() = author_id or public.is_forum_admin())
+    and (image_url is null or public.is_forum_admin())
+  );
 
 drop policy if exists "users can delete own forum comment" on public.forum_comments;
 create policy "users can delete own forum comment"
@@ -606,6 +614,7 @@ $$;
 -- -----------------------------------------------------------------------------
 -- RPC: top-level comments with pagination (lazy loading, newest first).
 -- -----------------------------------------------------------------------------
+drop function if exists public.get_forum_comments(uuid, int, timestamptz);
 create or replace function public.get_forum_comments(
   p_post_id uuid,
   p_limit int default 20,
@@ -619,6 +628,7 @@ returns table (
   author text,
   verified boolean,
   avatar_url text,
+  image_url text,
   pinned boolean,
   closed boolean,
   created_at timestamptz,
@@ -636,6 +646,7 @@ as $$
   select
     c.id, c.author_id, c.parent_id, c.content, c.author,
     coalesce(p.verified, false) as verified, p.avatar_url,
+    c.image_url,
     c.pinned,
     c.closed,
     c.created_at, c.updated_at, c.edited_at,
@@ -661,6 +672,7 @@ $$;
 -- -----------------------------------------------------------------------------
 -- RPC: direct children (replies) for a set of parent comments, oldest first.
 -- -----------------------------------------------------------------------------
+drop function if exists public.get_forum_replies(uuid, uuid[]);
 create or replace function public.get_forum_replies(
   p_post_id uuid,
   p_parent_ids uuid[]
@@ -673,6 +685,7 @@ returns table (
   author text,
   verified boolean,
   avatar_url text,
+  image_url text,
   pinned boolean,
   closed boolean,
   created_at timestamptz,
@@ -690,6 +703,7 @@ as $$
   select
     c.id, c.author_id, c.parent_id, c.content, c.author,
     coalesce(p.verified, false) as verified, p.avatar_url,
+    c.image_url,
     c.pinned,
     c.closed,
     c.created_at, c.updated_at, c.edited_at,

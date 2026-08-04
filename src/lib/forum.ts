@@ -35,6 +35,7 @@ export interface ForumComment {
   author: string | null;
   verified: boolean;
   avatar_url: string | null;
+  image_url: string | null;
   pinned: boolean;
   closed: boolean;
   created_at: string;
@@ -244,7 +245,8 @@ export async function getForumCommentPath(
 export async function addForumComment(
   postId: string,
   parentId: string | null,
-  content: string
+  content: string,
+  imageUrl: string | null = null
 ): Promise<ForumComment> {
   const {
     data: { user },
@@ -253,7 +255,7 @@ export async function addForumComment(
 
   const { data, error } = await supabase
     .from('forum_comments')
-    .insert({ post_id: postId, author_id: user.id, parent_id: parentId, content })
+    .insert({ post_id: postId, author_id: user.id, parent_id: parentId, content, image_url: imageUrl })
     .select()
     .single();
   if (error) throw error;
