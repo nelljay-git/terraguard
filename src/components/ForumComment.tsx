@@ -354,6 +354,20 @@ export function ForumComment({
                 Reply
               </button>
             )}
+            {isAdmin && (closed || data.closed) && (
+              <button
+                type="button"
+                className="forum-reply-btn"
+                title="Reply as administrator (comment is closed)"
+                onClick={() => {
+                  if (!requireAuth()) return;
+                  setReplying((r) => !r);
+                }}
+              >
+                <Reply size={13} />
+                Reply
+              </button>
+            )}
 
             {isAdmin && (
               <button

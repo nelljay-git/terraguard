@@ -387,22 +387,27 @@ create policy "users can insert own forum comment"
   on public.forum_comments for insert
   with check (
     auth.uid() = author_id
-    and not exists (
-      select 1 from public.forum_posts p where p.id = post_id and p.closed
-    )
     and (
-      parent_id is null
-      or not exists (
-        with recursive ancestors as (
-          select c.id, c.parent_id, c.closed
-            from public.forum_comments c
-           where c.id = parent_id
-          union all
-          select c.id, c.parent_id, c.closed
-            from public.forum_comments c
-            join ancestors a on c.id = a.parent_id
+      public.is_forum_admin()
+      or (
+        not exists (
+          select 1 from public.forum_posts p where p.id = post_id and p.closed
         )
-        select 1 from ancestors where closed
+        and (
+          parent_id is null
+          or not exists (
+            with recursive ancestors as (
+              select c.id, c.parent_id, c.closed
+                from public.forum_comments c
+               where c.id = parent_id
+              union all
+              select c.id, c.parent_id, c.closed
+                from public.forum_comments c
+                join ancestors a on c.id = a.parent_id
+            )
+            select 1 from ancestors where closed
+          )
+        )
       )
     )
   );

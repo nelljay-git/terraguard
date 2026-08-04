@@ -514,7 +514,7 @@ export function ForumPost() {
           <span className="forum-comment-count">{commentCount} total</span>
         </div>
 
-        {post.closed ? (
+        {post.closed && !admin ? (
           <div className="forum-closed-banner">
             <Lock size={15} />
             This discussion is closed. You can still react, but no new comments or replies can be added.
@@ -524,7 +524,13 @@ export function ForumPost() {
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder={user ? 'Join the discussion...' : 'Sign in to leave a comment'}
+              placeholder={
+                post.closed && admin
+                  ? 'Join the discussion (admin override)...'
+                  : user
+                    ? 'Join the discussion...'
+                    : 'Sign in to leave a comment'
+              }
               rows={3}
               maxLength={2000}
               disabled={!user}
