@@ -35,6 +35,7 @@ create table if not exists public.forum_posts (
   content text not null check (char_length(content) between 1 and 10000),
   author text,
   pinned boolean not null default false,
+  closed boolean not null default false,
   image_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -43,6 +44,9 @@ create table if not exists public.forum_posts (
 
 -- Upgrade existing installs: allow the admin to attach an image to a post.
 alter table public.forum_posts add column if not exists image_url text;
+
+-- Upgrade existing installs: allow the admin to close a post (no new comments).
+alter table public.forum_posts add column if not exists closed boolean not null default false;
 
 create index if not exists forum_posts_created_idx on public.forum_posts (created_at desc);
 create index if not exists forum_posts_pinned_idx on public.forum_posts (pinned desc, created_at desc);
@@ -377,7 +381,12 @@ create policy "forum comments are viewable by everyone"
 drop policy if exists "users can insert own forum comment" on public.forum_comments;
 create policy "users can insert own forum comment"
   on public.forum_comments for insert
-  with check (auth.uid() = author_id);
+  with check (
+    auth.uid() = author_id
+    and not exists (
+      select 1 from public.forum_posts p where p.id = post_id and p.closed
+    )
+  );
 
 drop policy if exists "users can update own forum comment" on public.forum_comments;
 create policy "users can update own forum comment"
@@ -453,6 +462,7 @@ returns table (
   content text,
   author text,
   pinned boolean,
+  closed boolean,
   created_at timestamptz,
   updated_at timestamptz,
   edited_at timestamptz,
@@ -476,6 +486,7 @@ as $$
     p.content,
     p.author,
     p.pinned,
+    p.closed,
     p.created_at,
     p.updated_at,
     p.edited_at,
@@ -521,6 +532,7 @@ returns table (
   content text,
   author text,
   pinned boolean,
+  closed boolean,
   created_at timestamptz,
   updated_at timestamptz,
   edited_at timestamptz,
@@ -544,6 +556,7 @@ as $$
     p.content,
     p.author,
     p.pinned,
+    p.closed,
     p.created_at,
     p.updated_at,
     p.edited_at,
@@ -774,6 +787,32 @@ begin
 
   return query
     select pinned from public.forum_comments where id = p_comment_id;
+end;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- RPC: admin closes/reopens a post. While closed, no new comments or replies can
+-- be added (enforced by the RLS insert policy), but reactions still work.
+-- -----------------------------------------------------------------------------
+create or replace function public.toggle_forum_post_closed(p_post_id uuid)
+returns boolean
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_closed boolean;
+begin
+  if not exists (select 1 from public.profiles where id = v_uid and email = 'gianganwneljae@gmail.com') then
+    raise exception 'Only the administrator can close a post.';
+  end if;
+
+  update public.forum_posts
+     set closed = not closed
+   where id = p_post_id;
+
+  select closed into v_closed from public.forum_posts where id = p_post_id;
+  return v_closed;
 end;
 $$;
 

@@ -6,6 +6,8 @@ import {
   Bookmark,
   BookmarkCheck,
   Loader2,
+  Lock,
+  LockOpen,
   MessageSquare,
   PencilLine,
   Pin,
@@ -23,6 +25,7 @@ import {
   toggleForumBookmark,
   addForumComment,
   togglePinForumPost,
+  toggleForumPostClosed,
   deleteForumPost,
   isForumAdmin,
   formatForumTime,
@@ -30,6 +33,7 @@ import {
 } from '../lib/forum';
 import { ForumComment } from '../components/ForumComment';
 import { ForumReactions } from '../components/ForumReactions';
+import { ImageLightbox } from '../components/ImageLightbox';
 import './Forum.css';
 
 const ROOT_PAGE_SIZE = 5;
@@ -49,6 +53,7 @@ export function ForumPost() {
     content: string;
     author: string | null;
     pinned: boolean;
+    closed: boolean;
     image_url: string | null;
     created_at: string;
     edited_at: string | null;
@@ -80,6 +85,7 @@ export function ForumPost() {
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const POST_COOLDOWN_SECONDS = 10;
 
@@ -275,6 +281,17 @@ export function ForumPost() {
     }
   };
 
+  const handleClose = async () => {
+    if (!post) return;
+    try {
+      const closed = await toggleForumPostClosed(post.id);
+      setPost((prev) => (prev ? { ...prev, closed } : prev));
+    } catch (err) {
+      console.error(err);
+      setError(getErrorMessage(err));
+    }
+  };
+
   const handleDeletePost = async () => {
     if (!post) return;
     if (!window.confirm('Delete this post and all of its comments?')) return;
@@ -411,6 +428,10 @@ export function ForumPost() {
               {post.pinned ? <PinOff size={14} /> : <Pin size={14} />}
               {post.pinned ? 'Unpin' : 'Pin'}
             </button>
+            <button type="button" className="forum-icon-btn" onClick={handleClose}>
+              {post.closed ? <LockOpen size={14} /> : <Lock size={14} />}
+              {post.closed ? 'Reopen' : 'Close'}
+            </button>
             <button type="button" className="forum-icon-btn danger" onClick={handleDeletePost}>
               <Trash2 size={14} />
               Delete
@@ -421,13 +442,30 @@ export function ForumPost() {
         <p className="forum-full-content">{post.content}</p>
 
         {post.image_url && (
-          <img
+          <button
+            type="button"
+            className="forum-full-image-btn"
+            onClick={() => setLightboxOpen(true)}
+            aria-label="View full image"
+          >
+            <img
+              src={post.image_url}
+              alt={post.title}
+              className="forum-full-image"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          </button>
+        )}
+
+        {post.image_url && (
+          <ImageLightbox
             src={post.image_url}
             alt={post.title}
-            className="forum-full-image"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
+            caption={post.title}
+            open={lightboxOpen}
+            onClose={() => setLightboxOpen(false)}
           />
         )}
 
@@ -476,27 +514,34 @@ export function ForumPost() {
           <span className="forum-comment-count">{commentCount} total</span>
         </div>
 
-        <form className="forum-composer" onSubmit={handleComposerSubmit}>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={user ? 'Join the discussion...' : 'Sign in to leave a comment'}
-            rows={3}
-            maxLength={2000}
-            disabled={!user}
-          />
-          <div className="forum-composer-row">
-            {cooldown > 0 && <span className="forum-cooldown">You can comment again in {cooldown}s</span>}
-            <button
-              type="submit"
-              className="forum-composer-submit"
-              disabled={!user || !draft.trim() || posting || cooldown > 0}
-            >
-              {posting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
-              Comment
-            </button>
+        {post.closed ? (
+          <div className="forum-closed-banner">
+            <Lock size={15} />
+            This discussion is closed. You can still react, but no new comments or replies can be added.
           </div>
-        </form>
+        ) : (
+          <form className="forum-composer" onSubmit={handleComposerSubmit}>
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder={user ? 'Join the discussion...' : 'Sign in to leave a comment'}
+              rows={3}
+              maxLength={2000}
+              disabled={!user}
+            />
+            <div className="forum-composer-row">
+              {cooldown > 0 && <span className="forum-cooldown">You can comment again in {cooldown}s</span>}
+              <button
+                type="submit"
+                className="forum-composer-submit"
+                disabled={!user || !draft.trim() || posting || cooldown > 0}
+              >
+                {posting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+                Comment
+              </button>
+            </div>
+          </form>
+        )}
 
         {actionError && <div className="forum-error-banner">{actionError}</div>}
 
@@ -520,6 +565,7 @@ export function ForumPost() {
                 now={now}
                 requireAuth={requireAuth}
                 focusPath={focusPath?.[0] === root.id ? focusPath : null}
+                closed={post.closed}
                 onAddReply={() => setCommentCount((c) => c + 1)}
                 onDeleteReply={() => setCommentCount((c) => Math.max(0, c - 1))}
                 onPinToggle={(id, pinned) => {

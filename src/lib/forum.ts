@@ -12,6 +12,7 @@ export interface ForumPost {
   content: string;
   author: string | null;
   pinned: boolean;
+  closed: boolean;
   image_url: string | null;
   created_at: string;
   updated_at: string;
@@ -154,6 +155,14 @@ export async function togglePinForumPost(id: string, pinned: boolean): Promise<v
     .update({ pinned })
     .eq('id', id);
   if (error) throw error;
+}
+
+export async function toggleForumPostClosed(id: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('toggle_forum_post_closed', {
+    p_post_id: id,
+  });
+  if (error) throw error;
+  return (data ?? false) as boolean;
 }
 
 export async function deleteForumPost(id: string): Promise<void> {

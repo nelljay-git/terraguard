@@ -5,6 +5,7 @@ import {
   Bookmark,
   BookmarkCheck,
   Loader2,
+  Lock,
   MessageSquare,
   MessagesSquare,
   PencilLine,
@@ -28,6 +29,7 @@ import {
   getErrorMessage,
 } from '../lib/forum';
 import { ForumReactions } from '../components/ForumReactions';
+import { ImageLightbox } from '../components/ImageLightbox';
 import './Forum.css';
 
 const PAGE_SIZE = 15;
@@ -55,6 +57,7 @@ export function Forum() {
   const [bookmarkBusy, setBookmarkBusy] = useState<Record<string, boolean>>({});
   const [now, setNow] = useState(() => Date.now());
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30000);
@@ -245,6 +248,11 @@ export function Forum() {
                     <Pin size={11} /> Pinned
                   </span>
                 )}
+                {post.closed && (
+                  <span className="forum-closed-tag">
+                    <Lock size={11} /> Closed
+                  </span>
+                )}
                 {post.author_id === user?.id && (
                   <span className="forum-admin-badge">
                     <BadgeCheck size={11} /> Admin
@@ -255,15 +263,26 @@ export function Forum() {
               <Link to={`/forum/${post.id}`} style={{ textDecoration: 'none' }}>
                 <h2 className="forum-post-title">{post.title}</h2>
                 {post.image_url && (
-                  <img
-                    src={post.image_url}
-                    alt={post.title}
-                    loading="lazy"
-                    className="forum-post-thumb"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
+                  <button
+                    type="button"
+                    className="forum-thumb-btn"
+                    aria-label="View full image"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setLightboxSrc(post.image_url ?? null);
                     }}
-                  />
+                  >
+                    <img
+                      src={post.image_url}
+                      alt={post.title}
+                      loading="lazy"
+                      className="forum-post-thumb"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  </button>
                 )}
                 <p className="forum-post-excerpt">{truncateContent(post.content)}</p>
               </Link>
@@ -368,6 +387,16 @@ export function Forum() {
             </button>
           )}
         </div>
+      )}
+
+      {lightboxSrc && (
+        <ImageLightbox
+          src={lightboxSrc}
+          alt="Forum post image"
+          caption="Forum post image"
+          open={true}
+          onClose={() => setLightboxSrc(null)}
+        />
       )}
     </div>
   );

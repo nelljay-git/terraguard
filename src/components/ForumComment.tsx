@@ -32,6 +32,7 @@ interface ForumCommentProps {
   requireAuth: () => boolean;
   focusPath?: string[] | null;
   parentAuthor?: string | null;
+  closed?: boolean;
   onAddReply: () => void;
   onDeleteReply?: () => void;
   onDelete: () => void;
@@ -47,6 +48,7 @@ export function ForumComment({
   requireAuth,
   focusPath,
   parentAuthor,
+  closed = false,
   onAddReply,
   onDeleteReply,
   onDelete,
@@ -219,6 +221,7 @@ export function ForumComment({
       requireAuth={requireAuth}
       focusPath={childFocus && childFocus[0] === child.id ? childFocus : null}
       parentAuthor={data.author ?? null}
+      closed={closed}
       onAddReply={onAddReply}
       onPinToggle={onPinToggle}
       onDeleteReply={onDeleteReply}
@@ -313,17 +316,19 @@ export function ForumComment({
               onReact={handleReact}
             />
 
-            <button
-              type="button"
-              className="forum-reply-btn"
-              onClick={() => {
-                if (!requireAuth()) return;
-                setReplying((r) => !r);
-              }}
-            >
-              <Reply size={13} />
-              Reply
-            </button>
+            {!closed && (
+              <button
+                type="button"
+                className="forum-reply-btn"
+                onClick={() => {
+                  if (!requireAuth()) return;
+                  setReplying((r) => !r);
+                }}
+              >
+                <Reply size={13} />
+                Reply
+              </button>
+            )}
 
             {isAdmin && (
               <button
