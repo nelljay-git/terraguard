@@ -659,9 +659,9 @@ function parseDetailsHtml(html: string, url: string): EarthquakeDetails {
   const origin = originMatch ? originMatch[1].trim() : 'Unknown';
 
   const reportedMatch = /Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
-  const reported = reportedMatch ? reportedMatch[1].replace(/^[a-zA-Z0-9_.\s]+Intensity/i, 'Intensity').trim() : '';
+  const reported = reportedMatch ? reportedMatch[1].trim() : '';
 
-  const instrumentalMatch = /Instrumental Intensities\s*:?\s*(.*?)(?:This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
+  const instrumentalMatch = /Instrumental Intensities\s*:\s*(.*?)(?:This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
   const instrumental = instrumentalMatch ? instrumentalMatch[1].trim() : '';
 
   const noteMatch = /(This is an aftershock.*?)(?:Expecting Damage|$)/i.exec(cleanText);
