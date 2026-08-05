@@ -25,7 +25,7 @@ export function About() {
             <Code2 size={24} className="dev-icon" />
             <div className="dev-info">
               <span className="dev-label">Created by team of</span>
-              <span className="dev-name">Wneljae Giangan</span>
+              <span className="dev-name">WG</span>
             </div>
           </div>
 
