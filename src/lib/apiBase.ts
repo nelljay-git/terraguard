@@ -73,3 +73,9 @@ export function phivolcsArchiveUrl(path: string): string {
     ? `${phpApi('phivolcs.php')}?path=${qs}`
     : apiUrl(`/api/phivolcs?path=${qs}`);
 }
+
+/** Detail URL for the PHP endpoint (when PHP API is used). */
+export function phivolcsDetailUrl(url: string): string {
+  const qs = encodeURIComponent(url);
+  return `${phpApi('phivolcs.php')}?detail=1&url=${qs}`;
+}

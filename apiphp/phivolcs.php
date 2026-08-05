@@ -36,12 +36,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     exit;
 }
 
-// --- Query parsing (mirrors const pathQuery = (req.query.path as string) || '') ---
+// --- Query parsing ---
 $pathQuery = '';
 if (isset($_GET['path']) && is_string($_GET['path'])) {
     $pathQuery = $_GET['path'];
 }
-$cacheKey = $pathQuery !== '' ? $pathQuery : '__live__';
+$detailUrl = isset($_GET['url']) && is_string($_GET['url']) ? $_GET['url'] : '';
+$isDetail = isset($_GET['detail']) && ($_GET['detail'] === '1' || $_GET['detail'] === 'true');
+$cacheKey = $detailUrl !== '' ? $detailUrl : ($pathQuery !== '' ? $pathQuery : '__live__');
 
 // --- Step 1: fresh in-memory (file-backed) cache -> serve immediately ---
 $cached = getCached($cacheKey);
@@ -76,6 +78,25 @@ if (!$scrape['ok']) {
 }
 
 $html = $scrape['body'];
+
+// NEW: detail mode
+if ($isDetail && $detailUrl !== '') {
+    $detailScrape = fetchPhivolcsPage($detailUrl);
+    if (!$detailScrape['ok']) {
+        $stale = getCachedAny($cacheKey);
+        if ($stale !== null) {
+            emitJson($stale, 200, 's-maxage=60, stale-while-revalidate');
+            exit;
+        }
+        emitJson(['success' => false, 'count' => 0, 'data' => [], 'error' => $detailScrape['error']], 200, 'no-store');
+        exit;
+    }
+    $details = extractDetails($detailScrape['body'], $detailUrl);
+    $payload = ['success' => true, 'count' => 1, 'data' => $details];
+    // No caching for detail responses to avoid serving stale details; TTL = 0.
+    emitJson($payload, 200, 'no-store');
+    exit;
+}
 
 $earthquakes = extractEarthquakes($html, $pathQuery);
 
@@ -308,4 +329,88 @@ function normalizeAbsolute(string $url): string {
     if (isset($p['query'])) $out .= '?' . $p['query'];
     if (isset($p['fragment'])) $out .= '#' . $p['fragment'];
     return $out;
+}
+
+/**
+ * PHP port of parseDetailsHtml() from src/api/phivolcs.ts.
+ * Returns { origin, reportedIntensities, instrumentalIntensities, note, mapUrl }
+ */
+function extractDetails(string $html, string $detailUrl): array {
+    // Mirrors: const cleanText = html.replace(/&nbsp;/g, ' ')
+    //     .replace(/<[^>]+>/g, ' ')
+    //     .replace(/\s+/g, ' ')
+    //     .trim();
+    $cleanText = preg_replace('/&nbsp;/i', ' ', $html);
+    $cleanText = preg_replace('/<[^>]+>/', ' ', $cleanText);
+    $cleanText = preg_replace('/\s+/', ' ', $cleanText);
+    $cleanText = trim($cleanText);
+
+    // Origin extraction: const originMatch = /Origin\s*:\s*(.*?)\s*Magnitude/i.exec(cleanText);
+    $origin = 'Unknown';
+    $originMatch = null;
+    if (preg_match('/Origin\s*:\s*(.*?)\s*Magnitude/i', $cleanText, $originMatch)) {
+        $origin = trim($originMatch[1] ?? '');
+    }
+
+    // Reported Intensities: const reportedMatch = /Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
+    $reported = '';
+    $reportedMatch = null;
+    $reportedPattern = '/Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i';
+    if (preg_match($reportedPattern, $cleanText, $reportedMatch)) {
+        $reported = trim($reportedMatch[1] ?? '');
+        $reported = preg_replace('/^[a-zA-Z0-9_.\s]+Intensity/i', 'Intensity', $reported);
+    }
+
+    // Instrumental Intensities: const instrumentalMatch = /Instrumental Intensities\s*:?\s*(.*?)(?:This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
+    $instrumental = '';
+    $instrumentalMatch = null;
+    $instrumentalPattern = '/Instrumental Intensities\s*:?\s*(.*?)(?:This is an aftershock|Expecting Damage|$)/i';
+    if (preg_match($instrumentalPattern, $cleanText, $instrumentalMatch)) {
+        $instrumental = trim($instrumentalMatch[1] ?? '');
+    }
+
+    // Note: const noteMatch = /(This is an aftershock.*?)(?:Expecting Damage|$)/i.exec(cleanText);
+    $note = '';
+    $noteMatch = null;
+    $notePattern = '/(This is an aftershock.*?)(?:Expecting Damage|$)/i';
+    if (preg_match($notePattern, $cleanText, $noteMatch)) {
+        $note = trim($noteMatch[1] ?? '');
+    }
+
+    // Map URL: const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+    $mapUrl = '';
+    $imgRegex = '/<img[^>]+src=["\']([^"\']+)["\']/i';
+    $matches = [];
+    if (preg_match_all($imgRegex, $html, $matches)) {
+        foreach ($matches[1] as $src) {
+            $src = trim($src);
+            $lowerSrc = strtolower($src);
+            if (!str_contains($lowerSrc, 'logo') && !str_contains($lowerSrc, 'header')) {
+                $mapUrl = $src;
+                break;
+            }
+        }
+    }
+
+    if ($mapUrl !== '' && !str_starts_with($mapUrl, 'http')) {
+        $parsedDetailUrl = parse_url($detailUrl);
+        if ($parsedDetailUrl !== false && isset($parsedDetailUrl['scheme'], $parsedDetailUrl['host'])) {
+            $base = $parsedDetailUrl['scheme'] . '://' . $parsedDetailUrl['host'];
+            if (isset($parsedDetailUrl['path'])) {
+                $dir = dirname($parsedDetailUrl['path']);
+                if ($dir === '.') $dir = '';
+                $mapUrl = $base . ($dir !== '' ? $dir . '/' : '/') . $mapUrl;
+            } else {
+                $mapUrl = $base . '/' . $mapUrl;
+            }
+        }
+    }
+
+    return [
+        'origin' => $origin,
+        'reportedIntensities' => $reported,
+        'instrumentalIntensities' => $instrumental,
+        'note' => $note,
+        'mapUrl' => $mapUrl,
+    ];
 }
