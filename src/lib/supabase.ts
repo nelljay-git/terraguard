@@ -27,6 +27,9 @@ export interface EventComment {
   created_at: string;
   verified: boolean;
   avatar_url: string | null;
+  parent_id: string | null;
+  reply_count: number;
+  pinned: boolean;
 }
 
 export interface EngagementState {
@@ -159,7 +162,11 @@ export async function fetchComments(eqId: string): Promise<EventComment[]> {
   return (data ?? []) as EventComment[];
 }
 
-export async function addComment(eqId: string, content: string): Promise<EventComment> {
+export async function addComment(
+  eqId: string,
+  content: string,
+  parentId: string | null = null
+): Promise<EventComment> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -167,11 +174,37 @@ export async function addComment(eqId: string, content: string): Promise<EventCo
 
   const { data, error } = await supabase
     .from('comments')
-    .insert({ user_id: user.id, eq_id: eqId, content })
+    .insert({ user_id: user.id, eq_id: eqId, content, parent_id: parentId })
     .select()
     .single();
   if (error) throw error;
   return data as EventComment;
+}
+
+export async function fetchCommentReplies(
+  eqId: string,
+  parentIds: string[]
+): Promise<EventComment[]> {
+  if (parentIds.length === 0) return [];
+  const { data, error } = await supabase.rpc('get_comment_replies', {
+    p_eq_id: eqId,
+    p_parent_ids: parentIds,
+  });
+  if (error) throw error;
+  return (data ?? []) as EventComment[];
+}
+
+export async function fetchCommentPath(
+  eqId: string,
+  commentId: string
+): Promise<string[]> {
+  const { data, error } = await supabase.rpc('get_comment_path', {
+    p_eq_id: eqId,
+    p_comment_id: commentId,
+  });
+  if (error) throw error;
+  const row = (data?.[0] ?? null) as { path?: string[] } | null;
+  return row?.path ?? [];
 }
 
 export function getErrorMessage(err: unknown): string {
@@ -186,6 +219,14 @@ export function getErrorMessage(err: unknown): string {
     if (message) return message;
   }
   return 'Something went wrong. Please try again.';
+}
+
+export async function toggleCommentPin(commentId: string): Promise<{ pinned: boolean }> {
+  const { data, error } = await supabase.rpc('toggle_comment_pin', {
+    p_comment_id: commentId,
+  });
+  if (error) throw error;
+  return (data?.[0] ?? { pinned: false }) as { pinned: boolean };
 }
 
 export async function deleteComment(id: string): Promise<void> {

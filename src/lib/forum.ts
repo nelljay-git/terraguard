@@ -50,7 +50,7 @@ export interface ForumComment {
 
 export interface Notification {
   id: string;
-  type: 'reply' | 'reaction' | 'comment_like';
+  type: 'reply' | 'reaction' | 'comment_like' | 'comment_pin';
   post_id: string | null;
   comment_id: string | null;
   eq_id: string | null;

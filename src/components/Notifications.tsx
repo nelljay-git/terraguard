@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Loader2, Reply, ThumbsUp } from 'lucide-react';
+import { Bell, Loader2, Pin, Reply, ThumbsUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getNotifications, markNotificationsRead, formatForumTime, type Notification } from '../lib/forum';
 import '../pages/Forum.css';
@@ -29,10 +29,21 @@ export function Notifications() {
 
   useEffect(() => {
     if (!user) return;
-    load();
-    const t = setInterval(load, 30000);
-    return () => clearInterval(t);
-  }, [user, load]);
+    let cancelled = false;
+    const refresh = () => {
+      getNotifications(user.id)
+        .then((list) => {
+          if (!cancelled) setItems(list);
+        })
+        .catch((err) => console.error('Failed to load notifications', err));
+    };
+    refresh();
+    const t = setInterval(refresh, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [user]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30000);
@@ -109,7 +120,7 @@ export function Notifications() {
               </div>
             ) : items.length === 0 ? (
               <div className="notif-empty">
-                No notifications yet. You'll be notified when someone replies to, reacts to, or likes your comments.
+                No notifications yet. You'll be notified when someone replies to, reacts to, likes, or pins your comments.
               </div>
             ) : (
               items.map((n) => {
@@ -140,6 +151,10 @@ export function Notifications() {
                           <>
                             <strong>{n.actor_name ?? 'Someone'}</strong> replied to your comment
                           </>
+                        ) : n.type === 'comment_pin' ? (
+                          <>
+                            <strong>{n.actor_name ?? 'Someone'}</strong> pinned your comment
+                          </>
                         ) : n.type === 'comment_like' ? (
                           <>
                             <strong>{n.actor_name ?? 'Someone'}</strong> liked your comment
@@ -153,7 +168,13 @@ export function Notifications() {
                       </span>
                       <span className="notif-time">{formatForumTime(n.created_at, now)}</span>
                     </span>
-                    {n.type === 'reply' ? <Reply size={13} /> : <ThumbsUp size={13} />}
+                    {n.type === 'reply' ? (
+                      <Reply size={13} />
+                    ) : n.type === 'comment_pin' ? (
+                      <Pin size={13} />
+                    ) : (
+                      <ThumbsUp size={13} />
+                    )}
                   </button>
                 );
               })

@@ -304,6 +304,38 @@ create trigger comment_like_notification_trg
   after insert on public.comment_likes
   for each row execute procedure public.comment_like_notification();
 
+-- Notify the parent comment's author when someone replies to their comment on
+-- the /details page. Nested replies notify their own direct parent.
+create or replace function public.comment_reply_notification()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_parent_author uuid;
+  v_eq_id text;
+begin
+  if new.parent_id is null then
+    return new;
+  end if;
+
+  select c.user_id, c.eq_id into v_parent_author, v_eq_id
+    from public.comments c
+   where c.id = new.parent_id;
+
+  if v_parent_author is not null and v_parent_author <> new.user_id then
+    insert into public.notifications (user_id, actor_id, type, eq_id, details_comment_id)
+    values (v_parent_author, new.user_id, 'reply', v_eq_id, new.id);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists comment_reply_notification_trg on public.comments;
+create trigger comment_reply_notification_trg
+  after insert on public.comments
+  for each row execute procedure public.comment_reply_notification();
+
 -- -----------------------------------------------------------------------------
 -- Bookmarks (save posts for later).
 -- -----------------------------------------------------------------------------
@@ -328,7 +360,7 @@ create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   actor_id uuid references auth.users (id) on delete set null,
-  type text not null check (type in ('reply', 'reaction', 'comment_like')),
+  type text not null check (type in ('reply', 'reaction', 'comment_like', 'comment_pin')),
   post_id uuid references public.forum_posts (id) on delete cascade,
   comment_id uuid references public.forum_comments (id) on delete cascade,
   eq_id text,
@@ -347,7 +379,7 @@ alter table public.notifications drop constraint if exists forum_notifications_t
 alter table public.notifications drop constraint if exists notifications_type_check;
 alter table public.notifications
   add constraint notifications_type_check
-  check (type in ('reply', 'reaction', 'comment_like'));
+  check (type in ('reply', 'reaction', 'comment_like', 'comment_pin'));
 
 -- -----------------------------------------------------------------------------
 -- Row Level Security

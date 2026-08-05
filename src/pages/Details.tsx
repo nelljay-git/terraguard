@@ -82,7 +82,11 @@ export function Details() {
   }, [earthquake]);
 
   // Reset the Origin "See more" expansion whenever a different quake loads
-  useEffect(() => { setOriginExpanded(false); }, [id]);
+  const [originExpandedId, setOriginExpandedId] = useState(id);
+  if (originExpandedId !== id) {
+    setOriginExpandedId(id);
+    setOriginExpanded(false);
+  }
 
   // Update OG meta tags in the DOM for any JS-based scrapers
   const metaTagsSet = useRef(false);
@@ -228,7 +232,7 @@ export function Details() {
       }
     }
     loadEq();
-  }, [id]);
+  }, [id, earthquake]);
 
    // Discover all bulletins PHIVOLCS published for this earthquake sequence
    useEffect(() => {
@@ -844,7 +848,7 @@ export function Details() {
       </div>
 
       {/* Community: star, like, comments */}
-      {id && <CommunitySection eqId={id} earthquake={earthquake} />}
+      {id && <CommunitySection key={id} eqId={id} earthquake={earthquake} />}
 
       <ImageModal
         isOpen={isImageModalOpen}

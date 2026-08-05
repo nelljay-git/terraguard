@@ -83,6 +83,13 @@ create table if not exists public.comments (
 
 create index if not exists comments_eq_idx on public.comments (eq_id, created_at desc);
 
+-- Replies: comments can nest under a parent comment (one level deep on this page).
+alter table public.comments add column if not exists parent_id uuid references public.comments (id) on delete cascade;
+create index if not exists comments_parent_idx on public.comments (eq_id, parent_id);
+
+-- Admin can manually pin comments so they float to the top of the list.
+alter table public.comments add column if not exists pinned boolean not null default false;
+
 -- Stamp the author display name from the profile automatically (server-side,
 -- so clients cannot spoof it)
 create or replace function public.set_comment_author()
@@ -140,6 +147,7 @@ end;
 $$;
 
 -- Comments: max 3 per minute, max 15 per hour, and min 10s between comments.
+-- Error messages include the exact remaining wait so clients can show a timer.
 create or replace function public.check_comment_rate_limit()
 returns trigger
 language plpgsql
@@ -149,6 +157,8 @@ declare
   cnt_minute int;
   cnt_hour int;
   last_ts timestamptz;
+  oldest_ts timestamptz;
+  wait_seconds int;
 begin
   perform public.prune_rate_events(new.user_id);
 
@@ -165,11 +175,23 @@ begin
      and created_at > now() - interval '1 hour';
 
   if cnt_minute >= 3 then
-    raise exception 'You are commenting too fast. Please wait a minute.';
+    select min(created_at) into oldest_ts
+      from public.rate_events
+     where user_id = new.user_id
+       and event_type = 'comment'
+       and created_at > now() - interval '1 minute';
+    wait_seconds := greatest(1, ceil(extract(epoch from (oldest_ts + interval '1 minute' - now())))::int);
+    raise exception 'You are commenting too fast. Please wait % seconds.', wait_seconds;
   end if;
 
   if cnt_hour >= 15 then
-    raise exception 'Comment limit reached for this hour. Please try again later.';
+    select min(created_at) into oldest_ts
+      from public.rate_events
+     where user_id = new.user_id
+       and event_type = 'comment'
+       and created_at > now() - interval '1 hour';
+    wait_seconds := greatest(1, ceil(extract(epoch from (oldest_ts + interval '1 hour' - now())))::int);
+    raise exception 'Comment limit reached for this hour. Please try again in % minutes.', ceil(wait_seconds / 60.0)::int;
   end if;
 
   select max(created_at) into last_ts
@@ -177,7 +199,8 @@ begin
    where user_id = new.user_id;
 
   if last_ts is not null and (now() - last_ts) < interval '10 seconds' then
-    raise exception 'Please wait a few seconds before commenting again.';
+    wait_seconds := greatest(1, ceil(10 - extract(epoch from now() - last_ts))::int);
+    raise exception 'Please wait % seconds before commenting again.', wait_seconds;
   end if;
 
   insert into public.rate_events (user_id, event_type) values (new.user_id, 'comment');
@@ -393,8 +416,11 @@ create trigger protect_username_change_trg
 -- -----------------------------------------------------------------------------
 alter table public.profiles add column if not exists verified boolean not null default false;
 
--- Comments with a live verified flag (joined from profiles at read time so the
--- badge always reflects the current flag, independent of the author snapshot).
+-- Top-level comments with a live verified flag (joined from profiles at read
+-- time so the badge always reflects the current flag). Replies (parent_id not
+-- null) are fetched separately via get_comment_replies. The return signature
+-- changed, so the old function is dropped first.
+drop function if exists public.get_comments(text);
 create or replace function public.get_comments(p_eq_id text)
 returns table (
   id uuid,
@@ -404,18 +430,112 @@ returns table (
   author text,
   created_at timestamptz,
   verified boolean,
-  avatar_url text
+  avatar_url text,
+  parent_id uuid,
+  reply_count bigint,
+  pinned boolean
 )
 language sql
 security definer set search_path = public
 as $$
   select c.id, c.user_id, c.eq_id, c.content, c.author, c.created_at,
          coalesce(p.verified, false) as verified,
-         p.avatar_url
+         p.avatar_url,
+         c.parent_id,
+         (select count(*) from public.comments ch where ch.parent_id = c.id)::bigint as reply_count,
+         c.pinned
     from public.comments c
     left join public.profiles p on p.id = c.user_id
    where c.eq_id = p_eq_id
-   order by c.created_at desc;
+     and c.parent_id is null
+   order by c.pinned desc, c.created_at desc;
+$$;
+
+-- Direct replies to a set of parent comments (oldest first, thread order).
+drop function if exists public.get_comment_replies(text, uuid[]);
+create or replace function public.get_comment_replies(p_eq_id text, p_parent_ids uuid[])
+returns table (
+  id uuid,
+  user_id uuid,
+  eq_id text,
+  content text,
+  author text,
+  created_at timestamptz,
+  verified boolean,
+  avatar_url text,
+  parent_id uuid,
+  reply_count bigint,
+  pinned boolean
+)
+language sql
+security definer set search_path = public
+as $$
+  select c.id, c.user_id, c.eq_id, c.content, c.author, c.created_at,
+         coalesce(p.verified, false) as verified,
+         p.avatar_url,
+         c.parent_id,
+         (select count(*) from public.comments ch where ch.parent_id = c.id)::bigint as reply_count,
+         c.pinned
+    from public.comments c
+    left join public.profiles p on p.id = c.user_id
+   where c.eq_id = p_eq_id
+     and c.parent_id = any(p_parent_ids)
+   order by c.created_at asc;
+$$;
+
+-- Ancestor chain (root -> ... -> target) for a comment/reply, used to deep-link
+-- to a nested reply from a notification.
+create or replace function public.get_comment_path(p_eq_id text, p_comment_id uuid)
+returns table (path uuid[])
+language sql
+stable
+as $$
+  with recursive chain as (
+    select c.id, c.parent_id, 1 as depth
+      from public.comments c
+     where c.id = p_comment_id and c.eq_id = p_eq_id
+    union all
+    select c.id, c.parent_id, ch.depth + 1
+      from public.comments c
+      join chain ch on c.id = ch.parent_id
+  )
+  select array(select id from chain order by depth desc);
+$$;
+
+-- RPC: admin toggles whether a comment is pinned (pinned comments float to the
+-- top). Only the admin may do this (enforced inside the function). The author
+-- is notified the first time their comment gets pinned.
+create or replace function public.toggle_comment_pin(p_comment_id uuid)
+returns table (pinned boolean)
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_author uuid;
+  v_eq_id text;
+begin
+  if not exists (select 1 from public.profiles where id = v_uid and email = 'gianganwneljae@gmail.com') then
+    raise exception 'Only the administrator can pin comments.';
+  end if;
+
+  select c.user_id, c.eq_id into v_author, v_eq_id
+    from public.comments c
+   where c.id = p_comment_id;
+
+  update public.comments
+     set pinned = not pinned
+   where id = p_comment_id;
+
+  if (select pinned from public.comments where id = p_comment_id)
+     and v_author is not null and v_author <> v_uid then
+    insert into public.notifications (user_id, actor_id, type, eq_id, details_comment_id)
+    values (v_author, v_uid, 'comment_pin', v_eq_id, p_comment_id);
+  end if;
+
+  return query
+    select pinned from public.comments where id = p_comment_id;
+end;
 $$;
 
 -- -----------------------------------------------------------------------------
