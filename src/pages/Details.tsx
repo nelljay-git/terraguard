@@ -5,7 +5,7 @@ import { getPreferredApi } from '../lib/apiPreference';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, Map as MapIcon, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, Map as MapIcon, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
 import { FunFactLoader } from '../components/FunFactLoader';
@@ -407,6 +407,14 @@ export function Details() {
           <span>Back to Archive</span>
         </Link>
         <div className="action-buttons flex-center">
+          <button
+            className="action-btn glass flex-center"
+            onClick={() => window.open(activeLink || earthquake?.link, '_blank', 'noopener')}
+            title={activeLink || earthquake?.link}
+          >
+            <ExternalLink size={16} />
+            <span>Open to {reportingAgency === 'USGS' ? 'USGS' : 'PHIVOLCS'}</span>
+          </button>
           <button className="action-btn glass flex-center" onClick={handleCopy} title="Copy Link">
             {copied ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
             <span>{copied ? 'Copied!' : 'Copy Link'}</span>

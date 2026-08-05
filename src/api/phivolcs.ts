@@ -510,6 +510,25 @@ function buildUsgsOrigin(products: any, p: any): string {
   return 'Unknown';
 }
 
+function buildUsgsMapUrl(products: any, p: any): string {
+  const dyfi = products?.dyfi?.[0];
+  if (dyfi?.contents) {
+    const entries = Object.values<any>(dyfi.contents);
+    const geo = entries.find((c: any) => /_ciim_geo\.jpg$/i.test(c?.url || ''));
+    const plain = entries.find((c: any) => /_ciim\.jpg$/i.test(c?.url || ''));
+    const url = (geo || plain)?.url;
+    if (url) return url;
+  }
+  const shakemap = products?.shakemap?.[0];
+  if (shakemap?.contents) {
+    const intensity = Object.values<any>(shakemap.contents).find((c: any) =>
+      /download\/intensity\.(jpg|png)$/i.test(c?.url || '')
+    );
+    if (intensity?.url) return intensity.url;
+  }
+  return p?.url || '';
+}
+
 async function buildUsgsInstrumentalIntensities(shakemap: any, losspager: any, p: any): Promise<string> {
   const pagerCities = await buildUsgsPagerCities(losspager);
   if (pagerCities) return pagerCities;
@@ -567,7 +586,7 @@ export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDet
               reportedIntensities: reported,
               instrumentalIntensities: instrumental,
               note: bits.join(' \u00b7 '),
-              mapUrl: p.url || '',
+              mapUrl: buildUsgsMapUrl(products, p),
             };
           }
         }
