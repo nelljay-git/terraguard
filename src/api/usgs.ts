@@ -105,8 +105,6 @@ export function getCachedUsgsData(): UsgsEarthquake[] {
 
 const ARCHIVE_QUERY_URL = 'https://earthquake.usgs.gov/fdsnws/event/1/query';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-// Philippine region, matching the app's PHIVOLCS archive scope.
-const PH_BOUNDS = { south: 4.5, north: 21.5, west: 116.0, east: 127.5 };
 
 export async function fetchUsgsArchiveData(year: number, monthName: string): Promise<UsgsEarthquake[]> {
   const monthIndex = MONTHS.indexOf(monthName);
@@ -118,10 +116,6 @@ export async function fetchUsgsArchiveData(year: number, monthName: string): Pro
     format: 'geojson',
     starttime: startDate.toISOString(),
     endtime: endDate.toISOString(),
-    minlatitude: String(PH_BOUNDS.south),
-    maxlatitude: String(PH_BOUNDS.north),
-    minlongitude: String(PH_BOUNDS.west),
-    maxlongitude: String(PH_BOUNDS.east),
     orderby: 'time',
     limit: '20000',
   });

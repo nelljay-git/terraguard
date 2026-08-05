@@ -129,7 +129,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       setApiError(err);
     } else {
       setPreferredApi(next);
-      setApiSuccess('Preferred API saved.');
+      setApiSuccess('Preferred API saved. Reloading…');
+      setTimeout(() => window.location.reload(), 600);
     }
   };
 

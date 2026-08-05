@@ -119,7 +119,7 @@ export function AftershockTracker({ currentEarthquake }: AftershockTrackerProps)
         {aftershocks.length} aftershock{aftershocks.length !== 1 ? 's' : ''} detected within {AFTERSHOCK_RADIUS_KM} km
       </p>
 
-      <div className="ast-list">
+      <div className={`ast-list${aftershocks.length > 10 ? ' ast-list-scroll' : ''}`}>
         {aftershocks.map((eq, i) => {
           const mag = parseFloat(eq.magnitude);
           const color = getSeverityColor(mag);

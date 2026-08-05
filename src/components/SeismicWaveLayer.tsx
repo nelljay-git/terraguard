@@ -197,7 +197,7 @@ export function SeismicWaveLayer({ lat, lng, magnitude, color, containerRef }: S
       <button type="button" className="wave-play-btn" onClick={handleButtonClick} title="Animate P-wave and S-wave propagation from the epicenter">
         {phase === 'playing' ? <Pause size={16} /> : phase === 'done' ? <RotateCcw size={16} /> : <Play size={16} />}
       </button>
-      {phase !== 'idle' && (
+      {phase === 'playing' && (
         <div className="wave-status">
           <div className="wave-legend">
             <span><i className="wave-dot wave-p" />P-wave <b ref={pDistEl}>0</b> km</span>

@@ -467,6 +467,49 @@ async function buildUsgsPagerCities(losspager: any): Promise<string> {
   return lines.join('\n');
 }
 
+function cleanUsgsHtmlText(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildUsgsOrigin(products: any, p: any): string {
+  const generalText = products?.['general-text']?.[0];
+  if (generalText?.contents) {
+    const entry = Object.values<any>(generalText.contents).find(
+      (c: any) => typeof c?.bytes === 'string' && c.bytes.includes('Tectonic Summary')
+    );
+    if (entry) {
+      const sectionStart = entry.bytes.indexOf('Tectonic Summary');
+      const afterHeading = entry.bytes.slice(sectionStart + 'Tectonic Summary'.length);
+      const nextHeading = afterHeading.search(/<h2/i);
+      const section = nextHeading > 0 ? afterHeading.slice(0, nextHeading) : afterHeading;
+      const firstParagraph = section.split(/<\/p>/i)[0] || section;
+      const text = cleanUsgsHtmlText(firstParagraph);
+      if (text) return text;
+    }
+  }
+  if (p?.type) {
+    const originTypes: Record<string, string> = {
+      earthquake: 'Tectonic (fault movement)',
+      'quarry blast': 'Quarry blast',
+      'nuclear explosion': 'Nuclear explosion',
+      'volcanic eruption': 'Volcanic eruption',
+      'ice quake': 'Ice quake',
+      'induced or triggered event': 'Induced or triggered event',
+    };
+    return originTypes[p.type] || p.type;
+  }
+  return 'Unknown';
+}
+
 async function buildUsgsInstrumentalIntensities(shakemap: any, losspager: any, p: any): Promise<string> {
   const pagerCities = await buildUsgsPagerCities(losspager);
   if (pagerCities) return pagerCities;
@@ -520,7 +563,7 @@ export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDet
             }
             if (p.alert) bits.push(`Alert level: ${p.alert}`);
             return {
-              origin: p.time ? new Date(p.time).toLocaleString() : 'Unknown',
+              origin: buildUsgsOrigin(products, p),
               reportedIntensities: reported,
               instrumentalIntensities: instrumental,
               note: bits.join(' \u00b7 '),

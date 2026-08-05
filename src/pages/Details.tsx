@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { fetchPhivolcsData, fetchEarthquakeDetails, fetchPhivolcsArchiveData, fetchBulletins, type PhivolcsEarthquake, type EarthquakeDetails, type BulletinRef } from '../api/phivolcs';
+import { getPreferredApi } from '../lib/apiPreference';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
@@ -28,6 +29,11 @@ function extractBulletin(link: string | undefined): { no: number; final: boolean
   const m = /_B(\d+)(F)?/i.exec(link);
   if (!m) return null;
   return { no: parseInt(m[1], 10), final: m[2]?.toUpperCase() === 'F' };
+}
+
+function truncateWords(text: string, maxWords: number): string {
+  const words = text.trim().split(/\s+/);
+  return words.length <= maxWords ? text : words.slice(0, maxWords).join(' ');
 }
 
 function decodeEqId(id: string): { datetime?: string } {
@@ -61,6 +67,8 @@ export function Details() {
   const [bulletins, setBulletins] = useState<BulletinRef[]>([]);
   const [activeLink, setActiveLink] = useState<string | undefined>(earthquake?.link);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const reportingAgency = getPreferredApi() === 'usgs' ? 'USGS' : 'PHIVOLCS-DOST';
+  const [originExpanded, setOriginExpanded] = useState(false);
 
   // Set document title immediately and update when data arrives
   useEffect(() => {
@@ -72,6 +80,9 @@ export function Details() {
     }
     return () => { document.title = 'TerraGuard - Earthquake Monitoring'; };
   }, [earthquake]);
+
+  // Reset the Origin "See more" expansion whenever a different quake loads
+  useEffect(() => { setOriginExpanded(false); }, [id]);
 
   // Update OG meta tags in the DOM for any JS-based scrapers
   const metaTagsSet = useRef(false);
@@ -673,7 +684,7 @@ export function Details() {
                 <Info size={20} className="info-icon" style={{ color }} />
                 <div>
                   <div className="info-label">Reporting Agency</div>
-                  <div className="info-value">PHIVOLCS-DOST</div>
+                  <div className="info-value">{reportingAgency}</div>
                 </div>
               </div>
               {bulletin && (
@@ -694,7 +705,21 @@ export function Details() {
                   <Info size={20} className="info-icon" style={{ color }} />
                   <div>
                     <div className="info-label">Origin</div>
-                    <div className="info-value" style={{ textTransform: 'capitalize' }}>{details.origin.toLowerCase()}</div>
+                    {details.origin.length < 80 ? (
+                      <div className="info-value" style={{ textTransform: 'capitalize' }}>{details.origin.toLowerCase()}</div>
+                    ) : (
+                      <>
+                        <div className="info-value" style={{ fontSize: '0.85rem', lineHeight: 1.5, fontWeight: 'normal' }}>
+                          {originExpanded ? details.origin : `${truncateWords(details.origin, 30)}...`}
+                        </div>
+                        <button
+                          onClick={() => setOriginExpanded(prev => !prev)}
+                          style={{ background: 'none', border: 'none', padding: 0, color: '#60a5fa', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+                        >
+                          {originExpanded ? 'See less' : 'See more...'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}

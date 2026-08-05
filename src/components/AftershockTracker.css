@@ -37,6 +37,12 @@
   gap: 6px;
 }
 
+.ast-list-scroll {
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
 .ast-item {
   display: flex;
   align-items: center;
