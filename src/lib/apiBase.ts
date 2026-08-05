@@ -26,3 +26,50 @@ export function apiUrl(path: string): string {
   if (!API_BASE) return path;
   return `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
 }
+
+// ---------------------------------------------------------------------------
+// PHIVOLCS scraper target — optional PHP endpoint
+// ---------------------------------------------------------------------------
+// The live PHIVOLCS index (+ monthly archive) requests are normally served by
+// the in-repo /api/phivolcs functions (Vercel / CloudFlare Pages). CloudFlare's
+// free tier only allows 100,000 function-invocations/day, and the 30s live-feed
+// polling exhausted it. Routing the PHIVOLCS list through this PHP endpoint
+// (hosted on unlimited-bandwidth shared hosting) bypasses that quota entirely.
+//
+// Toggle:  VITE_USE_PHP_PHIVOLCS_API=true  (default)  -> use the PHP endpoint
+//          VITE_USE_PHP_PHIVOLCS_API=false            -> fall back to /api/phivolcs
+// Override base: VITE_PHP_API_BASE=<origin>/api (trailing slash trimmed).
+//
+// IMPORTANT: an `http://` origin is blocked as mixed content on an `https://`
+// site. Serve the PHP endpoint over HTTPS and switch VITE_PHP_API_BASE to the
+// https:// origin, or set the toggle to false, if the endpoint is unreachable.
+const usePhpApi = !/^(false|0)$/i.test(
+  (import.meta.env?.VITE_USE_PHP_PHIVOLCS_API as string | undefined) ?? 'true',
+);
+
+const PHP_API_BASE: string = (
+  (import.meta.env?.VITE_PHP_API_BASE as string | undefined) ??
+  'https://trikefare.x10.mx/api'
+).replace(/\/+$/, '');
+
+function phpApi(pathWithName: string): string {
+  return `${PHP_API_BASE}/${pathWithName}`;
+}
+
+/** Live index URL. When the PHP API switch is off, falls back to /api/phivolcs. */
+export function phivolcsListUrl(): string {
+  return usePhpApi ? phpApi('phivolcs.php') : apiUrl('/api/phivolcs');
+}
+
+/**
+ * Monthly-archive URL for `path`
+ * (e.g. "EQLatest-Monthly/2026/2026_January.html").
+ * The PHP scraper takes the same path via ?path= ; the in-repo functions use
+ * /api/phivolcs?path=...
+ */
+export function phivolcsArchiveUrl(path: string): string {
+  const qs = encodeURIComponent(path);
+  return usePhpApi
+    ? `${phpApi('phivolcs.php')}?path=${qs}`
+    : apiUrl(`/api/phivolcs?path=${qs}`);
+}

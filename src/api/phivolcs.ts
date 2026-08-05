@@ -56,7 +56,7 @@ export interface BulletinRef {
   url: string;
 }
 
-import { apiUrl } from '../lib/apiBase';
+import { apiUrl, phivolcsListUrl, phivolcsArchiveUrl } from '../lib/apiBase';
 import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
 import { type UsgsEarthquake, fetchUsgsData, getCachedUsgsData, fetchUsgsArchiveData } from './usgs';
 import { getPreferredApi } from '../lib/apiPreference';
@@ -97,8 +97,12 @@ async function fetchPhivolcsOnce(): Promise<PhivolcsResponse> {
 
   try {
     // Native: scrape PHIVOLCS directly (no CORS-blocking proxy needed).
-    // Web/dev: use the local Vite proxy.
-    const url = IS_NATIVE ? `${PHIVOLCS_BASE}/` : '/api/phivolcs';
+    // Dev: local Vite proxy (/api/phivolcs). Prod web: PHP endpoint or in-repo functions.
+    const url = IS_NATIVE
+      ? `${PHIVOLCS_BASE}/`
+      : import.meta.env?.DEV
+        ? '/api/phivolcs'
+        : phivolcsListUrl();
     const res = await nativeHttpGet(url);
     clearTimeout(timeout);
     if (!res.ok) throw new Error(`Failed to fetch from proxy (${res.status})`);
@@ -206,12 +210,12 @@ export async function fetchArchiveData(
 export async function fetchPhivolcsArchiveData(year: number, monthName: string): Promise<PhivolcsResponse> {
   const path = `EQLatest-Monthly/${year}/${year}_${monthName}.html`;
   // Native: scrape the archive page directly from PHIVOLCS.
-  // Dev: Vite proxy handles the path routing. Prod web: Vercel serverless function (?path=).
+  // Dev: Vite proxy handles the path routing. Prod web: PHP endpoint or in-repo functions (?path=).
   const url = IS_NATIVE
     ? `${PHIVOLCS_BASE}/${path}`
     : import.meta.env?.DEV
       ? `/api/phivolcs/${path}`
-      : apiUrl(`/api/phivolcs?path=${encodeURIComponent(path)}`);
+      : phivolcsArchiveUrl(path);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
