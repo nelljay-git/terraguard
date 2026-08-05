@@ -352,6 +352,145 @@ export async function fetchBulletins(link: string): Promise<BulletinRef[]> {
   return results;
 }
 
+const USGS_ROMAN_LEVELS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+
+function usgsRomanIntensity(value: number): string {
+  const level = Math.max(1, Math.min(12, Math.round(value)));
+  return USGS_ROMAN_LEVELS[level - 1];
+}
+
+async function fetchUsgsProductJson(
+  product: { contents?: Record<string, { url: string }> } | undefined,
+  fileName: string
+): Promise<any> {
+  const url = product?.contents?.[fileName]?.url;
+  if (!url) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (error) {
+    console.warn(`Failed to fetch USGS product ${fileName}:`, error);
+    return null;
+  }
+}
+
+function cleanUsgsIntensityName(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/UTM:\([^)]*\)/g, '')
+    .replace(/<br\s*\/?>/gi, ', ')
+    .replace(/^[,\s;]+|[,\s;]+$/g, '')
+    .trim();
+}
+
+function cleanUsgsStationName(raw: string, code?: string): string {
+  const cleaned = cleanUsgsIntensityName(raw);
+  if (cleaned) {
+    return cleaned.replace(/^(GEOFON Station\s*)+/i, 'GEOFON Station ').trim();
+  }
+  return code || '';
+}
+
+function buildUsgsIntensityList(
+  rows: { name?: string; level: number; extra?: string }[],
+  perLineCap = 12
+): string {
+  const groups = new Map<number, { names: string[]; dropped: number }>();
+  for (const row of rows) {
+    if (!row.name) continue;
+    const level = Math.max(1, Math.min(12, Math.round(row.level)));
+    if (!groups.has(level)) groups.set(level, { names: [], dropped: 0 });
+    const group = groups.get(level)!;
+    if (group.names.length < perLineCap) {
+      group.names.push(row.extra ? `${row.name} (${row.extra})` : row.name);
+    } else {
+      group.dropped += 1;
+    }
+  }
+  return [...groups.keys()]
+    .sort((a, b) => b - a)
+    .map((level) => {
+      const group = groups.get(level)!;
+      const tail = group.dropped > 0 ? ` and ${group.dropped} more` : '';
+      return `Intensity ${usgsRomanIntensity(level)} - ${group.names.join(', ')}${tail}`;
+    })
+    .join('\n');
+}
+
+async function buildUsgsReportedIntensities(dyfi: any, p: any): Promise<string> {
+  const geo = await fetchUsgsProductJson(dyfi, 'dyfi_geo_10km.geojson');
+  if (geo?.features?.length) {
+    const rows = geo.features
+      .filter((f: any) => f?.properties?.cdi != null && f.properties.name)
+      .map((f: any) => ({
+        name: cleanUsgsIntensityName(f.properties.name),
+        level: f.properties.cdi,
+        extra:
+          f.properties.nresp != null
+            ? `${f.properties.nresp} ${f.properties.nresp === 1 ? 'response' : 'responses'}`
+            : undefined,
+      }));
+    const lines = buildUsgsIntensityList(rows);
+    if (lines) return lines;
+  }
+  if (p?.cdi != null) {
+    const felt =
+      typeof p.felt === 'number'
+        ? ` (${p.felt.toLocaleString()} felt ${p.felt === 1 ? 'report' : 'reports'})`
+        : '';
+    return `Intensity ${usgsRomanIntensity(p.cdi)} - Reported intensity via Did You Feel It?${felt}`;
+  }
+  return '';
+}
+
+function formatUsgsPopulationK(pop: number): string {
+  if (!pop || pop < 0) return '';
+  return Math.round(pop / 1000).toLocaleString('en-US');
+}
+
+async function buildUsgsPagerCities(losspager: any): Promise<string> {
+  const cities = await fetchUsgsProductJson(losspager, 'cities.json');
+  const list = cities?.all_cities;
+  if (!Array.isArray(list) || list.length === 0) return '';
+  const lines: string[] = [];
+  for (const c of list) {
+    if (!c?.name || c?.mmi == null || isNaN(Number(c.mmi))) continue;
+    const pop = formatUsgsPopulationK(c.pop);
+    lines.push(
+      `Intensity ${usgsRomanIntensity(Number(c.mmi))} - ${c.name}${pop ? ` (${pop} k)` : ''}`
+    );
+  }
+  return lines.join('\n');
+}
+
+async function buildUsgsInstrumentalIntensities(shakemap: any, losspager: any, p: any): Promise<string> {
+  const pagerCities = await buildUsgsPagerCities(losspager);
+  if (pagerCities) return pagerCities;
+
+  const stations = await fetchUsgsProductJson(shakemap, 'download/stationlist.json');
+  if (stations?.features?.length) {
+    const rows = stations.features
+      .filter((f: any) => {
+        const value = f?.properties?.intensity;
+        return value != null && value !== 'null' && !isNaN(Number(value));
+      })
+      .map((f: any) => ({
+        name: cleanUsgsStationName(f.properties.name, f.properties.code),
+        level: Number(f.properties.intensity),
+      }));
+    const lines = buildUsgsIntensityList(rows);
+    if (lines) return lines;
+  }
+  if (p?.mmi != null) {
+    return `Intensity ${usgsRomanIntensity(p.mmi)} - Estimated instrumental intensity (ShakeMap)`;
+  }
+  return '';
+}
+
 export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDetails | null> {
   // USGS event links don't map to PHIVOLCS pages; pull the event from the USGS
   // GeoJSON API instead (CORS is open on the USGS feeds).
@@ -366,11 +505,25 @@ export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDet
           const feature = await res.json();
           const p = feature?.properties;
           if (p) {
+            const products = p.products || {};
+            const [reported, instrumental] = await Promise.all([
+              buildUsgsReportedIntensities(products.dyfi?.[0], p),
+              buildUsgsInstrumentalIntensities(
+                products.shakemap?.[0],
+                products.losspager?.[0],
+                p
+              ),
+            ]);
+            const bits: string[] = [];
+            if (typeof p.felt === 'number') {
+              bits.push(`${p.felt.toLocaleString()} felt ${p.felt === 1 ? 'report' : 'reports'}`);
+            }
+            if (p.alert) bits.push(`Alert level: ${p.alert}`);
             return {
               origin: p.time ? new Date(p.time).toLocaleString() : 'Unknown',
-              reportedIntensities: p.mmi != null ? `MMI ${p.mmi}` : '',
-              instrumentalIntensities: p.alert ? `USGS alert level: ${p.alert}` : '',
-              note: '',
+              reportedIntensities: reported,
+              instrumentalIntensities: instrumental,
+              note: bits.join(' \u00b7 '),
               mapUrl: p.url || '',
             };
           }
