@@ -56,7 +56,7 @@ export interface BulletinRef {
   url: string;
 }
 
-import { apiUrl, phivolcsListUrl, phivolcsArchiveUrl, phivolcsDetailUrl } from '../lib/apiBase';
+import { apiUrl, phivolcsListUrl, phivolcsArchiveUrl, phivolcsDetailUrl, usePhpApi } from '../lib/apiBase';
 import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
 import { type UsgsEarthquake, fetchUsgsData, getCachedUsgsData, fetchUsgsArchiveData } from './usgs';
 import { getPreferredApi } from '../lib/apiPreference';
@@ -610,15 +610,19 @@ export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDet
       return parseDetailsHtml(html, url);
     }
 
-    // Try PHP endpoint in production web when enabled
-    if (!import.meta.env?.DEV && !apiUrl.startsWith('http')) {
-      const phpRes = await fetch(phivolcsDetailUrl(url));
-      if (phpRes.ok) {
-        const contentType = phpRes.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const json = await phpRes.json();
-          if (json.success) return json.data;
+    // Try PHP endpoint in production web when enabled (default true)
+    if (!import.meta.env?.DEV && usePhpApi) {
+      try {
+        const phpRes = await fetch(phivolcsDetailUrl(url));
+        if (phpRes.ok) {
+          const contentType = phpRes.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const json = await phpRes.json();
+            if (json.success) return json.data;
+          }
         }
+      } catch (e) {
+        console.warn('PHP detail endpoint failed, falling back:', e);
       }
     }
 

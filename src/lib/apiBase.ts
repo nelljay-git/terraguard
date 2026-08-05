@@ -43,7 +43,7 @@ export function apiUrl(path: string): string {
 // IMPORTANT: an `http://` origin is blocked as mixed content on an `https://`
 // site. Serve the PHP endpoint over HTTPS and switch VITE_PHP_API_BASE to the
 // https:// origin, or set the toggle to false, if the endpoint is unreachable.
-const usePhpApi = !/^(false|0)$/i.test(
+export const usePhpApi = !/^(false|0)$/i.test(
   (import.meta.env?.VITE_USE_PHP_PHIVOLCS_API as string | undefined) ?? 'true',
 );
 
