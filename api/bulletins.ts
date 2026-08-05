@@ -41,7 +41,9 @@ export default async function handler(req: any, res: any) {
   };
 
   const results: { no: number; final: boolean; url: string }[] = [];
-  for (let n = 1; n <= 30; n++) {
+  // Cap the probe loop: sequences this long are effectively nonexistent, and
+  // every miss here is a wasted request to PHIVOLCS.
+  for (let n = 1; n <= 8; n++) {
     const [plain, final] = await Promise.all([exists(build(n, false)), exists(build(n, true))]);
     if (!plain && !final) break;
     if (plain) results.push({ no: n, final: false, url: build(n, false) });

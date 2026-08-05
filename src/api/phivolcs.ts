@@ -306,7 +306,7 @@ export async function fetchBulletins(link: string): Promise<BulletinRef[]> {
     };
 
     const results: BulletinRef[] = [];
-    for (let n = 1; n <= 30; n++) {
+    for (let n = 1; n <= 8; n++) {
       const [plain, final] = await Promise.all([exists(build(n, false)), exists(build(n, true))]);
       if (!plain && !final) break;
       if (plain) results.push({ no: n, final: false, url: build(n, false) });
@@ -343,7 +343,7 @@ export async function fetchBulletins(link: string): Promise<BulletinRef[]> {
   };
 
   const results: BulletinRef[] = [];
-  for (let n = 1; n <= 30; n++) {
+  for (let n = 1; n <= 8; n++) {
     const [plain, final] = await Promise.all([exists(build(n, false)), exists(build(n, true))]);
     if (!plain && !final) break;
     if (plain) results.push({ no: n, final: false, url: build(n, false) });

@@ -116,7 +116,7 @@ export default async function handler(req: any, res: any) {
   // Step 1: Serve from cache if we have a fresh (< 60s old) entry.
   const cached = responseCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
     return res.status(200).json(cached.payload);
   }
 
@@ -148,14 +148,14 @@ export default async function handler(req: any, res: any) {
     // Step 2: Scrape succeeded, so refresh the cache with the new result.
     responseCache.set(cacheKey, { timestamp: Date.now(), payload });
 
-    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
     return res.status(200).json(payload);
   } catch (error) {
     // Step 3: Scrape failed. If we have any cached response (even stale),
     // return it instead of an error so the client still gets usable data.
     const stale = responseCache.get(cacheKey);
     if (stale) {
-      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
       return res.status(200).json(stale.payload);
     }
 

@@ -35,7 +35,7 @@ export function Alerts() {
           <ul className="alerts-how-list">
             <li>Create alert zones by clicking locations on the map</li>
             <li>Set a magnitude threshold for each zone (e.g., M4.5+)</li>
-            <li>When the app is open, it polls PHIVOLCS every 30 seconds</li>
+            <li>When the app is open and visible, it polls PHIVOLCS every 60 seconds</li>
             <li>Matching earthquakes trigger a browser notification</li>
             <li>Install TerraGuard as a PWA for the best experience</li>
           </ul>

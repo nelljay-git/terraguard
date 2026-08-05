@@ -4,6 +4,56 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
+const EDGE_TTL_MS = 3600 * 1000;
+const EDGE_CACHE_HOST = 'https://terraguard-edge-cache.invalid';
+const EDGE_CACHE_KEY_HEADER = 'x-terraguard-cached-at';
+
+interface DetailsPayload {
+  success: true;
+  data: {
+    origin: string;
+    reportedIntensities: string;
+    instrumentalIntensities: string;
+    note: string;
+    mapUrl: string;
+  };
+}
+
+function edgeCacheUrl(targetUrl: string): URL {
+  const u = new URL(`${EDGE_CACHE_HOST}/api/details`);
+  u.searchParams.set('url', targetUrl);
+  return u;
+}
+
+async function edgeGet(targetUrl: string): Promise<DetailsPayload | null> {
+  if (typeof caches === 'undefined') return null;
+  try {
+    const cached = await caches.default.match(edgeCacheUrl(targetUrl));
+    if (!cached) return null;
+    const cachedAt = Number(cached.headers.get(EDGE_CACHE_KEY_HEADER) || 0);
+    if (!cachedAt || Date.now() - cachedAt >= EDGE_TTL_MS) return null;
+    return (await cached.json()) as DetailsPayload;
+  } catch {
+    return null;
+  }
+}
+
+async function edgePut(targetUrl: string, payload: DetailsPayload): Promise<void> {
+  if (typeof caches === 'undefined') return;
+  try {
+    const res = new Response(JSON.stringify(payload), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 's-maxage=3600',
+        [EDGE_CACHE_KEY_HEADER]: String(Date.now()),
+      },
+    });
+    await caches.default.put(edgeCacheUrl(targetUrl), res);
+  } catch {
+    // Best-effort: failing to write the edge cache must not break the response.
+  }
+}
+
 export async function onRequest(context: { request: Request }) {
   const { request } = context;
   const url = new URL(request.url);
@@ -15,6 +65,17 @@ export async function onRequest(context: { request: Request }) {
     return new Response(JSON.stringify({ success: false, error: 'Missing URL parameter' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
+  }
+
+  const cachedEdge = await edgeGet(targetUrl);
+  if (cachedEdge) {
+    return new Response(JSON.stringify(cachedEdge), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 's-maxage=3600, stale-while-revalidate',
+        ...corsHeaders,
+      },
     });
   }
 
@@ -62,10 +123,13 @@ export async function onRequest(context: { request: Request }) {
       mapUrl = urlObj.origin + urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf('/') + 1) + mapUrl;
     }
 
-    return new Response(JSON.stringify({
+    const payload: DetailsPayload = {
       success: true,
       data: { origin, reportedIntensities: reported, instrumentalIntensities: instrumental, note, mapUrl },
-    }), {
+    };
+    await edgePut(targetUrl, payload);
+
+    return new Response(JSON.stringify(payload), {
       headers: {
         'Content-Type': 'application/json',
         'Cache-Control': 's-maxage=3600, stale-while-revalidate',

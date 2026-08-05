@@ -83,9 +83,36 @@ export function Stats() {
   }, []);
 
   useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | undefined;
+
+    const startPolling = () => {
+      if (interval) return;
+      interval = setInterval(loadData, 60000);
+    };
+    const stopPolling = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = undefined;
+      }
+    };
+
     loadData();
-    const interval = setInterval(loadData, 30000);
-    return () => clearInterval(interval);
+    startPolling();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [loadData]);
 
   const filteredEarthquakes = useMemo(() => {
