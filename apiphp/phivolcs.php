@@ -16,6 +16,30 @@
  *       (add ?path=2026_Earthquake_Information/July/2026_0701_0004_B1.html for a single event)
  */
 
+// --- Error handling: surface failures as JSON, never a blank page ---
+// On hosts where display_errors is off (typical), an uncaught Error fatal-errors
+// the script and returns nothing. This converts fatal/throwable errors into a
+// JSON error response so clients always get a structured body.
+error_reporting(E_ALL);
+
+/** Emit JSON without crashing if headers were already sent (used by the shutdown
+ *  handler, which may fire after partial output). */
+function emitJsonSafe(array $payload, int $status, string $cacheControl): void {
+    if (!headers_sent()) {
+        header('Content-Type: application/json');
+        header('Cache-Control: ' . $cacheControl);
+        http_response_code($status);
+    }
+    echo json_encode($payload);
+}
+
+register_shutdown_function(function () {
+    $err = error_get_last();
+    if ($err !== null && in_array((int)$err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_RECOVERABLE_ERROR])) {
+        emitJsonSafe(['success' => false, 'count' => 0, 'data' => [], 'error' => $err['message']], 500, 'no-store');
+    }
+});
+
 // --- Configuration (mirrors CACHE_TTL_MS) ---
 define('CACHE_TTL_MS', 60 * 1000);
 define('PHIVOLCS_BASE', 'https://earthquake.phivolcs.dost.gov.ph');
@@ -37,12 +61,30 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 // --- Query parsing ---
+// Robust input handling: when a caller passes ?url=<full URL> unencoded, PHP's
+// query-string parser may split the value on '/' into a nested array. We read
+// $_GET first (encoded values arrive as clean strings), then fall back to
+// parse_str on the raw query string so an unencoded ?url=https://... is still
+// recovered. This keeps the endpoint tolerant of both forms.
 $pathQuery = '';
 if (isset($_GET['path']) && is_string($_GET['path'])) {
     $pathQuery = $_GET['path'];
 }
-$detailUrl = isset($_GET['url']) && is_string($_GET['url']) ? $_GET['url'] : '';
-$isDetail = isset($_GET['detail']) && ($_GET['detail'] === '1' || $_GET['detail'] === 'true');
+$detailUrl = '';
+if (isset($_GET['url']) && is_string($_GET['url'])) {
+    $detailUrl = $_GET['url'];
+} elseif (isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '') {
+    $parsed = array();
+    parse_str($_SERVER['QUERY_STRING'], $parsed);
+    if (isset($parsed['url']) && is_string($parsed['url'])) {
+        $detailUrl = $parsed['url'];
+    }
+}
+$isDetail = false;
+if (isset($_GET['detail'])) {
+    $detailVal = is_array($_GET['detail']) ? '' : $_GET['detail'];
+    $isDetail = ($detailVal === '1' || $detailVal === 'true');
+}
 $cacheKey = $detailUrl !== '' ? $detailUrl : ($pathQuery !== '' ? $pathQuery : '__live__');
 
 // --- Step 1: fresh in-memory (file-backed) cache -> serve immediately ---
@@ -55,6 +97,33 @@ if ($cached !== null) {
 // --- Step 2: scrape PHIVOLCS (mirrors fetch(..., { headers: { User-Agent } })) ---
 // Returns { ok, body, error } so a non-2xx produces the same error string the
 // TS handler throws: "PHIVOLCS responded with <status>".
+
+// NEW: detail mode — handle BEFORE any other fetch, so we don't fetch the
+// homepage unnecessarily (the app passes the full detail URL via ?url=).
+if ($isDetail && $detailUrl !== '') {
+    $detailScrape = fetchPhivolcsPage($detailUrl);
+    if (!$detailScrape['ok']) {
+        $stale = getCachedAny($cacheKey);
+        if ($stale !== null) {
+            emitJson($stale, 200, 's-maxage=60, stale-while-revalidate');
+            exit;
+        }
+        emitJson(['success' => false, 'count' => 0, 'data' => [], 'error' => $detailScrape['error']], 200, 'no-store');
+        exit;
+    }
+    $details = null;
+    try {
+        $details = extractDetails($detailScrape['body'], $detailUrl);
+    } catch (Throwable $e) {
+        emitJson(['success' => false, 'count' => 0, 'data' => [], 'error' => 'extractDetails: ' . $e->getMessage()], 500, 'no-store');
+        exit;
+    }
+    $payload = ['success' => true, 'count' => 1, 'data' => $details];
+    // No caching for detail responses to avoid serving stale details; TTL = 0.
+    emitJson($payload, 200, 'no-store');
+    exit;
+}
+
 $targetUrl = $pathQuery !== ''
     ? PHIVOLCS_BASE . '/' . $pathQuery
     : PHIVOLCS_BASE . '/';
@@ -78,25 +147,6 @@ if (!$scrape['ok']) {
 }
 
 $html = $scrape['body'];
-
-// NEW: detail mode
-if ($isDetail && $detailUrl !== '') {
-    $detailScrape = fetchPhivolcsPage($detailUrl);
-    if (!$detailScrape['ok']) {
-        $stale = getCachedAny($cacheKey);
-        if ($stale !== null) {
-            emitJson($stale, 200, 's-maxage=60, stale-while-revalidate');
-            exit;
-        }
-        emitJson(['success' => false, 'count' => 0, 'data' => [], 'error' => $detailScrape['error']], 200, 'no-store');
-        exit;
-    }
-    $details = extractDetails($detailScrape['body'], $detailUrl);
-    $payload = ['success' => true, 'count' => 1, 'data' => $details];
-    // No caching for detail responses to avoid serving stale details; TTL = 0.
-    emitJson($payload, 200, 'no-store');
-    exit;
-}
 
 $earthquakes = extractEarthquakes($html, $pathQuery);
 
@@ -352,13 +402,12 @@ function extractDetails(string $html, string $detailUrl): array {
         $origin = trim($originMatch[1] ?? '');
     }
 
-    // Reported Intensities: const reportedMatch = /Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
+    // Reported Intensities
     $reported = '';
     $reportedMatch = null;
     $reportedPattern = '/Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i';
     if (preg_match($reportedPattern, $cleanText, $reportedMatch)) {
         $reported = trim($reportedMatch[1] ?? '');
-        $reported = preg_replace('/^[a-zA-Z0-9_.\s]+Intensity/i', 'Intensity', $reported);
     }
 
     // Instrumental Intensities: const instrumentalMatch = /Instrumental Intensities\s*:?\s*(.*?)(?:This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
@@ -385,14 +434,14 @@ function extractDetails(string $html, string $detailUrl): array {
         foreach ($matches[1] as $src) {
             $src = trim($src);
             $lowerSrc = strtolower($src);
-            if (!str_contains($lowerSrc, 'logo') && !str_contains($lowerSrc, 'header')) {
+            if (strpos($lowerSrc, 'logo') === false && strpos($lowerSrc, 'header') === false) {
                 $mapUrl = $src;
                 break;
             }
         }
     }
 
-    if ($mapUrl !== '' && !str_starts_with($mapUrl, 'http')) {
+    if ($mapUrl !== '' && strpos($mapUrl, 'http') !== 0) {
         $parsedDetailUrl = parse_url($detailUrl);
         if ($parsedDetailUrl !== false && isset($parsedDetailUrl['scheme'], $parsedDetailUrl['host'])) {
             $base = $parsedDetailUrl['scheme'] . '://' . $parsedDetailUrl['host'];

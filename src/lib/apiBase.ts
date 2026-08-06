@@ -49,7 +49,7 @@ export const usePhpApi = !/^(false|0)$/i.test(
 
 const PHP_API_BASE: string = (
   (import.meta.env?.VITE_PHP_API_BASE as string | undefined) ??
-  'https://trikefare.x10.mx/api'
+  'https://trikefare.x10.mx/terraguard'
 ).replace(/\/+$/, '');
 
 function phpApi(pathWithName: string): string {
