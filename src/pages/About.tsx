@@ -54,6 +54,19 @@ export function About() {
               <span className="tech-tag glass-card">Leaflet</span>
             </div>
           </div>
+
+          <div className="about-legal glass-card">
+            <div className="legal-links">
+              <Link to="/privacy-policy" className="legal-link">
+                Privacy Policy
+              </Link>
+              <span className="legal-separator">|</span>
+              <Link to="/terms-of-service" className="legal-link">
+                Terms of Service
+              </Link>
+            </div>
+            <span className="legal-copy">© {new Date().getFullYear()} TerraGuard. All rights reserved.</span>
+          </div>
         </div>
       </div>
     </div>

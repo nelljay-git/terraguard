@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, Globe2, BarChart2, Newspaper, Bell, HelpCircle, User, LogOut, Star, Menu, X, Settings, MessagesSquare } from 'lucide-react';
+import { Activity, Globe2, BarChart2, Newspaper, Bell, HelpCircle, User, LogOut, Star, Menu, X, Settings, MessagesSquare, Shield, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
@@ -228,6 +228,14 @@ export function Navbar() {
                 <Link to="/about" className="sidebar-link" onClick={closeSidebar}>
                   <HelpCircle size={18} className="sidebar-link-icon" />
                   <span>About</span>
+                </Link>
+                <Link to="/privacy-policy" className="sidebar-link" onClick={closeSidebar}>
+                  <Shield size={18} className="sidebar-link-icon" />
+                  <span>Privacy Policy</span>
+                </Link>
+                <Link to="/terms-of-service" className="sidebar-link" onClick={closeSidebar}>
+                  <FileText size={18} className="sidebar-link-icon" />
+                  <span>Terms of Service</span>
                 </Link>
               </nav>
 

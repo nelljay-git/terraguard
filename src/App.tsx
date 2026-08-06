@@ -11,6 +11,8 @@ import { Stats } from './pages/Stats';
 import { News } from './pages/News';
 import { About } from './pages/About';
 import { History } from './pages/History';
+import { PrivacyPolicy } from './pages/PrivacyPolicy';
+import { TermsOfService } from './pages/TermsOfService';
 import { Alerts } from './pages/Alerts';
 import { Auth } from './pages/Auth';
 import { Stars } from './pages/Stars';
@@ -44,6 +46,8 @@ function App() {
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/about" element={<About />} />
             <Route path="/history" element={<History />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/terms-of-service" element={<TermsOfService />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/stars" element={<Stars />} />
             <Route path="/forum" element={<Forum />} />
