@@ -379,3 +379,25 @@
   mix-blend-mode: multiply;
   opacity: 0.4;
 }
+
+/* ── Marker Clusters (leaflet.markercluster) ── */
+.eq-cluster-marker {
+  background: transparent;
+  border: 0;
+}
+
+.eq-cluster-marker .eq-cluster-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.92);
+  border: 2px solid #f59e0b;
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.06), 0 10px 24px rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(6px);
+}

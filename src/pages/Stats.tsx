@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, startTransition } from 'react';
 import { parse, isValid, startOfDay, subDays, subMonths, format } from 'date-fns';
 import { fetchEarthquakeData, getCachedData, normalizeEarthquakes, type NormalizedEarthquake } from '../api/phivolcs';
 import { getSeverityLabel } from '../lib/utils';
@@ -48,13 +48,37 @@ function getEarthquakeDatetime(eq: NormalizedEarthquake): string {
   return eq.datetime;
 }
 
-function parseEarthquakeDate(datetime: string): Date | null {
-  const datePart = datetime.split(' - ')[0]?.trim();
-  if (!datePart) return null;
+const parsedDateCache = new Map<string, Date | null>();
 
-  const parsed = parse(datePart, 'd MMMM yyyy', new Date());
-  return isValid(parsed) ? parsed : null;
+function parseEarthquakeDate(datetime: string): Date | null {
+  const cached = parsedDateCache.get(datetime);
+  if (cached !== undefined) return cached;
+
+  const datePart = datetime.split(' - ')[0]?.trim();
+  let result: Date | null = null;
+  if (datePart) {
+    const parsed = parse(datePart, 'd MMMM yyyy', new Date());
+    if (isValid(parsed)) result = parsed;
+  }
+  parsedDateCache.set(datetime, result);
+  return result;
 }
+
+function downsample<T>(arr: T[], max: number): T[] {
+  if (arr.length <= max) return arr;
+  const step = arr.length / max;
+  const out: T[] = [];
+  for (let i = 0; i < arr.length; i += step) {
+    out.push(arr[Math.floor(i)]);
+  }
+  if (out.length < max && arr.length > 0) {
+    out.push(arr[arr.length - 1]);
+  }
+  return out;
+}
+
+const MAX_SCATTER_POINTS = 250;
+const MAX_TIMELINE_POINTS = 250;
 
 export function Stats() {
   const initialCache = getCachedData();
@@ -71,7 +95,11 @@ export function Stats() {
     try {
       const res = await fetchEarthquakeData();
       if (res.data.length > 0) {
-        setEarthquakes(normalizeEarthquakes(res.data));
+        const normalized = normalizeEarthquakes(res.data);
+        for (const eq of normalized) {
+          parseEarthquakeDate(getEarthquakeDatetime(eq));
+        }
+        setEarthquakes(normalized);
         setLastSync(new Date());
       }
     } catch (err) {
@@ -208,9 +236,9 @@ export function Stats() {
     return {
       magDistribution,
       topRegions,
-      depthMagPoints,
+      depthMagPoints: downsample(depthMagPoints, MAX_SCATTER_POINTS),
       timelineData,
-      magTimeline: magTimelinePoints.reverse(),
+      magTimeline: downsample(magTimelinePoints.reverse(), MAX_TIMELINE_POINTS),
       maxMag,
       maxDepth,
       avgMag: magCount > 0 ? magSum / magCount : 0,
@@ -244,7 +272,7 @@ export function Stats() {
                 key={option.key}
                 type="button"
                 className={`time-range-btn ${timeRange === option.key ? 'active' : ''}`}
-                onClick={() => setTimeRange(option.key)}
+                onClick={() => startTransition(() => setTimeRange(option.key))}
               >
                 {option.label}
               </button>
@@ -399,7 +427,8 @@ export function Stats() {
                   stroke="#f97316"
                   strokeWidth={2}
                   fill="url(#gradMag)"
-                  dot={{ r: 3, fill: '#f97316' }}
+                  isAnimationActive={false}
+                  dot={statsData.magTimeline.length <= 200 ? { r: 3, fill: '#f97316' } : false}
                   activeDot={{ r: 6 }}
                   onMouseMove={(point: any) => {
                     const payload = point?.payload;
@@ -515,7 +544,7 @@ export function Stats() {
                   contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
                   itemStyle={{ color: '#f8fafc' }}
                 />
-                <Scatter data={statsData.depthMagPoints} fill="#8b5cf6" fillOpacity={0.7} />
+                <Scatter data={statsData.depthMagPoints} fill="#8b5cf6" fillOpacity={0.7} isAnimationActive={false} />
               </ScatterChart>
             </ResponsiveContainer>
           </div>

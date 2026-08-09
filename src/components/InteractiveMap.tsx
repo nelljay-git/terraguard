@@ -1,12 +1,14 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MapContainer, TileLayer, Marker, CircleMarker, Tooltip, Popup, useMapEvents, WMSTileLayer } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, WMSTileLayer } from 'react-leaflet';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { Expand, MapPin, X, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
 import { ActiveFaultsLayer } from './ActiveFaultsLayer';
 import './InteractiveMap.css';
 
@@ -38,16 +40,6 @@ function createMagnitudeIcon(magnitude: string, color: string, compact = false, 
   });
 }
 
-function MapBoundsTracker({ onBoundsChange }: { onBoundsChange: (bounds: L.LatLngBounds | null) => void }) {
-  useMapEvents({
-    moveend: (event) => onBoundsChange(event.target.getBounds()),
-    zoomend: (event) => onBoundsChange(event.target.getBounds()),
-    load: (event) => onBoundsChange(event.target.getBounds()),
-  });
-
-  return null;
-}
-
 function getSeverityHexColor(mag: number): string {
   if (mag < 3.0) return "#10b981";
   if (mag < 4.0) return "#3b82f6";
@@ -57,9 +49,94 @@ function getSeverityHexColor(mag: number): string {
   return "#8b5cf6";
 }
 
+type ClusterManagerProps = {
+  earthquakes: PhivolcsEarthquake[];
+  activeFilter: string | null;
+  compactMarkers: boolean;
+  onSelect: (eq: PhivolcsEarthquake) => void;
+};
+
+function ClusterManager({ earthquakes, activeFilter, compactMarkers, onSelect }: ClusterManagerProps) {
+  const map = useMap();
+
+  useEffect(() => {
+    const clusterGroup = L.markerClusterGroup({
+      maxClusterRadius: 46,
+      showCoverageOnHover: false,
+      spiderfyOnMaxZoom: false,
+      disableClusteringAtZoom: 8,
+      removeOutsideVisibleBounds: true,
+      iconCreateFunction: (cluster) => {
+        const count = cluster.getChildCount();
+        return L.divIcon({
+          html: `<div class="eq-cluster-icon"><span>${count}</span></div>`,
+          className: 'eq-cluster-marker',
+          iconSize: [40, 40],
+          iconAnchor: [20, 20],
+        });
+      },
+    });
+
+    type ClusteredMarker = L.CircleMarker & { eq?: PhivolcsEarthquake };
+
+    const points: Array<{ lat: number; lng: number; mag: number; eq: PhivolcsEarthquake }> = [];
+    for (const eq of earthquakes) {
+      const lat = Number.parseFloat(eq.latitude);
+      const lng = Number.parseFloat(eq.longitude);
+      const mag = Number.parseFloat(eq.magnitude);
+      if (Number.isNaN(lat) || Number.isNaN(lng)) continue;
+      if (activeFilter && getSeverityLabel(mag) !== activeFilter) continue;
+      points.push({ lat, lng, mag, eq });
+    }
+
+    const onGroupClick = (e: L.LeafletMouseEvent) => {
+      const eq = (e.layer as ClusteredMarker | undefined)?.eq;
+      if (eq) onSelect(eq);
+    };
+
+    clusterGroup.on('click', onGroupClick);
+    map.addLayer(clusterGroup);
+
+    let index = 0;
+    let raf = 0;
+    const BATCH = 300;
+    const step = () => {
+      const end = Math.min(index + BATCH, points.length);
+      const batch: ClusteredMarker[] = [];
+      for (; index < end; index++) {
+        const p = points[index];
+        const hexColor = getSeverityHexColor(p.mag);
+        const radius = compactMarkers ? Math.max(12, p.mag * 2.5) : Math.max(16, p.mag * 4);
+        const marker = L.circleMarker([p.lat, p.lng], {
+          radius,
+          color: hexColor,
+          fillColor: hexColor,
+          fillOpacity: 0.6,
+          weight: 2,
+        }) as ClusteredMarker;
+        marker.eq = p.eq;
+        batch.push(marker);
+      }
+      clusterGroup.addLayers(batch);
+      if (index < points.length) {
+        raf = requestAnimationFrame(step);
+      }
+    };
+    raf = requestAnimationFrame(step);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      clusterGroup.off('click', onGroupClick);
+      clusterGroup.clearLayers();
+      map.removeLayer(clusterGroup);
+    };
+  }, [earthquakes, activeFilter, compactMarkers, map, onSelect]);
+
+  return null;
+}
+
 function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = false, compactMarkers = false, autoCenter = false, enableLegendFilter = false, disableDragging = false, pulseMarkers = true }: InteractiveMapProps) {
   const mapRef = useRef<L.Map | null>(null);
-  const [visibleBounds, setVisibleBounds] = useState<L.LatLngBounds | null>(null);
   const [selectedEarthquake, setSelectedEarthquake] = useState<PhivolcsEarthquake | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
@@ -92,97 +169,6 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
       document.body.style.overflow = previousOverflow;
     };
   }, [isFullscreen]);
-
-  const visibleEarthquakes = useMemo(() => {
-    if (!showAllEvents) return [];
-    if (!visibleBounds) return earthquakes;
-
-    return earthquakes.filter((eq) => {
-      const lat = Number.parseFloat(eq.latitude);
-      const lng = Number.parseFloat(eq.longitude);
-      return !Number.isNaN(lat) && !Number.isNaN(lng) && visibleBounds.contains([lat, lng]);
-    });
-  }, [earthquakes, showAllEvents, visibleBounds]);
-
-  const normalMapMarkers = useMemo(() => {
-    return visibleEarthquakes.map((eq, i) => {
-      const mag = parseFloat(eq.magnitude);
-      const lat = parseFloat(eq.latitude);
-      const lng = parseFloat(eq.longitude);
-
-      if (isNaN(lat) || isNaN(lng)) return null;
-      if (latestEarthquake && eq.datetime === latestEarthquake.datetime && eq.latitude === latestEarthquake.latitude && eq.longitude === latestEarthquake.longitude) {
-        return null;
-      }
-      if (activeFilter && getSeverityLabel(mag) !== activeFilter) {
-        return null;
-      }
-      const hexColor = getSeverityHexColor(mag);
-      const radius = compactMarkers ? Math.max(14, mag * 2.5) : Math.max(18, mag * 4);
-
-      return (
-        <CircleMarker
-          key={i}
-          center={[lat, lng]}
-          radius={radius}
-          className={pulseMarkers ? 'pulsing-circle-marker' : ''}
-          pathOptions={{
-            color: hexColor,
-            fillColor: hexColor,
-            fillOpacity: 0.6,
-            weight: 2
-          }}
-          eventHandlers={{
-            click: () => setSelectedEarthquake(eq),
-          }}
-        >
-          <Tooltip direction="center" permanent className="marker-number-tooltip" opacity={1}>
-            {mag.toFixed(1)}
-          </Tooltip>
-        </CircleMarker>
-      );
-    });
-  }, [visibleEarthquakes, latestEarthquake, compactMarkers, activeFilter, pulseMarkers]);
-
-  const fullscreenMapMarkers = useMemo(() => {
-    return visibleEarthquakes.map((eq, i) => {
-      const mag = parseFloat(eq.magnitude);
-      const lat = parseFloat(eq.latitude);
-      const lng = parseFloat(eq.longitude);
-
-      if (isNaN(lat) || isNaN(lng)) return null;
-      if (latestEarthquake && eq.datetime === latestEarthquake.datetime && eq.latitude === latestEarthquake.latitude && eq.longitude === latestEarthquake.longitude) {
-        return null;
-      }
-      if (activeFilter && getSeverityLabel(mag) !== activeFilter) {
-        return null;
-      }
-      const hexColor = getSeverityHexColor(mag);
-      const radius = compactMarkers ? Math.max(14, mag * 2.5) : Math.max(18, mag * 4);
-
-      return (
-        <CircleMarker
-          key={`full-${i}`}
-          center={[lat, lng]}
-          radius={radius}
-          className={pulseMarkers ? 'pulsing-circle-marker' : ''}
-          pathOptions={{
-            color: hexColor,
-            fillColor: hexColor,
-            fillOpacity: 0.6,
-            weight: 2
-          }}
-          eventHandlers={{
-            click: () => setSelectedEarthquake(eq),
-          }}
-        >
-          <Tooltip direction="center" permanent className="marker-number-tooltip" opacity={1}>
-            {mag.toFixed(1)}
-          </Tooltip>
-        </CircleMarker>
-      );
-    });
-  }, [visibleEarthquakes, latestEarthquake, compactMarkers, activeFilter, pulseMarkers]);
 
   const popupPosition = useMemo<[number, number] | null>(() => {
     if (!selectedEarthquake) return null;
@@ -298,7 +284,6 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
           preferCanvas={true}
           style={{ height: '100%', width: '100%', zIndex: 0 }}
         >
-          <MapBoundsTracker onBoundsChange={setVisibleBounds} />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -323,7 +308,14 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
             >
             </Marker>
           )}
-          {normalMapMarkers}
+          {showAllEvents && (
+            <ClusterManager
+              earthquakes={earthquakes}
+              activeFilter={activeFilter}
+              compactMarkers={compactMarkers}
+              onSelect={setSelectedEarthquake}
+            />
+          )}
           {!isFullscreen && renderPopup()}
         </MapContainer>
       </div>
@@ -364,7 +356,6 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
                 preferCanvas={true}
                 style={{ height: '100%', width: '100%', zIndex: 0 }}
               >
-                <MapBoundsTracker onBoundsChange={setVisibleBounds} />
                 <TileLayer
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                   url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -388,7 +379,14 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
                     }}
                   />
                 )}
-                {fullscreenMapMarkers}
+                {showAllEvents && (
+                  <ClusterManager
+                    earthquakes={earthquakes}
+                    activeFilter={activeFilter}
+                    compactMarkers={compactMarkers}
+                    onSelect={setSelectedEarthquake}
+                  />
+                )}
                 {isFullscreen && renderPopup()}
               </MapContainer>
             </div>
