@@ -10,6 +10,10 @@
       "destination": "/api/og-details?id=:id"
     },
     {
+      "source": "/ads.txt",
+      "destination": "/ads.txt"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
