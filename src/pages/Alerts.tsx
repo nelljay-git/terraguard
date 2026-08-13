@@ -13,7 +13,7 @@ export function Alerts() {
             Earthquake Alerts
           </h1>
           <p className="alerts-subtitle">
-            Configure push notifications and alert zones to stay informed about seismic activity near you.
+            Turn TerraGuard into a personal seismic early-warning screen. Draw alert zones around the places that matter to you — home, work, or family — set a magnitude threshold, and get notified the moment PHIVOLCS records a matching quake.
           </p>
         </div>
       </div>

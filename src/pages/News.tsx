@@ -94,7 +94,7 @@ export function News() {
             </div>
           </div>
           <p className="news-page-subtitle">
-            Curated seismic activity reports, warnings, and updates across the Philippines.
+            A curated roundup of earthquake-related headlines for the Philippines — seismic activity reports, government updates, volcanic alerts, and the aftermath of major events — refreshed throughout the day.
           </p>
         </div>
         <button

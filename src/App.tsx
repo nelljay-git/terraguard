@@ -10,6 +10,7 @@ import { Details } from './pages/Details';
 import { Stats } from './pages/Stats';
 import { News } from './pages/News';
 import { About } from './pages/About';
+import { Safety } from './pages/Safety';
 import { History } from './pages/History';
 import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { TermsOfService } from './pages/TermsOfService';
@@ -45,6 +46,7 @@ function App() {
             <Route path="/news" element={<News />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/about" element={<About />} />
+            <Route path="/safety" element={<Safety />} />
             <Route path="/history" element={<History />} />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
             <Route path="/terms-of-service" element={<TermsOfService />} />

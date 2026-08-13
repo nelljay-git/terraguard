@@ -263,7 +263,9 @@ export function Stats() {
             <BarChart3 size={28} />
             Seismic Analytics
           </h1>
-          <p className="text-muted">Real-time earthquake monitoring & statistical analysis powered by PHIVOLCS data.</p>
+          <p className="text-muted" style={{ lineHeight: 1.6, maxWidth: '640px' }}>
+            Explore patterns in the seismic record — how often earthquakes occur, where they concentrate, how strong and how deep they tend to be. Switch between today, the last few days, and this month to see how activity in the Philippines compares across time.
+          </p>
         </div>
         <div className="stats-header-right">
           <div className="time-range-group" role="group" aria-label="Statistics time range">

@@ -114,7 +114,9 @@ export function Archive() {
     <div className="archive-container container">
       <div className="archive-header">
         <h1 className="archive-title">Earthquake Database</h1>
-        <p className="archive-subtitle">Search and filter recent seismic events from {sourceName}.</p>
+        <p className="archive-subtitle">
+          Browse every recorded event — from the latest tremors to full historical months back to 2018. Filter by location, date, time, and minimum magnitude, then open any event for its complete bulletin and map.
+        </p>
       </div>
 
       <div className="filters-container glass">
