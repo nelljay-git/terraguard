@@ -484,11 +484,20 @@ export function Details() {
    }, [earthquake, id, state]);
 
    // Live relative time: tick once a minute so "happened X ago" stays fresh.
-   const [now, setNow] = useState(() => Date.now());
-   useEffect(() => {
-     const t = setInterval(() => setNow(Date.now()), 60_000);
-     return () => clearInterval(t);
-   }, []);
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+      const t = setInterval(() => setNow(Date.now()), 60_000);
+      return () => clearInterval(t);
+    }, []);
+
+    // Match the CSS breakpoint where the nearby-list switches to the wrapped grid.
+    const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 480px)').matches);
+    useEffect(() => {
+      const mq = window.matchMedia('(max-width: 480px)');
+      const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+      mq.addEventListener('change', onChange);
+      return () => mq.removeEventListener('change', onChange);
+    }, []);
 
    // Rank provinces and major cities by distance from the epicenter.
    const nearestProvinces = useMemo(() => {
@@ -1068,7 +1077,7 @@ export function Details() {
                 {nearestProvinces.map((p, idx) => (
                   <li key={p.name} className="nearby-item">
                     <span className="nearby-rank" style={{ color }}>{idx + 1}</span>
-                    <span className="nearby-name">{p.name}</span>
+                    <span className="nearby-name" title={p.name}>{isMobile && p.name.length > 15 ? `${p.name.slice(0, 15)}…` : p.name}</span>
                     <span className="nearby-distance">{p.km.toLocaleString()} km</span>
                     {p.km <= 50 ? (
                       <span className="nearby-flag nearby-flag--close">Within 50 km</span>
