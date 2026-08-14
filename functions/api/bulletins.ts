@@ -98,11 +98,20 @@ export async function onRequest(context: { request: Request }) {
   };
 
   const results: Bulletin[] = [];
+  // PHIVOLCS sometimes prunes early bulletins of a long sequence (e.g. No. 1
+  // disappears once the event is revised), so a single missing number must not
+  // stop discovery. Break only after two consecutive misses.
+  let missStreak = 0;
   for (let n = 1; n <= MAX_BULLETIN_PROBES; n++) {
     const [plain, final] = await Promise.all([exists(build(n, false)), exists(build(n, true))]);
-    if (!plain && !final) break;
-    if (plain) results.push({ no: n, final: false, url: build(n, false) });
-    if (final) results.push({ no: n, final: true, url: build(n, true) });
+    if (!plain && !final) {
+      missStreak += 1;
+      if (missStreak >= 2) break;
+    } else {
+      missStreak = 0;
+      if (plain) results.push({ no: n, final: false, url: build(n, false) });
+      if (final) results.push({ no: n, final: true, url: build(n, true) });
+    }
   }
 
   const payload: BulletinsPayload = { success: true, data: results };

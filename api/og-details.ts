@@ -12,6 +12,59 @@ function getSeverityLabel(magnitude: number) {
   return 'Great';
 }
 
+// PHIVOLCS tables and bulletins vary in format ("14 August 2026 - 07:53 AM",
+// "13 Jun 2026 - 10:05:46 AM", etc.), so parse leniently to let revised event
+// times still be compared as timestamps.
+function parseDateTime(s) {
+  const m = /(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\s*-\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i.exec(s.trim());
+  if (!m) return null;
+  const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const monthIdx = monthNames.indexOf(m[2].slice(0, 3).toLowerCase());
+  if (monthIdx === -1) return null;
+  let hour = parseInt(m[4], 10);
+  const ap = (m[7] || '').toUpperCase();
+  if (ap === 'PM' && hour < 12) hour += 12;
+  if (ap === 'AM' && hour === 12) hour = 0;
+  const d = new Date(parseInt(m[3], 10), monthIdx, parseInt(m[1], 10), hour, parseInt(m[5], 10), m[6] ? parseInt(m[6], 10) : 0);
+  return isNaN(d.getTime()) ? null : d.getTime();
+}
+
+// PHIVOLCS frequently revises event data: the origin time can shift by a minute
+// or more, and the coordinates are refined too. When exact ID and datetime-string
+// matches fail, match on the parsed time within a small tolerance, using
+// coordinates only as a coarse rejector (a couple of degrees) plus a tiebreaker,
+// preferring the closest candidate. Mirrors the client fallback in Details.tsx.
+function fuzzyMatchRows(rows, datetimeStr, targetLat, targetLng) {
+  const targetTime = parseDateTime(datetimeStr);
+  if (targetTime == null) return null;
+  const TIME_TOLERANCE_MIN = 5;
+  const COORD_TOLERANCE_DEG = 5.0;
+
+  let best = null;
+  let bestScore = Infinity;
+  for (const r of rows) {
+    const t = parseDateTime(r.datetime);
+    if (t == null) continue;
+    const timeDiffMin = Math.abs(t - targetTime) / 60000;
+    if (timeDiffMin > TIME_TOLERANCE_MIN) continue;
+
+    const lat = parseFloat(r.latitude);
+    const lng = parseFloat(r.longitude);
+    if (!isNaN(targetLat) && !isNaN(targetLng) && !isNaN(lat) && !isNaN(lng)) {
+      if (Math.abs(lat - targetLat) > COORD_TOLERANCE_DEG || Math.abs(lng - targetLng) > COORD_TOLERANCE_DEG) continue;
+    }
+
+    const latDiff = isNaN(lat) || isNaN(targetLat) ? 0 : Math.abs(lat - targetLat);
+    const lngDiff = isNaN(lng) || isNaN(targetLng) ? 0 : Math.abs(lng - targetLng);
+    const score = timeDiffMin * 2 + latDiff + lngDiff;
+    if (score < bestScore) {
+      bestScore = score;
+      best = r;
+    }
+  }
+  return best;
+}
+
 export default async function handler(req: any, res: any) {
   const { id } = req.query;
 
@@ -134,6 +187,12 @@ export default async function handler(req: any, res: any) {
     // shared links keep working even after PHIVOLCS revises the event data.
     if (!earthquake && fallbackDatetime) {
       earthquake = allRows.find(r => r.datetime.replace(/\s+/g, ' ').trim() === fallbackDatetime) || null;
+    }
+
+    // PHIVOLCS also revises the origin time (sometimes by a minute or more), so
+    // fall back to fuzzy time + coordinate matching.
+    if (!earthquake && fallbackDatetime) {
+      earthquake = fuzzyMatchRows(allRows, fallbackDatetime, lat, lng);
     }
 
     // 3. Build meta content

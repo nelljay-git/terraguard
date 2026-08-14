@@ -36,7 +36,7 @@ function truncateWords(text: string, maxWords: number): string {
   return words.length <= maxWords ? text : words.slice(0, maxWords).join(' ');
 }
 
-function decodeEqId(id: string): { datetime?: string } {
+function decodeEqId(id: string): { datetime?: string; latitude?: string; longitude?: string } {
   try {
     const pad = id.length % 4;
     const paddedId = pad ? id + '='.repeat(4 - pad) : id;
@@ -44,13 +44,71 @@ function decodeEqId(id: string): { datetime?: string } {
     const parts = decoded.split('-');
     if (parts.length >= 3) {
       // Latitude and longitude are always the last two segments
+      const longitude = parts[parts.length - 1].trim();
+      const latitude = parts[parts.length - 2].trim();
       const datetime = parts.slice(0, parts.length - 2).join('-').trim();
-      return { datetime };
+      return { datetime, latitude, longitude };
     }
   } catch {
     /* ignore decode errors */
   }
   return {};
+}
+
+// PHIVOLCS tables and bulletins vary in format ("14 August 2026 - 07:53 AM",
+// "13 Jun 2026 - 10:05:46 AM", etc.), so parse leniently to let revised event
+// times still be compared as timestamps.
+function parseDateTime(s: string): Date | null {
+  const m = /(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\s*-\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i.exec(s.trim());
+  if (!m) return null;
+  const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const monthIdx = monthNames.indexOf(m[2].slice(0, 3).toLowerCase());
+  if (monthIdx === -1) return null;
+  let hour = parseInt(m[4], 10);
+  const ap = (m[7] || '').toUpperCase();
+  if (ap === 'PM' && hour < 12) hour += 12;
+  if (ap === 'AM' && hour === 12) hour = 0;
+  const date = new Date(parseInt(m[3], 10), monthIdx, parseInt(m[1], 10), hour, parseInt(m[5], 10), m[6] ? parseInt(m[6], 10) : 0);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+// PHIVOLCS frequently revises event data: the origin time can shift by a minute
+// or more, and the coordinates are refined too. When exact ID and datetime-string
+// matches fail, match on the parsed time within a small tolerance, using
+// coordinates only as a coarse rejector (a couple of degrees) plus a tiebreaker,
+// preferring the closest candidate.
+function fuzzyMatchEarthquake(data: PhivolcsEarthquake[], decoded: { datetime?: string; latitude?: string; longitude?: string }): PhivolcsEarthquake | null {
+  if (!decoded.datetime) return null;
+  const targetTime = parseDateTime(decoded.datetime);
+  if (!targetTime) return null;
+  const targetLat = parseFloat(decoded.latitude || '');
+  const targetLng = parseFloat(decoded.longitude || '');
+  const TIME_TOLERANCE_MIN = 5;
+  const COORD_TOLERANCE_DEG = 5.0;
+
+  let best: PhivolcsEarthquake | null = null;
+  let bestScore = Infinity;
+  for (const eq of data) {
+    const t = parseDateTime(eq.datetime);
+    if (!t) continue;
+    const timeDiffMin = Math.abs(t.getTime() - targetTime.getTime()) / 60000;
+    if (timeDiffMin > TIME_TOLERANCE_MIN) continue;
+
+    const lat = parseFloat(eq.latitude);
+    const lng = parseFloat(eq.longitude);
+    if (!isNaN(targetLat) && !isNaN(targetLng) && !isNaN(lat) && !isNaN(lng)) {
+      if (Math.abs(lat - targetLat) > COORD_TOLERANCE_DEG || Math.abs(lng - targetLng) > COORD_TOLERANCE_DEG) continue;
+    }
+
+    const latDiff = isNaN(lat) || isNaN(targetLat) ? 0 : Math.abs(lat - targetLat);
+    const lngDiff = isNaN(lng) || isNaN(targetLng) ? 0 : Math.abs(lng - targetLng);
+    const score = timeDiffMin * 2 + latDiff + lngDiff;
+    if (score < bestScore) {
+      bestScore = score;
+      best = eq;
+    }
+  }
+  return best;
 }
 
 export function Details() {
@@ -139,14 +197,18 @@ export function Details() {
         );
         if (exact) return exact;
 
-        // 2. Fallback: PHIVOLCS likely revised the event (coords/depth/magnitude),
-        //    so match on the stable datetime portion of the original ID.
+        // 2. PHIVOLCS likely revised the event (coords/depth/magnitude), so match
+        //    on the datetime portion of the original ID.
         const decoded = decodeEqId(id);
         if (decoded.datetime) {
           const target = normalizeDatetime(decoded.datetime);
-          return data.find(eq => normalizeDatetime(eq.datetime) === target) || null;
+          const strMatch = data.find(eq => normalizeDatetime(eq.datetime) === target);
+          if (strMatch) return strMatch;
         }
-        return null;
+
+        // 3. PHIVOLCS also revises the origin time (sometimes by a minute or more),
+        //    so fall back to fuzzy time + coordinate matching.
+        return fuzzyMatchEarthquake(data, decoded);
       };
 
       try {
@@ -169,7 +231,11 @@ export function Details() {
           console.warn('Could not decode ID for historical fetch', e);
         }
 
-        let found = earthquake;
+        // When navigated with a snapshot that has no bulletin link (e.g. from
+        // the Stars page), the event must still be resolved against the PHIVOLCS
+        // feeds so reported intensities, origin, and bulletins can load.
+        const needsResolution = !earthquake?.link;
+        let found = needsResolution ? null : earthquake;
 
         if (!found) {
           // 1. Always try the live feed first (covers most recent events)
@@ -208,7 +274,7 @@ export function Details() {
         }
 
         if (found) {
-          if (!earthquake) setEarthquake(found);
+          if (needsResolution) setEarthquake(found);
           setLoading(false);
           setActiveLink(found.link);
 
@@ -220,6 +286,10 @@ export function Details() {
               console.error('Failed to load extra details:', err);
             }
           }
+        } else if (earthquake) {
+          // Snapshot exists (e.g. a starred event) but the event can't be
+          // re-resolved — keep showing the saved data rather than an error.
+          setLoading(false);
         } else {
           setError(true);
         }
