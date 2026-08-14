@@ -78,13 +78,14 @@ export default async function handler(req: any, res: any) {
     const paddedId = pad ? id + '='.repeat(4 - pad) : id;
     const decodedStr = Buffer.from(paddedId, 'base64').toString('utf-8');
 
-    // Robust parsing (lat and lng are always the last two parts)
-    const parts = decodedStr.split('-');
-    const lngStr = parts.pop() || '0';
-    const latStr = parts.pop() || '0';
-    const datetime = parts.join('-').trim();
-    const lat = parseFloat(latStr.trim());
-    const lng = parseFloat(lngStr.trim());
+    // Slug format is "DATETIME-LAT-LNG". Longitudes can be negative, which
+    // turns the separator into "--" and would confuse a plain split().
+    const parts = /^(.*?)-(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$/.exec(decodedStr.trim());
+    const latStr = parts ? parts[2] : '0';
+    const lngStr = parts ? parts[3] : '0';
+    const datetime = parts ? parts[1].trim() : decodedStr;
+    const lat = parseFloat(latStr);
+    const lng = parseFloat(lngStr);
 
     let targetYear = new Date().getFullYear();
     let targetMonthName = MONTHS[new Date().getMonth()];
@@ -119,12 +120,9 @@ export default async function handler(req: any, res: any) {
     const allRows = [];
     let fallbackDatetime = null;
     try {
-      const pad = id.length % 4;
-      const paddedId = pad ? id + '='.repeat(4 - pad) : id;
-      const decodedStr = Buffer.from(paddedId, 'base64').toString('utf-8');
-      const dParts = decodedStr.split('-');
-      if (dParts.length >= 3) {
-        fallbackDatetime = dParts.slice(0, dParts.length - 2).join('-').replace(/\s+/g, ' ').trim();
+      const dParts = /^(.*?)-(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$/.exec(decodedStr.trim());
+      if (dParts) {
+        fallbackDatetime = dParts[1].replace(/\s+/g, ' ').trim();
       }
     } catch { /* ignore */ }
 

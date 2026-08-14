@@ -112,12 +112,14 @@ export async function onRequest(context: { request: Request }) {
 
   try {
     const decodedStr = decodeBase64(id);
-    const parts = decodedStr.split('-');
-    const lngStr = parts.pop() || '0';
-    const latStr = parts.pop() || '0';
-    const datetime = parts.join('-').trim();
-    const lat = parseFloat(latStr.trim());
-    const lng = parseFloat(lngStr.trim());
+    // Slug format is "DATETIME-LAT-LNG". Longitudes can be negative, which
+    // turns the separator into "--" and would confuse a plain split().
+    const parts = /^(.*?)-(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$/.exec(decodedStr.trim());
+    const latStr = parts ? parts[2] : '0';
+    const lngStr = parts ? parts[3] : '0';
+    const datetime = parts ? parts[1].trim() : decodedStr;
+    const lat = parseFloat(latStr);
+    const lng = parseFloat(lngStr);
 
     let targetYear = new Date().getFullYear();
     let targetMonthName = MONTHS[new Date().getMonth()];
@@ -148,9 +150,9 @@ export async function onRequest(context: { request: Request }) {
     const allRows: typeof earthquake[] = [];
     let fallbackDatetime: string | null = null;
     try {
-      const dParts = decodedStr.split('-');
-      if (dParts.length >= 3) {
-        fallbackDatetime = dParts.slice(0, dParts.length - 2).join('-').replace(/\s+/g, ' ').trim();
+      const dParts = /^(.*?)-(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$/.exec(decodedStr.trim());
+      if (dParts) {
+        fallbackDatetime = dParts[1].replace(/\s+/g, ' ').trim();
       }
     } catch { /* ignore */ }
 

@@ -1,11 +1,11 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { fetchPhivolcsData, fetchEarthquakeDetails, fetchPhivolcsArchiveData, fetchBulletins, type PhivolcsEarthquake, type EarthquakeDetails, type BulletinRef } from '../api/phivolcs';
+import { fetchEarthquakeData, fetchArchiveData, fetchEarthquakeDetails, fetchBulletins, normalizeEarthquakes, type PhivolcsEarthquake, type EarthquakeDetails, type BulletinRef } from '../api/phivolcs';
 import { getPreferredApi } from '../lib/apiPreference';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, Map as MapIcon, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
 import { FunFactLoader } from '../components/FunFactLoader';
@@ -36,18 +36,94 @@ function truncateWords(text: string, maxWords: number): string {
   return words.length <= maxWords ? text : words.slice(0, maxWords).join(' ');
 }
 
+// Pull just the clock portion out of a PHIVOLCS datetime ("05 August 2026 - 12:13 PM"
+// -> "12:13 PM") so revision notices read compactly.
+function extractTime(s: string): string {
+  const m = /(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)/i.exec(s);
+  return m ? m[1].toUpperCase() : s;
+}
+
+interface RevisionInfo {
+  changedTime: boolean;
+  changedCoords: boolean;
+  changedMag: boolean;
+  origMag?: string;
+  curMag?: string;
+  origTime?: string;
+  curTime?: string;
+  origLat?: string;
+  origLng?: string;
+  curLat?: string;
+  curLng?: string;
+}
+
+// Bottom-right toast announcing the reporting agency revised this event.
+// Slides in from the right, auto-dismisses after 10 seconds (or on close
+// click), then slides back out to the right before unmounting. Keyed by event
+// id in the parent so it remounts (and the timer restarts) when navigating to
+// a different event.
+function RevisionToast({ info, sourceName }: { info: RevisionInfo; sourceName: string }) {
+  const [closing, setClosing] = useState(false);
+  const [gone, setGone] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setClosing(true), 10000);
+    return () => clearTimeout(t);
+  }, []);
+
+  if (gone) return null;
+
+  return (
+    <div
+      className={`revision-toast${closing ? ' revision-toast--closing' : ''}`}
+      onTransitionEnd={() => { if (closing) setGone(true); }}
+    >
+      <div className="revision-toast-header">
+        <AlertTriangle size={18} />
+        <span>Earthquake data was updated</span>
+        <button
+          type="button"
+          className="revision-toast-close"
+          aria-label="Dismiss"
+          onClick={() => setClosing(true)}
+        >
+          <X size={14} />
+        </button>
+      </div>
+      <ul className="revision-toast-changes">
+        {info.changedMag && info.origMag && info.curMag && (
+          <li>
+            Magnitude: <strong>M{info.origMag}</strong> → <strong>M{info.curMag}</strong>
+          </li>
+        )}
+        {info.changedTime && info.origTime && info.curTime && (
+          <li>
+            Origin time: <strong>{extractTime(info.origTime)}</strong> → <strong>{extractTime(info.curTime)}</strong>
+          </li>
+        )}
+        {info.changedCoords && info.origLat && info.origLng && (
+          <li>
+            Epicenter: <strong>{info.origLat}°N, {info.origLng}°E</strong> →{' '}
+            <strong>{info.curLat}°N, {info.curLng}°E</strong>
+          </li>
+        )}
+      </ul>
+      <div className="revision-toast-note">Showing the latest info from {sourceName}.</div>
+    </div>
+  );
+}
+
 function decodeEqId(id: string): { datetime?: string; latitude?: string; longitude?: string } {
   try {
     const pad = id.length % 4;
     const paddedId = pad ? id + '='.repeat(4 - pad) : id;
-    const decoded = atob(paddedId);
-    const parts = decoded.split('-');
-    if (parts.length >= 3) {
-      // Latitude and longitude are always the last two segments
-      const longitude = parts[parts.length - 1].trim();
-      const latitude = parts[parts.length - 2].trim();
-      const datetime = parts.slice(0, parts.length - 2).join('-').trim();
-      return { datetime, latitude, longitude };
+    const decoded = atob(paddedId).trim();
+    // Slug format is "DATETIME-LAT-LNG". Latitude/longitude are always the last
+    // two tokens, but longitudes can be negative, which turns the separator
+    // into "--" and would confuse a plain split(). Match them from the end.
+    const m = /^(.*?)-(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$/.exec(decoded);
+    if (m) {
+      return { datetime: m[1].trim(), latitude: m[2], longitude: m[3] };
     }
   } catch {
     /* ignore decode errors */
@@ -238,18 +314,21 @@ export function Details() {
         let found = needsResolution ? null : earthquake;
 
         if (!found) {
-          // 1. Always try the live feed first (covers most recent events)
+          // 1. Always try the live feed first (covers most recent events).
+          //    fetchEarthquakeData respects the preferred source (PHIVOLCS or
+          //    USGS); normalize so USGS GeoJSON features match the same shape
+          //    as PHIVOLCS rows.
           try {
-            const liveRes = await fetchPhivolcsData();
-            found = matchId(liveRes.data);
+            const liveRes = await fetchEarthquakeData();
+            found = matchId(normalizeEarthquakes(liveRes.data));
           } catch { /* continue */ }
         }
 
         if (!found) {
-          // 2. Try the archive for the decoded month
+          // 2. Try the archive for the decoded month (respects the preferred API)
           try {
-            const archiveRes = await fetchPhivolcsArchiveData(targetYear, months[targetMonthIndex]);
-            found = matchId(archiveRes.data);
+            const archiveRes = await fetchArchiveData(targetYear, months[targetMonthIndex]);
+            found = matchId(normalizeEarthquakes(archiveRes.data));
           } catch { /* continue */ }
         }
 
@@ -258,8 +337,8 @@ export function Details() {
           const prevMonthIndex = targetMonthIndex === 0 ? 11 : targetMonthIndex - 1;
           const prevYear = targetMonthIndex === 0 ? targetYear - 1 : targetYear;
           try {
-            const prevRes = await fetchPhivolcsArchiveData(prevYear, months[prevMonthIndex]);
-            found = matchId(prevRes.data);
+            const prevRes = await fetchArchiveData(prevYear, months[prevMonthIndex]);
+            found = matchId(normalizeEarthquakes(prevRes.data));
           } catch { /* continue */ }
         }
 
@@ -268,8 +347,8 @@ export function Details() {
           const nextMonthIndex = (targetMonthIndex + 1) % 12;
           const nextYear = targetMonthIndex === 11 ? targetYear + 1 : targetYear;
           try {
-            const nextRes = await fetchPhivolcsArchiveData(nextYear, months[nextMonthIndex]);
-            found = matchId(nextRes.data);
+            const nextRes = await fetchArchiveData(nextYear, months[nextMonthIndex]);
+            found = matchId(normalizeEarthquakes(nextRes.data));
           } catch { /* continue */ }
         }
 
@@ -311,8 +390,47 @@ export function Details() {
      fetchBulletins(earthquake.link)
        .then(list => { if (!cancelled) setBulletins(list); })
        .catch(() => { if (!cancelled) setBulletins([]); });
-     return () => { cancelled = true; };
+      return () => { cancelled = true; };
    }, [earthquake?.link]);
+
+   // Detect when the event data shown differs from what the /details/:id link
+   // originally encoded (PHIVOLCS revised the event). Shows a notice on old
+   // links. Magnitude can only be compared when navigation carried a snapshot
+   // (e.g. from the Stars page), since the slug itself only stores time+coords.
+   const revisionInfo = useMemo<RevisionInfo | null>(() => {
+     if (!earthquake || !id) return null;
+     const decoded = decodeEqId(id);
+
+     const curTime = parseDateTime(earthquake.datetime);
+     const origTime = parseDateTime(decoded.datetime || '');
+     const changedTime = !!(curTime && origTime && Math.abs(curTime.getTime() - origTime.getTime()) >= 60000);
+
+     const origLat = parseFloat(decoded.latitude || '');
+     const origLng = parseFloat(decoded.longitude || '');
+     const curLat = parseFloat(earthquake.latitude);
+     const curLng = parseFloat(earthquake.longitude);
+     const changedCoords = !isNaN(origLat) && !isNaN(origLng) && !isNaN(curLat) && !isNaN(curLng) &&
+       (Math.abs(curLat - origLat) > 0.0005 || Math.abs(curLng - origLng) > 0.0005);
+
+     const origMag = state?.earthquake?.magnitude;
+     const changedMag = !!origMag && !!earthquake.magnitude && origMag !== earthquake.magnitude;
+
+     if (!changedTime && !changedCoords && !changedMag) return null;
+
+     return {
+       changedTime,
+       changedCoords,
+       changedMag,
+       origMag,
+       curMag: changedMag ? earthquake.magnitude : undefined,
+       origTime: decoded.datetime,
+       curTime: earthquake.datetime,
+       origLat: decoded.latitude,
+       origLng: decoded.longitude,
+       curLat: earthquake.latitude,
+       curLng: earthquake.longitude,
+     };
+   }, [earthquake, id, state]);
 
    if (loading) {
      return (
@@ -927,7 +1045,12 @@ export function Details() {
         altText={`Official map for earthquake in ${earthquake.location}`}
       />
       </motion.div>
+
+      {/* Revision toast: old link -> the reporting agency revised the event.
+          Rendered outside the motion.div so position: fixed stays
+          viewport-relative (a transformed ancestor would otherwise become its
+          containing block). */}
+      {revisionInfo && <RevisionToast key={id} info={revisionInfo} sourceName={getPreferredApi() === 'usgs' ? 'USGS' : 'PHIVOLCS'} />}
     </>
   );
 }
-
