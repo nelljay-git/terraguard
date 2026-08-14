@@ -232,8 +232,10 @@ export function Details() {
   // the migration RPC runs at most once per resolution even when the load
   // effect re-runs after the earthquake snapshot is set.
   const migratedEngagementRef = useRef<Set<string>>(new Set());
-  const reportingAgency = getPreferredApi() === 'usgs' ? 'USGS' : 'PHIVOLCS-DOST';
-  const isUsgs = getPreferredApi() === 'usgs';
+  const dataSource = (earthquake as unknown as { source?: 'phivolcs' | 'usgs' }).source || (getPreferredApi() === 'usgs' ? 'usgs' : 'phivolcs');
+  const sourceLabel = dataSource === 'usgs' ? 'USGS' : 'PHIVOLCS';
+  const reportingAgency = dataSource === 'usgs' ? 'USGS' : 'PHIVOLCS-DOST';
+  const isUsgs = dataSource === 'usgs';
   const [originExpanded, setOriginExpanded] = useState(false);
 
   // Set document title immediately and update when data arrives
@@ -787,7 +789,7 @@ export function Details() {
             />
           </svg>
         </div>
-        <div style={{ position: 'absolute', bottom: '20px', left: '5%', float: 'left', color: '#424242ff', fontSize: '12px' }}>Source data: PHIVOLCS</div>
+        <div style={{ position: 'absolute', bottom: '20px', left: '5%', float: 'left', color: '#424242ff', fontSize: '12px' }}>Source data: {sourceLabel}</div>
       </div>
 
       {/* Tsunami status strip (from the reporting agency's bulletin text) */}
