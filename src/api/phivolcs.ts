@@ -48,6 +48,7 @@ export interface EarthquakeDetails {
   instrumentalIntensities: string;
   note: string;
   mapUrl: string;
+  tsunami?: string;
 }
 
 export interface BulletinRef {
@@ -609,6 +610,7 @@ export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDet
               instrumentalIntensities: instrumental,
               note: bits.join(' \u00b7 '),
               mapUrl: buildUsgsMapUrl(products, p),
+              tsunami: usgsTsunamiText(p.tsunami),
             };
           }
         }
@@ -670,6 +672,14 @@ export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDet
   return null;
 }
 
+// USGS GeoJSON "tsunami" flag: 0 = none, 1 = advisory (potential tsunami),
+// 2 = warning (destructive tsunami may have been generated).
+function usgsTsunamiText(tsunami: number | undefined): string {
+  if (tsunami === 2) return 'Tsunami Warning: a destructive tsunami may have been generated.';
+  if (tsunami === 1) return 'Tsunami Advisory: potential for dangerous currents and waves.';
+  return '';
+}
+
 function parseDetailsHtml(html: string, url: string): EarthquakeDetails {
   const cleanText = html
     .replace(/&nbsp;/g, ' ')
@@ -688,6 +698,11 @@ function parseDetailsHtml(html: string, url: string): EarthquakeDetails {
 
   const noteMatch = /(This is an aftershock.*?)(?:Expecting Damage|$)/i.exec(cleanText);
   const note = noteMatch ? noteMatch[1].trim() : '';
+
+  // PHIVOLCS bulletins carry a "TSUNAMI INFORMATION:" line, e.g.
+  // "No destructive tsunami threat exists." or a warning for tsunamigenic events.
+  const tsunamiMatch = /TSUNAMI\s+INFORMATION\s*:\s*(.*?)(?:Reported Intensities|Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
+  const tsunami = tsunamiMatch ? tsunamiMatch[1].trim() : '';
 
   const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
   let imgMatch;
@@ -710,7 +725,8 @@ function parseDetailsHtml(html: string, url: string): EarthquakeDetails {
     reportedIntensities: reported,
     instrumentalIntensities: instrumental,
     note,
-    mapUrl
+    mapUrl,
+    tsunami
   };
 }
 

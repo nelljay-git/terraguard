@@ -3,10 +3,11 @@ import { useParams, Link, useLocation } from 'react-router-dom';
 import { fetchEarthquakeData, fetchArchiveData, fetchEarthquakeDetails, fetchBulletins, normalizeEarthquakes, type PhivolcsEarthquake, type EarthquakeDetails, type BulletinRef } from '../api/phivolcs';
 import { getPreferredApi } from '../lib/apiPreference';
 import { earthquakeToEqId, migrateEventEngagement } from '../lib/supabase';
-import { getSeverityColor, getSeverityLabel } from '../lib/utils';
+import { getSeverityColor, getSeverityLabel, haversineKm, timeAgo } from '../lib/utils';
+import { PH_PROVINCES, PH_CITIES } from '../data/phLocations';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
 import { FunFactLoader } from '../components/FunFactLoader';
@@ -42,6 +43,24 @@ function truncateWords(text: string, maxWords: number): string {
 function extractTime(s: string): string {
   const m = /(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)/i.exec(s);
   return m ? m[1].toUpperCase() : s;
+}
+
+// Classify the reporting agency's tsunami text into a banner state. The "none"
+// phrasing ("No destructive tsunami threat exists") must be matched first so it
+// isn't swallowed by the warning pattern. Unreadable text yields no banner.
+function classifyTsunami(text: string): { level: 'warning' | 'advisory' | 'none'; label: string } | null {
+  if (!text) return null;
+  const t = text.toLowerCase();
+  if (/no destructive|no tsunami|no threat|not expect|does not pose|no hazard/i.test(t)) {
+    return { level: 'none', label: 'No Tsunami Threat' };
+  }
+  if (/warning|destructive tsunami may|destructive tsunami threat exists/i.test(t)) {
+    return { level: 'warning', label: 'Tsunami Warning' };
+  }
+  if (/advisory|watch|potential tsunami|low tsunami|may generate/i.test(t)) {
+    return { level: 'advisory', label: 'Tsunami Advisory' };
+  }
+  return null;
 }
 
 interface RevisionInfo {
@@ -451,8 +470,26 @@ export function Details() {
        origLng: decoded.longitude,
        curLat: earthquake.latitude,
        curLng: earthquake.longitude,
-     };
+      };
    }, [earthquake, id, state]);
+
+   // Live relative time: tick once a minute so "happened X ago" stays fresh.
+   const [now, setNow] = useState(() => Date.now());
+   useEffect(() => {
+     const t = setInterval(() => setNow(Date.now()), 60_000);
+     return () => clearInterval(t);
+   }, []);
+
+   // Rank provinces and major cities by distance from the epicenter.
+   const nearestProvinces = useMemo(() => {
+     const eLat = parseFloat(earthquake?.latitude ?? '');
+     const eLng = parseFloat(earthquake?.longitude ?? '');
+     if (isNaN(eLat) || isNaN(eLng)) return [];
+     return [...PH_PROVINCES, ...PH_CITIES]
+       .map(p => ({ name: p.name, km: Math.round(haversineKm(eLat, eLng, p.lat, p.lng)) }))
+       .sort((a, b) => a.km - b.km)
+       .slice(0, 6);
+   }, [earthquake]);
 
    if (loading) {
      return (
@@ -488,6 +525,8 @@ export function Details() {
    const lng = parseFloat(earthquake.longitude);
    const isSevere = mag >= 6.0;
    const bulletin = extractBulletin(activeLink);
+   const occurredAgo = timeAgo(parseDateTime(earthquake.datetime), now);
+   const tsunamiInfo = classifyTsunami(details?.tsunami || '');
 
   const loadBulletinDetails = async (url: string) => {
     setDetailsLoading(true);
@@ -743,6 +782,17 @@ export function Details() {
         <div style={{ position: 'absolute', bottom: '20px', left: '5%', float: 'left', color: '#424242ff', fontSize: '12px' }}>Source data: PHIVOLCS</div>
       </div>
 
+      {/* Tsunami status strip (from the reporting agency's bulletin text) */}
+      {tsunamiInfo && (
+        <div className={`tsunami-banner tsunami-banner--${tsunamiInfo.level}`} role="status">
+          <Waves size={18} className="tsunami-banner-icon" />
+          <div className="tsunami-banner-body">
+            <strong>{tsunamiInfo.label}</strong>
+            {details?.tsunami && <span>{details.tsunami}</span>}
+          </div>
+        </div>
+      )}
+
       {/* Bulletin navigation across the earthquake sequence */}
       {bulletins.length > 1 && (
         <div className="details-card glass bulletin-nav">
@@ -886,6 +936,7 @@ export function Details() {
                 <div>
                   <div className="info-label">Date & Time (PST)</div>
                   <div className="info-value">{earthquake.datetime}</div>
+                  {occurredAgo && <div className="info-subvalue">{occurredAgo}</div>}
                 </div>
               </div>
               <div className="info-item glass-card">
@@ -995,6 +1046,30 @@ export function Details() {
               </div>
             </div>
           </div>
+
+          {/* Nearest provinces/cities by epicenter distance */}
+          {nearestProvinces.length > 0 && (
+            <div className="details-card glass" style={{ marginTop: '20px' }}>
+              <h3 className="card-title flex-center" style={{ gap: '8px', justifyContent: 'flex-start' }}>
+                <Navigation size={20} style={{ color }} />
+                Nearest Provinces
+              </h3>
+              <ul className="nearby-list">
+                {nearestProvinces.map((p, idx) => (
+                  <li key={p.name} className="nearby-item">
+                    <span className="nearby-rank" style={{ color }}>{idx + 1}</span>
+                    <span className="nearby-name">{p.name}</span>
+                    <span className="nearby-distance">{p.km.toLocaleString()} km</span>
+                    {p.km <= 50 ? (
+                      <span className="nearby-flag nearby-flag--close">Within 50 km</span>
+                    ) : p.km <= 150 ? (
+                      <span className="nearby-flag nearby-flag--near">Within 150 km</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Aftershock Tracker */}
           <AftershockTracker currentEarthquake={earthquake} />

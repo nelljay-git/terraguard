@@ -16,6 +16,7 @@ interface DetailsPayload {
     instrumentalIntensities: string;
     note: string;
     mapUrl: string;
+    tsunami: string;
   };
 }
 
@@ -99,13 +100,16 @@ export async function onRequest(context: { request: Request }) {
     const origin = originMatch ? originMatch[1].trim() : 'Unknown';
 
     const reportedMatch = /Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
-    let reported = reportedMatch ? reportedMatch[1].replace(/^[a-zA-Z0-9_.\s]+Intensity/i, 'Intensity').trim() : '';
+    const reported = reportedMatch ? reportedMatch[1].replace(/^[a-zA-Z0-9_.\s]+Intensity/i, 'Intensity').trim() : '';
 
     const instrumentalMatch = /Instrumental Intensities\s*:?\s*(.*?)(?:This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
     const instrumental = instrumentalMatch ? instrumentalMatch[1].trim() : '';
 
     const noteMatch = /(This is an aftershock.*?)(?:Expecting Damage|$)/i.exec(cleanText);
     const note = noteMatch ? noteMatch[1].trim() : '';
+
+    const tsunamiMatch = /TSUNAMI\s+INFORMATION\s*:\s*(.*?)(?:Reported Intensities|Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
+    const tsunami = tsunamiMatch ? tsunamiMatch[1].trim() : '';
 
     const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
     let imgMatch;
@@ -125,7 +129,7 @@ export async function onRequest(context: { request: Request }) {
 
     const payload: DetailsPayload = {
       success: true,
-      data: { origin, reportedIntensities: reported, instrumentalIntensities: instrumental, note, mapUrl },
+      data: { origin, reportedIntensities: reported, instrumentalIntensities: instrumental, note, mapUrl, tsunami },
     };
     await edgePut(targetUrl, payload);
 

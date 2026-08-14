@@ -426,6 +426,14 @@ function extractDetails(string $html, string $detailUrl): array {
         $note = trim($noteMatch[1] ?? '');
     }
 
+    // Tsunami information: "TSUNAMI INFORMATION: No destructive tsunami threat exists." etc.
+    $tsunami = '';
+    $tsunamiMatch = null;
+    $tsunamiPattern = '/TSUNAMI\s+INFORMATION\s*:\s*(.*?)(?:Reported Intensities|Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i';
+    if (preg_match($tsunamiPattern, $cleanText, $tsunamiMatch)) {
+        $tsunami = trim($tsunamiMatch[1] ?? '');
+    }
+
     // Map URL: const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
     $mapUrl = '';
     $imgRegex = '/<img[^>]+src=["\']([^"\']+)["\']/i';
@@ -461,5 +469,6 @@ function extractDetails(string $html, string $detailUrl): array {
         'instrumentalIntensities' => $instrumental,
         'note' => $note,
         'mapUrl' => $mapUrl,
+        'tsunami' => $tsunami,
     ];
 }
