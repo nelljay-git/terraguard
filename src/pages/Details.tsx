@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { fetchEarthquakeData, fetchArchiveData, fetchEarthquakeDetails, fetchBulletins, normalizeEarthquakes, type PhivolcsEarthquake, type EarthquakeDetails, type BulletinRef } from '../api/phivolcs';
 import { getPreferredApi } from '../lib/apiPreference';
+import { earthquakeToEqId, migrateEventEngagement } from '../lib/supabase';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
@@ -201,6 +202,10 @@ export function Details() {
   const [bulletins, setBulletins] = useState<BulletinRef[]>([]);
   const [activeLink, setActiveLink] = useState<string | undefined>(earthquake?.link);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  // Tracks which old->new slug pairs have already been merged server-side, so
+  // the migration RPC runs at most once per resolution even when the load
+  // effect re-runs after the earthquake snapshot is set.
+  const migratedEngagementRef = useRef<Set<string>>(new Set());
   const reportingAgency = getPreferredApi() === 'usgs' ? 'USGS' : 'PHIVOLCS-DOST';
   const [originExpanded, setOriginExpanded] = useState(false);
 
@@ -356,6 +361,23 @@ export function Details() {
           if (needsResolution) setEarthquake(found);
           setLoading(false);
           setActiveLink(found.link);
+
+          // PHIVOLCS revises events, so the URL slug may encode pre-revision
+          // time/coords and differ from the resolved event's canonical slug.
+          // Merge engagement (stars/likes/comments) that users recorded under
+          // that old slug into the canonical slug, so the state shows no matter
+          // which entry point led here (old link, Archive, Notifications).
+          const canonicalEqId = earthquakeToEqId(found);
+          if (id && canonicalEqId !== id) {
+            const pair = `${id}|${canonicalEqId}`;
+            if (!migratedEngagementRef.current.has(pair)) {
+              migratedEngagementRef.current.add(pair);
+              migrateEventEngagement(id, canonicalEqId).catch(() => {
+                // Allow a retry on the next visit if the merge failed.
+                migratedEngagementRef.current.delete(pair);
+              });
+            }
+          }
 
           if (found.link) {
             try {
@@ -1036,7 +1058,12 @@ export function Details() {
       </div>
 
       {/* Community: star, like, comments */}
-      {id && <CommunitySection key={id} eqId={id} earthquake={earthquake} />}
+      {/* Community: star, like, comments. Keyed by the resolved event's
+          canonical slug so every entry point (old link, Archive, Notifications)
+          reads the same engagement bucket. */}
+      {earthquake && (
+        <CommunitySection key={earthquakeToEqId(earthquake)} eqId={earthquakeToEqId(earthquake)} earthquake={earthquake} />
+      )}
 
       <ImageModal
         isOpen={isImageModalOpen}

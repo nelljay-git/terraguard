@@ -41,6 +41,17 @@ export function earthquakeToEqId(eq: PhivolcsEarthquake): string {
   return btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
 }
 
+// Re-point stars/likes/comments recorded under an outdated slug (from a
+// pre-revision /details link) to the event's current canonical slug, so every
+// entry point reads the same engagement bucket. Idempotent server-side.
+export async function migrateEventEngagement(oldEqId: string, newEqId: string): Promise<void> {
+  const { error } = await supabase.rpc('migrate_event_engagement', {
+    p_old_eq_id: oldEqId,
+    p_new_eq_id: newEqId,
+  });
+  if (error) throw error;
+}
+
 export async function getEngagement(eqId: string): Promise<EngagementState> {
   const {
     data: { user },

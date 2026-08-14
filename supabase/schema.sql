@@ -581,3 +581,52 @@ alter table public.profiles
 -- Grant existing rows the default (no-op for brand-new profiles, but covers
 -- profiles created before this migration).
 update public.profiles set preferred_api = 'phivolcs' where preferred_api is null;
+
+-- -----------------------------------------------------------------------------
+-- Engagement migration: PHIVOLCS revises events, which changes the /details/:id
+-- slug (base64 of datetime-lat-lng). Stars/likes/comments recorded under the
+-- old slug are re-pointed to the event's current slug so every entry point
+-- (old link, Archive, Notifications) reads the same bucket.
+--
+-- Idempotent and safe to call from the client whenever a resolved event's
+-- canonical slug differs from the URL slug. Uses UPDATE instead of delete +
+-- insert so the star/like rate-limit triggers never fire. Runs as the definer
+-- so all users' engagement rows move, regardless of RLS.
+-- -----------------------------------------------------------------------------
+create or replace function public.migrate_event_engagement(p_old_eq_id text, p_new_eq_id text)
+returns void
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  r record;
+begin
+  if p_old_eq_id is null or p_new_eq_id is null or p_old_eq_id = p_new_eq_id then
+    return;
+  end if;
+
+  -- Stars: if the user already starred under the new slug, drop the stale row;
+  -- otherwise re-point it.
+  for r in select id, user_id from public.stars where eq_id = p_old_eq_id loop
+    if exists (select 1 from public.stars s where s.user_id = r.user_id and s.eq_id = p_new_eq_id) then
+      delete from public.stars where id = r.id;
+    else
+      update public.stars set eq_id = p_new_eq_id where id = r.id;
+    end if;
+  end loop;
+
+  -- Likes: same pattern as stars.
+  for r in select id, user_id from public.likes where eq_id = p_old_eq_id loop
+    if exists (select 1 from public.likes l where l.user_id = r.user_id and l.eq_id = p_new_eq_id) then
+      delete from public.likes where id = r.id;
+    else
+      update public.likes set eq_id = p_new_eq_id where id = r.id;
+    end if;
+  end loop;
+
+  -- Comments/replies: no per-user uniqueness on eq_id, so a plain re-point.
+  update public.comments
+     set eq_id = p_new_eq_id
+   where eq_id = p_old_eq_id;
+end;
+$$;
