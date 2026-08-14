@@ -38,6 +38,13 @@ function truncateWords(text: string, maxWords: number): string {
   return words.length <= maxWords ? text : words.slice(0, maxWords).join(' ');
 }
 
+// Rough bounding box covering the Philippine archipelago. Used to decide
+// whether listing distances to PH provinces/cities is meaningful for an event
+// (USGS can report quakes anywhere in the world).
+function isInPhilippines(lat: number, lng: number): boolean {
+  return lat >= 4.5 && lat <= 21.5 && lng >= 116.0 && lng <= 127.0;
+}
+
 // Pull just the clock portion out of a PHIVOLCS datetime ("05 August 2026 - 12:13 PM"
 // -> "12:13 PM") so revision notices read compactly.
 function extractTime(s: string): string {
@@ -226,6 +233,7 @@ export function Details() {
   // effect re-runs after the earthquake snapshot is set.
   const migratedEngagementRef = useRef<Set<string>>(new Set());
   const reportingAgency = getPreferredApi() === 'usgs' ? 'USGS' : 'PHIVOLCS-DOST';
+  const isUsgs = getPreferredApi() === 'usgs';
   const [originExpanded, setOriginExpanded] = useState(false);
 
   // Set document title immediately and update when data arrives
@@ -482,9 +490,9 @@ export function Details() {
 
    // Rank provinces and major cities by distance from the epicenter.
    const nearestProvinces = useMemo(() => {
-     const eLat = parseFloat(earthquake?.latitude ?? '');
-     const eLng = parseFloat(earthquake?.longitude ?? '');
-     if (isNaN(eLat) || isNaN(eLng)) return [];
+    const eLat = parseFloat(earthquake?.latitude ?? '');
+    const eLng = parseFloat(earthquake?.longitude ?? '');
+    if (isNaN(eLat) || isNaN(eLng) || !isInPhilippines(eLat, eLng)) return [];
      return [...PH_PROVINCES, ...PH_CITIES]
        .map(p => ({ name: p.name, km: Math.round(haversineKm(eLat, eLng, p.lat, p.lng)) }))
        .sort((a, b) => a.km - b.km)
@@ -690,7 +698,7 @@ export function Details() {
         className="details-hero glass"
         style={{
           '--severity-color': color,
-          backgroundImage: "url('/image.png')",
+          backgroundImage: isUsgs ? "url('/image-usgs.jpg')" : "url('/image.png')",
           backgroundRepeat: 'repeat',
           color: '#ffffffff'
 
@@ -1063,7 +1071,7 @@ export function Details() {
                     {p.km <= 50 ? (
                       <span className="nearby-flag nearby-flag--close">Within 50 km</span>
                     ) : p.km <= 150 ? (
-                      <span className="nearby-flag nearby-flag--near">Within 150 km</span>
+                      <span className="nearby-flag nearby-flag--near">&lt;150 km</span>
                     ) : null}
                   </li>
                 ))}

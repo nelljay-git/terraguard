@@ -933,6 +933,40 @@
   .details-map-container {
     height: 240px;
   }
+
+  /* Nearest provinces: two-line layout to prevent overflow */
+  .nearby-item {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "rank name"
+      "distance flag";
+    column-gap: 12px;
+    row-gap: 4px;
+    align-items: center;
+    padding: 12px 14px;
+  }
+
+  .nearby-rank {
+    grid-area: rank;
+  }
+
+  .nearby-name {
+    grid-area: name;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.4;
+  }
+
+  .nearby-distance {
+    grid-area: distance;
+  }
+
+  .nearby-flag {
+    grid-area: flag;
+    justify-self: start;
+  }
 }
 
 /* Sub-value line inside an info-item (e.g. relative time under Date & Time) */

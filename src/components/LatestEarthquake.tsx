@@ -3,6 +3,7 @@ import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { MapPin, Clock, Activity, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { getPreferredApi } from '../lib/apiPreference';
 import './LatestEarthquake.css';
 
 export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquake }) {
@@ -10,6 +11,7 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
   const color = getSeverityColor(mag);
   const label = getSeverityLabel(mag);
   const eqId = btoa(`${earthquake.datetime}-${earthquake.latitude}-${earthquake.longitude}`).replace(/=/g, '');
+  const isUsgs = getPreferredApi() === 'usgs';
 
   // Track the previous earthquake's unique key to detect updates
   const prevEqKeyRef = useRef<string | null>(null);
@@ -52,7 +54,7 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
   };
 
   return (
-    <div className="latest-eq-card glass" style={{ borderLeft: `4px solid ${color}`, backgroundImage: 'url(/image.png)' }}>
+    <div className="latest-eq-card glass" style={{ borderLeft: `4px solid ${color}`, backgroundImage: `url(${isUsgs ? '/image-usgs.jpg' : '/image.png'})` }}>
       {/* Decorative background glow */}
       <div className="eq-glow" style={{ background: `radial-gradient(circle at 20% 30%, ${color}12 0%, transparent 60%)` }}></div>
 

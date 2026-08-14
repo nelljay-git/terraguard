@@ -264,7 +264,7 @@ export function Stats() {
             Seismic Analytics
           </h1>
           <p className="text-muted" style={{ lineHeight: 1.6, maxWidth: '640px' }}>
-            Explore patterns in the seismic record — how often earthquakes occur, where they concentrate, how strong and how deep they tend to be. Switch between today, the last few days, and this month to see how activity in the Philippines compares across time.
+            Explore how often earthquakes occur, where they concentrate, and how strong or deep they tend to be — across today, the last few days, or this month.
           </p>
         </div>
         <div className="stats-header-right">
