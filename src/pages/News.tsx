@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { fetchNews, type NewsArticle } from '../api/news';
+import { getPreferredApi } from '../lib/apiPreference';
 import { Newspaper, RefreshCw, Clock, ExternalLink, ChevronRight, Zap, Filter, Flame } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import placeholderImg from '../assets/news_placeholder.png';
@@ -35,10 +36,15 @@ export function News() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeCategory, setActiveCategory] = useState<Category>('All News');
 
+  const isGlobal = getPreferredApi() === 'usgs';
+
   const loadNews = useCallback(async (forceRefresh = false) => {
     if (forceRefresh) {
       setRefreshing(true);
-      try { localStorage.removeItem('terraguard_news_cache'); } catch { /* ignore */ }
+      try {
+        localStorage.removeItem('terraguard_news_cache_phivolcs');
+        localStorage.removeItem('terraguard_news_cache_usgs');
+      } catch { /* ignore */ }
     } else {
       setLoading(true);
     }
@@ -94,7 +100,9 @@ export function News() {
             </div>
           </div>
           <p className="news-page-subtitle">
-            A curated roundup of earthquake-related headlines for the Philippines — seismic activity reports, government updates, volcanic alerts, and the aftermath of major events — refreshed throughout the day.
+            {isGlobal
+              ? 'A curated roundup of earthquake-related headlines from around the world — seismic activity reports, government updates, volcanic alerts, and the aftermath of major events — refreshed throughout the day.'
+              : 'A curated roundup of earthquake-related headlines for the Philippines — seismic activity reports, government updates, volcanic alerts, and the aftermath of major events — refreshed throughout the day.'}
           </p>
         </div>
         <button

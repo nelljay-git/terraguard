@@ -35,7 +35,8 @@ export function Archive() {
     return sessionStorage.getItem('archive_selectedMonth') || 'January';
   });
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const years = Array.from({ length: currentYear - 2017 }, (_, i) => currentYear - i); // 2018 to current
+  const minArchiveYear = getPreferredApi() === 'usgs' ? 1900 : 2018;
+  const years = Array.from({ length: currentYear - minArchiveYear + 1 }, (_, i) => currentYear - i); // oldest available year to current
 
   // Persist state
   useEffect(() => {
@@ -50,6 +51,12 @@ export function Archive() {
     sessionStorage.setItem('archive_selectedYear', selectedYear.toString());
     sessionStorage.setItem('archive_selectedMonth', selectedMonth);
   }, [fetchMode, selectedYear, selectedMonth]);
+
+  useEffect(() => {
+    if (selectedYear < minArchiveYear) {
+      setSelectedYear(currentYear);
+    }
+  }, [minArchiveYear, selectedYear, currentYear]);
 
   useEffect(() => {
     async function loadData() {

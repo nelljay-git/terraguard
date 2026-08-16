@@ -14,9 +14,13 @@ export interface NewsResponse {
 
 import { apiUrl } from '../lib/apiBase';
 import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
+import { getPreferredApi } from '../lib/apiPreference';
 
-const GOOGLE_NEWS_RSS = 'https://news.google.com/rss/search?q=' +
-  encodeURIComponent('earthquake location:Philippines') + '&hl=en-PH&gl=PH&ceid=PH:en';
+// PHIVOLCS mode scopes news to the Philippines; USGS mode pulls global earthquake news.
+function buildNewsQuery(): string {
+  const query = getPreferredApi() === 'usgs' ? 'earthquake' : 'earthquake location:Philippines';
+  return 'https://news.google.com/rss/search?q=' + encodeURIComponent(query) + '&hl=en-PH&gl=PH&ceid=PH:en';
+}
 
 const NEWS_CACHE_KEY = 'terraguard_news_cache';
 const NEWS_CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes
@@ -26,9 +30,13 @@ interface CachedNews {
   timestamp: number;
 }
 
+function getNewsCacheKey(): string {
+  return `${NEWS_CACHE_KEY}_${getPreferredApi()}`;
+}
+
 function getCachedNews(): NewsResponse | null {
   try {
-    const cached = localStorage.getItem(NEWS_CACHE_KEY);
+    const cached = localStorage.getItem(getNewsCacheKey());
     if (cached) {
       const parsed = JSON.parse(cached) as CachedNews;
       if (Date.now() - parsed.timestamp < NEWS_CACHE_DURATION_MS) {
@@ -42,7 +50,7 @@ function getCachedNews(): NewsResponse | null {
 function setCachedNews(data: NewsResponse): void {
   try {
     const entry: CachedNews = { response: data, timestamp: Date.now() };
-    localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify(entry));
+    localStorage.setItem(getNewsCacheKey(), JSON.stringify(entry));
   } catch { /* ignore */ }
 }
 
@@ -57,8 +65,11 @@ export async function fetchNews(): Promise<NewsResponse> {
     const timeout = setTimeout(() => controller.abort(), 8000);
 
     // Native: scrape the Google News RSS feed directly (CORS-free via plugin).
-    // Web/dev: use the Vercel function or local Vite proxy.
-    const url = IS_NATIVE ? GOOGLE_NEWS_RSS : apiUrl('/api/news');
+    // Web/dev: use the Vercel function or local Vite proxy (pass scope as a param).
+    const isGlobal = getPreferredApi() === 'usgs';
+    const url = IS_NATIVE
+      ? buildNewsQuery()
+      : apiUrl(`/api/news${isGlobal ? '?global=1' : ''}`);
     const res = await nativeHttpGet(url);
     clearTimeout(timeout);
 

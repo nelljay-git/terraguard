@@ -140,7 +140,11 @@ export default defineConfig({
         target: 'https://news.google.com',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api\/news/, '/rss/search?q=earthquake+location:Philippines&hl=en-PH&gl=PH&ceid=PH:en'),
+        rewrite: (path) => {
+          const isGlobal = /[?&]global=1\b/.test(path);
+          const q = isGlobal ? 'earthquake' : 'earthquake location:Philippines';
+          return `/rss/search?q=${encodeURIComponent(q)}&hl=en-PH&gl=PH&ceid=PH:en`;
+        },
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }

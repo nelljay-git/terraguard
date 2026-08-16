@@ -11,16 +11,22 @@ const MAX_ITEMS = 20;
 
 // Google News RSS 503s from Cloudflare datacenter IPs (Google anti-bot block),
 // so Bing News is tried first and Google News is used as a fallback.
-const SOURCES = [
-  {
-    name: 'Bing News',
-    url: 'https://www.bing.com/news/search?q=' + encodeURIComponent('earthquake Philippines') + '&format=rss&mkt=en-PH',
-  },
-  {
-    name: 'Google News',
-    url: 'https://news.google.com/rss/search?q=' + encodeURIComponent('earthquake location:Philippines') + '&hl=en-PH&gl=PH&ceid=PH:en',
-  },
-] as const;
+//
+// When `global=1` is requested (USGS mode), the scope widens from the
+// Philippines to worldwide earthquake news.
+function buildSources(global: boolean) {
+  const query = global ? 'earthquake' : 'earthquake Philippines';
+  return [
+    {
+      name: 'Bing News',
+      url: 'https://www.bing.com/news/search?q=' + encodeURIComponent(query) + '&format=rss&mkt=en-PH',
+    },
+    {
+      name: 'Google News',
+      url: 'https://news.google.com/rss/search?q=' + encodeURIComponent(global ? 'earthquake' : 'earthquake location:Philippines') + '&hl=en-PH&gl=PH&ceid=PH:en',
+    },
+  ] as const;
+}
 
 interface NewsArticle {
   title: string;
@@ -92,6 +98,8 @@ export async function onRequest(context: { request: Request }) {
     });
 
   try {
+    const global = new URL(request.url).searchParams.get('global') === '1';
+    const SOURCES = buildSources(global);
     let lastError = '';
 
     for (const src of SOURCES) {
