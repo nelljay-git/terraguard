@@ -59,7 +59,7 @@ export interface BulletinRef {
   url: string;
 }
 
-import { apiUrl, phivolcsListUrl, phivolcsArchiveUrl, phivolcsDetailUrl, usePhpApi } from '../lib/apiBase';
+import { apiUrl, phivolcsListUrl, phivolcsArchiveUrl, phivolcsDetailUrl, phivolcsBulletinsUrl, usePhpApi } from '../lib/apiBase';
 import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
 import { type UsgsEarthquake, fetchUsgsData, getCachedUsgsData, fetchUsgsArchiveData } from './usgs';
 import { getPreferredApi } from '../lib/apiPreference';
@@ -348,10 +348,12 @@ export async function fetchBulletins(link: string): Promise<BulletinRef[]> {
     return results;
   }
 
-  // In production web, let the serverless function do the probing (no CORS / rate limits).
+  // In production web, probe through the PHP endpoint (the link) when enabled,
+  // so the PHIVOLCS scraping doesn't bill Cloudflare Pages Function invocations.
+  // Falls back to the in-repo /api/bulletins serverless function otherwise.
   if (!import.meta.env?.DEV) {
     try {
-      const res = await fetch(apiUrl(`/api/bulletins?url=${encodeURIComponent(link)}`));
+      const res = await fetch(phivolcsBulletinsUrl(link));
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) return json.data as BulletinRef[];

@@ -31,6 +31,43 @@ function encodeBase64(str: string): string {
   return btoa(binary).replace(/=/g, '');
 }
 
+// PHIVOLCS scraping is offloaded to the PHP endpoint (unlimited shared hosting)
+// instead of being scraped directly here on Cloudflare. Direct scraping would
+// bill every link-preview/crawl as a Cloudflare Pages Function invocation and
+// fetch PHIVOLCS on every request. The PHP host does the scraping.
+const PHP_PHIVOLCS_DEFAULT = 'https://trikefare.x10.mx/terraguard/phivolcs.php';
+
+function phpPhivolcsUrl(base: string, path?: string): string {
+  if (!path) return base;
+  return `${base}?path=${encodeURIComponent(path)}`;
+}
+
+// Fallback parser for when the endpoint returns raw PHIVOLCS HTML instead of JSON.
+function extractRowsFromHtml(html: string): OgRow[] {
+  const rows: OgRow[] = [];
+  const rowRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch: RegExpExecArray | null;
+  while ((rowMatch = rowRegex.exec(html)) !== null) {
+    const cellRegex = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;
+    const cells: string[] = [];
+    let cellMatch: RegExpExecArray | null;
+    while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+      cells.push(cellMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+    }
+    if (cells.length >= 6) {
+      rows.push({
+        datetime: cells[0],
+        latitude: cells[1],
+        longitude: cells[2],
+        depth: cells[3],
+        magnitude: cells[4],
+        location: cells[5],
+      });
+    }
+  }
+  return rows;
+}
+
 interface OgRow {
   datetime: string;
   latitude: string;
@@ -98,10 +135,11 @@ function fuzzyMatchRows(
   return best;
 }
 
-export async function onRequest(context: { request: Request }) {
-  const { request } = context;
+export async function onRequest(context: { request: Request; env?: Record<string, unknown> }) {
+  const { request, env } = context;
   const url = new URL(request.url);
   const host = request.headers.get('host') || 'terraguard.vercel.app';
+  const phpBase = (typeof env?.PHP_API_BASE === 'string' ? env.PHP_API_BASE : undefined) || PHP_PHIVOLCS_DEFAULT;
 
   if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -134,16 +172,18 @@ export async function onRequest(context: { request: Request }) {
     const currentYear = new Date().getFullYear();
     const currentMonth = MONTHS[new Date().getMonth()];
 
+    // Route PHIVOLCS scraping through the PHP endpoint (the link), not Cloudflare.
+    // This keeps the PHIVOLCS fetch off Cloudflare's function-invocation quota.
     const urlsToTry: string[] = [];
     if (targetYear === currentYear && targetMonthName === currentMonth) {
-      urlsToTry.push('https://earthquake.phivolcs.dost.gov.ph/');
+      urlsToTry.push(phpPhivolcsUrl(phpBase));
     }
-    urlsToTry.push(`https://earthquake.phivolcs.dost.gov.ph/EQLatest-Monthly/${targetYear}/${targetYear}_${targetMonthName}.html`);
+    urlsToTry.push(phpPhivolcsUrl(phpBase, `EQLatest-Monthly/${targetYear}/${targetYear}_${targetMonthName}.html`));
 
     const mIdx = MONTHS.indexOf(targetMonthName);
     const prevMonthIdx = mIdx === 0 ? 11 : mIdx - 1;
     const prevYear = mIdx === 0 ? targetYear - 1 : targetYear;
-    urlsToTry.push(`https://earthquake.phivolcs.dost.gov.ph/EQLatest-Monthly/${prevYear}/${prevYear}_${MONTHS[prevMonthIdx]}.html`);
+    urlsToTry.push(phpPhivolcsUrl(phpBase, `EQLatest-Monthly/${prevYear}/${prevYear}_${MONTHS[prevMonthIdx]}.html`));
 
     let earthquake: { datetime: string; latitude: string; longitude: string; depth: string; magnitude: string; location: string } | null = null;
 
@@ -164,39 +204,22 @@ export async function onRequest(context: { request: Request }) {
 
         if (!response.ok) continue;
 
-        const html = await response.text();
-        const rowRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
-        let rowMatch: RegExpExecArray | null;
+        const contentType = response.headers.get('content-type') || '';
+        let rows: OgRow[] = [];
+        if (contentType.includes('application/json')) {
+          const json = (await response.json()) as { data?: OgRow[] };
+          rows = json.data ?? [];
+        } else {
+          // Endpoint returned raw PHIVOLCS HTML; parse it as a fallback.
+          rows = extractRowsFromHtml(await response.text());
+        }
 
-        while ((rowMatch = rowRegex.exec(html)) !== null) {
-          const rowHtml = rowMatch[1];
-          const cellRegex = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;
-          const cells: string[] = [];
-          let cellMatch: RegExpExecArray | null;
-
-          while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
-            cells.push(cellMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
-          }
-
-          if (cells.length >= 6) {
-            const rowDatetime = cells[0];
-            const rowLat = cells[1];
-            const rowLng = cells[2];
-
-            allRows.push({
-              datetime: rowDatetime,
-              latitude: rowLat,
-              longitude: rowLng,
-              depth: cells[3],
-              magnitude: cells[4],
-              location: cells[5],
-            });
-
-            const rowId = encodeBase64(`${rowDatetime}-${rowLat}-${rowLng}`);
-            if (rowId === id) {
-              earthquake = allRows[allRows.length - 1];
-              break;
-            }
+        for (const r of rows) {
+          allRows.push(r);
+          const rowId = encodeBase64(`${r.datetime}-${r.latitude}-${r.longitude}`);
+          if (rowId === id) {
+            earthquake = r;
+            break;
           }
         }
 
@@ -236,7 +259,7 @@ export async function onRequest(context: { request: Request }) {
     if (!isBot) {
       return new Response(null, {
         status: 302,
-        headers: { Location: spaUrl, 'Cache-Control': 'no-cache', ...corsHeaders },
+        headers: { Location: spaUrl, 'Cache-Control': 's-maxage=300, stale-while-revalidate=86400', ...corsHeaders },
       });
     }
 
@@ -269,7 +292,7 @@ export async function onRequest(context: { request: Request }) {
     return new Response(htmlResponse, {
       headers: {
         'Content-Type': 'text/html',
-        'Cache-Control': 's-maxage=3600, stale-while-revalidate',
+        'Cache-Control': 's-maxage=3600, stale-while-revalidate=86400',
         ...corsHeaders,
       },
     });

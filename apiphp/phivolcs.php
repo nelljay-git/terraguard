@@ -85,6 +85,11 @@ if (isset($_GET['detail'])) {
     $detailVal = is_array($_GET['detail']) ? '' : $_GET['detail'];
     $isDetail = ($detailVal === '1' || $detailVal === 'true');
 }
+$isBulletins = false;
+if (isset($_GET['bulletins'])) {
+    $bulVal = is_array($_GET['bulletins']) ? '' : $_GET['bulletins'];
+    $isBulletins = ($bulVal === '1' || $bulVal === 'true');
+}
 $cacheKey = $detailUrl !== '' ? $detailUrl : ($pathQuery !== '' ? $pathQuery : '__live__');
 
 // --- Step 1: fresh in-memory (file-backed) cache -> serve immediately ---
@@ -121,6 +126,57 @@ if ($isDetail && $detailUrl !== '') {
     $payload = ['success' => true, 'count' => 1, 'data' => $details];
     // No caching for detail responses to avoid serving stale details; TTL = 0.
     emitJson($payload, 200, 'no-store');
+    exit;
+}
+
+// Bulletins mode: probe the PHIVOLCS bulletin sequence for an event page.
+// Mirrors functions/api/bulletins.ts so the scraping happens on this PHP host
+// instead of a Cloudflare Pages Function. The app passes the event page URL via
+// ?url= (e.g. .../2026_0701_0004_B1.html).
+if ($isBulletins && $detailUrl !== '') {
+    $m = array();
+    if (preg_match('/^(.+)_B(\d+)(F)?\.html$/i', $detailUrl, $m)) {
+        $prefix = $m[1];
+        $build = function (int $n, bool $final) use ($prefix) {
+            return $prefix . '_B' . $n . ($final ? 'F' : '') . '.html';
+        };
+        // Stale cache first (keyed per event URL) — bulletins rarely change.
+        $cached = getCached($cacheKey);
+        if ($cached !== null) {
+            emitJson($cached, 200, 's-maxage=3600, stale-while-revalidate');
+            exit;
+        }
+        $results = array();
+        $missStreak = 0;
+        $MAX = 8;
+        for ($n = 1; $n <= $MAX; $n++) {
+            $plainUrl = $build($n, false);
+            $finalUrl = $build($n, true);
+            $plainOk = false;
+            $finalOk = false;
+            $pRes = fetchPhivolcsPage($plainUrl);
+            if ($pRes['ok'] && preg_match('/EARTHQUAKE INFORMATION/i', $pRes['body'])) {
+                $plainOk = true;
+            }
+            $fRes = fetchPhivolcsPage($finalUrl);
+            if ($fRes['ok'] && preg_match('/EARTHQUAKE INFORMATION/i', $fRes['body'])) {
+                $finalOk = true;
+            }
+            if (!$plainOk && !$finalOk) {
+                $missStreak++;
+                if ($missStreak >= 2) break;
+            } else {
+                $missStreak = 0;
+                if ($plainOk) $results[] = array('no' => $n, 'final' => false, 'url' => $plainUrl);
+                if ($finalOk) $results[] = array('no' => $n, 'final' => true, 'url' => $finalUrl);
+            }
+        }
+        $payload = array('success' => true, 'data' => $results);
+        setCached($cacheKey, $payload);
+        emitJson($payload, 200, 's-maxage=3600, stale-while-revalidate');
+        exit;
+    }
+    emitJson(array('success' => true, 'data' => array()), 200, 'no-store');
     exit;
 }
 

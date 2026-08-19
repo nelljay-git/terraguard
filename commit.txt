@@ -1,5 +1,12 @@
-fix(details): show correct data source in hero and reporting agency
+Display earthquake times in UTC for USGS; keep PHIVOLCS local
 
-The hero's "Source data" label and the Reporting Agency field were hardcoded to
-PHIVOLCS/preferred API, so USGS events still displayed PHIVOLCS. Derive both from
-the normalized event's `source` field (falling back to the preferred API).
+- Normalize USGS event times to UTC as "d MMMM yyyy - HH:mm:ss UTC"
+  (24-hour, with seconds) so they match the source event time
+- Make PHIVOLCS the exception: keep its original Philippine local time
+  string unchanged instead of converting to UTC
+- Append " UTC" to displayed times so users aren't confused about zone
+- Update internal parsers (SummaryCards, AftershockTracker, Details)
+  to strip the trailing " UTC" and tolerate both 12h/24h and optional
+  seconds formats
+- Change Details label to "Date & Time" (value now carries the zone)
+- Drop now-unused date-fns parse/isValid usage in phivolcs.ts

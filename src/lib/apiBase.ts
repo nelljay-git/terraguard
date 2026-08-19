@@ -79,3 +79,15 @@ export function phivolcsDetailUrl(url: string): string {
   const qs = encodeURIComponent(url);
   return `${phpApi('phivolcs.php')}?detail=1&url=${qs}`;
 }
+
+/**
+ * Bulletin-sequence probe URL. When PHP API is used, the probing happens on the
+ * PHP host (so it doesn't bill Cloudflare Pages Function invocations); otherwise
+ * it falls back to the in-repo /api/bulletins function.
+ */
+export function phivolcsBulletinsUrl(url: string): string {
+  const qs = encodeURIComponent(url);
+  return usePhpApi
+    ? `${phpApi('phivolcs.php')}?bulletins=1&url=${qs}`
+    : apiUrl(`/api/bulletins?url=${qs}`);
+}
