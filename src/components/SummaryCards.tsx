@@ -13,7 +13,7 @@ export function SummaryCards({ recent, significant }: Props) {
   // Filter for last 24 hours
   const now = new Date().getTime();
   const last24Hours = recent.filter(eq => {
-    const cleanDateStr = eq.datetime.replace(' - ', ' ');
+    const cleanDateStr = eq.datetime.replace(' - ', ' ').replace(/ UTC$/i, '');
     const eqDate = new Date(cleanDateStr).getTime();
     if (isNaN(eqDate)) return true;
     return (now - eqDate) <= 24 * 60 * 60 * 1000;

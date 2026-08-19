@@ -25,7 +25,7 @@ export function normalizeEarthquake(eq: Earthquake): NormalizedEarthquake {
   if ('properties' in eq) {
     return {
       source: 'usgs',
-      datetime: format(new Date(eq.properties.time), "d MMMM yyyy - hh:mm a"),
+      datetime: formatUtc(new Date(eq.properties.time)),
       latitude: (Math.round(eq.geometry.coordinates[1] * 100) / 100).toFixed(2),
       longitude: (Math.round(eq.geometry.coordinates[0] * 100) / 100).toFixed(2),
       depth: String(Math.round(eq.geometry.coordinates[2])),
@@ -34,6 +34,8 @@ export function normalizeEarthquake(eq: Earthquake): NormalizedEarthquake {
       link: eq.properties.url,
     };
   }
+  // PHIVOLCS is the exception: keep the source (Philippine Time) string as-is
+  // instead of converting to UTC like USGS events.
   return { source: 'phivolcs', ...eq };
 }
 
@@ -61,7 +63,24 @@ import { apiUrl, phivolcsListUrl, phivolcsArchiveUrl, phivolcsDetailUrl, usePhpA
 import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
 import { type UsgsEarthquake, fetchUsgsData, getCachedUsgsData, fetchUsgsArchiveData } from './usgs';
 import { getPreferredApi } from '../lib/apiPreference';
-import { format } from 'date-fns';
+// USGS event times are displayed in UTC as "d MMMM yyyy - HH:mm:ss UTC"
+// (24-hour, with seconds) so they match the source event time exactly.
+// PHIVOLCS events are exempt and keep their original Philippine Time string.
+const UTC_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+// Format a UTC instant as "d MMMM yyyy - HH:mm:ss UTC" (not the viewer's tz).
+function formatUtc(date: Date): string {
+  const day = date.getUTCDate();
+  const month = UTC_MONTHS[date.getUTCMonth()];
+  const year = date.getUTCFullYear();
+  const hours = date.getUTCHours().toString().padStart(2, '0');
+  const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+  const seconds = date.getUTCSeconds().toString().padStart(2, '0');
+  return `${day} ${month} ${year} - ${hours}:${minutes}:${seconds} UTC`;
+}
 
 const PHIVOLCS_BASE = 'https://earthquake.phivolcs.dost.gov.ph';
 

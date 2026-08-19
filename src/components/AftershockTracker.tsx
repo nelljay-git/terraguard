@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { parse, isValid, addDays } from 'date-fns';
+import { addDays } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Link as LinkIcon, MapPin, Clock, Activity } from 'lucide-react';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
@@ -10,16 +10,44 @@ import './AftershockTracker.css';
 
 const AFTERSHOCK_RADIUS_KM = 100;
 const AFTERSHOCK_WINDOW_DAYS = 7;
-const DATETIME_FORMAT = "d MMMM yyyy - hh:mm a";
+
+const MONTH_INDEX: Record<string, number> = {};
+[
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+].forEach((name, i) => {
+  MONTH_INDEX[name.toLowerCase()] = i;
+  MONTH_INDEX[name.slice(0, 3).toLowerCase()] = i;
+});
 
 interface AftershockTrackerProps {
   currentEarthquake: PhivolcsEarthquake;
 }
 
+// Parses both the PHIVOLCS local format ("13 June 2026 - 10:05 PM", optionally
+// with seconds) and the USGS UTC format ("19 August 2026 - 12:34:28 UTC").
+// Times are interpreted in the viewer's local zone, which is fine for the
+// relative window/sorting comparisons done here.
 function parseEarthquakeDatetime(dt: string): Date | null {
-  const cleaned = dt.replace(/\s+/g, ' ').trim();
-  const parsed = parse(cleaned, DATETIME_FORMAT, new Date());
-  return isValid(parsed) ? parsed : null;
+  const m = /(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\s*-\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i.exec(
+    dt.replace(/\s+/g, ' ').trim().replace(/ UTC$/i, ''),
+  );
+  if (!m) return null;
+  const monthIdx = MONTH_INDEX[m[2].toLowerCase()];
+  if (monthIdx === undefined) return null;
+  let hour = parseInt(m[4], 10);
+  const ap = (m[7] || '').toUpperCase();
+  if (ap === 'PM' && hour < 12) hour += 12;
+  if (ap === 'AM' && hour === 12) hour = 0;
+  const date = new Date(
+    parseInt(m[3], 10),
+    monthIdx,
+    parseInt(m[1], 10),
+    hour,
+    parseInt(m[5], 10),
+    m[6] ? parseInt(m[6], 10) : 0,
+  );
+  return isNaN(date.getTime()) ? null : date;
 }
 
 export function AftershockTracker({ currentEarthquake }: AftershockTrackerProps) {

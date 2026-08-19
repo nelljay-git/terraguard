@@ -171,7 +171,8 @@ function parseDateTime(s: string): Date | null {
   const ap = (m[7] || '').toUpperCase();
   if (ap === 'PM' && hour < 12) hour += 12;
   if (ap === 'AM' && hour === 12) hour = 0;
-  const date = new Date(parseInt(m[3], 10), monthIdx, parseInt(m[1], 10), hour, parseInt(m[5], 10), m[6] ? parseInt(m[6], 10) : 0);
+  // Event times are stored/displayed in UTC; parse the components as a UTC instant.
+  const date = new Date(Date.UTC(parseInt(m[3], 10), monthIdx, parseInt(m[1], 10), hour, parseInt(m[5], 10), m[6] ? parseInt(m[6], 10) : 0));
   return isNaN(date.getTime()) ? null : date;
 }
 
@@ -953,7 +954,7 @@ export function Details() {
               <div className="info-item glass-card">
                 <Clock size={20} className="info-icon" style={{ color }} />
                 <div>
-                  <div className="info-label">Date & Time (PST)</div>
+                  <div className="info-label">Date &amp; Time</div>
                   <div className="info-value">{earthquake.datetime}</div>
                   {occurredAgo && <div className="info-subvalue">{occurredAgo}</div>}
                 </div>
