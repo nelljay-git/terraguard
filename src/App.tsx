@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useParams } from 'react-router-dom';
 import { useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { DevUpdateModal } from './components/DevUpdateModal';
@@ -22,6 +22,14 @@ import { ForumPost } from './pages/ForumPost';
 import { ForumEdit } from './pages/ForumEdit';
 import './App.css';
 
+// Keyed wrapper so navigating between two /details/:id URLs remounts the
+// component. Without this, React reuses the instance and the previously loaded
+// earthquake state persists, causing the wrong event to be displayed.
+function DetailsByUrl() {
+  const { id } = useParams<{ id: string }>();
+  return <Details key={id} />;
+}
+
 function App() {
   // Strip the internal _spa query param used by the OG rewrite
   useEffect(() => {
@@ -41,7 +49,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/archive" element={<Archive />} />
-            <Route path="/details/:id" element={<Details />} />
+            <Route path="/details/:id" element={<DetailsByUrl />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/news" element={<News />} />
             <Route path="/alerts" element={<Alerts />} />

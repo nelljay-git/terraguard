@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { fetchEarthquakeData, fetchArchiveData, fetchEarthquakeDetails, fetchBulletins, normalizeEarthquakes, type PhivolcsEarthquake, type EarthquakeDetails, type BulletinRef } from '../api/phivolcs';
+import { fetchEarthquakeData, fetchArchiveData, fetchEarthquakeDetails, fetchBulletins, normalizeEarthquakes, normalizeEarthquake, type PhivolcsEarthquake, type EarthquakeDetails, type BulletinRef } from '../api/phivolcs';
 import { getPreferredApi } from '../lib/apiPreference';
 import { earthquakeToEqId, migrateEventEngagement } from '../lib/supabase';
 import { getSeverityColor, getSeverityLabel, haversineKm, timeAgo } from '../lib/utils';
@@ -215,6 +215,71 @@ function fuzzyMatchEarthquake(data: PhivolcsEarthquake[], decoded: { datetime?: 
   return best;
 }
 
+// PHIVOLCS reports times in Philippine Time (UTC+8). When a shared link can't be
+// resolved against PHIVOLCS (e.g. a recent event that has scrolled off the live
+// list and whose monthly archive isn't published yet), fall back to the USGS
+// feed, which keeps every event for ~30 days. To do that we need the event's real
+// UTC instant, so convert the PHIVOLCS (PHT) datetime accordingly.
+function parsePhivolcsAsUtc(s: string): Date | null {
+  const d = parseDateTime(s);
+  if (!d) return null;
+  return new Date(d.getTime() - 8 * 3600 * 1000);
+}
+
+// Resolve a shared link purely by its decoded coordinates + time against the
+// USGS FDSN API. Returns a normalized (usgs-sourced) earthquake, or null.
+async function resolveUsgsById(id: string): Promise<PhivolcsEarthquake | null> {
+  const decoded = decodeEqId(id);
+  if (!decoded.datetime) return null;
+  const utc = parsePhivolcsAsUtc(decoded.datetime);
+  if (!utc) return null;
+  const lat = parseFloat(decoded.latitude || '');
+  const lng = parseFloat(decoded.longitude || '');
+
+  const params = new URLSearchParams({
+    format: 'geojson',
+    starttime: new Date(utc.getTime() - 36 * 3600 * 1000).toISOString(),
+    endtime: new Date(utc.getTime() + 36 * 3600 * 1000).toISOString(),
+    orderby: 'time',
+    limit: '500',
+  });
+  if (!isNaN(lat) && !isNaN(lng)) {
+    params.set('minlatitude', String(lat - 2));
+    params.set('maxlatitude', String(lat + 2));
+    params.set('minlongitude', String(lng - 2));
+    params.set('maxlongitude', String(lng + 2));
+  }
+
+  try {
+    const res = await fetch(`https://earthquake.usgs.gov/fdsnws/event/1/query?${params}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { features?: Array<Record<string, unknown>> };
+    const features = data.features ?? [];
+    let best: Record<string, unknown> | null = null;
+    let bestScore = Infinity;
+    for (const f of features) {
+      const props = f.properties as { time?: number } | undefined;
+      const geom = f.geometry as { coordinates?: [number, number, number] } | undefined;
+      if (!props?.time || !geom?.coordinates) continue;
+      const t = new Date(props.time);
+      const timeDiffH = Math.abs(t.getTime() - utc.getTime()) / 3600000;
+      const flat = geom.coordinates[1];
+      const flng = geom.coordinates[0];
+      const coordDist = !isNaN(lat) && !isNaN(lng) && !isNaN(flat) && !isNaN(flng)
+        ? Math.hypot(flat - lat, flng - lng)
+        : 0;
+      const score = timeDiffH * 2 + coordDist;
+      if (score < bestScore) {
+        bestScore = score;
+        best = f;
+      }
+    }
+    return best ? normalizeEarthquake(best as unknown as PhivolcsEarthquake) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function Details() {
   const { id } = useParams<{ id: string }>();
   const { state } = useLocation();
@@ -295,6 +360,14 @@ export function Details() {
   }, [earthquake]);
 
   useEffect(() => {
+    // The router state snapshot is authoritative for what we display: it came
+    // directly from the item the user clicked (dashboard, archive, map, or a
+    // starred event), so it can never be the wrong earthquake. The id is only a
+    // fallback used to re-resolve the event when no snapshot exists (shared
+    // links, notifications). We read the snapshot here once per mount.
+    const snap = (state as { earthquake?: PhivolcsEarthquake } | null)?.earthquake;
+    const snapUsable = !!(snap && snap.datetime && snap.latitude && snap.longitude);
+
     async function loadEq() {
       if (!id) return;
 
@@ -322,7 +395,9 @@ export function Details() {
         return fuzzyMatchEarthquake(data, decoded);
       };
 
-      try {
+      // Resolve the event (with its bulletin link) from the feeds. Respects the
+      // preferred API and matches by id; returns null when nothing matches.
+      const resolveFromFeeds = async (): Promise<PhivolcsEarthquake | null> => {
         // --- Decode the ID to find target year/month ---
         let targetYear = new Date().getFullYear();
         let targetMonthIndex = new Date().getMonth();
@@ -332,95 +407,127 @@ export function Details() {
           const paddedId = pad ? id + '='.repeat(4 - pad) : id;
           const decodedStr = atob(paddedId);
           const datePart = decodedStr.split('-')[0].trim();
-          const match = datePart.match(/(\d+)\s+([A-Za-z]+)\s+(\d{4})/);
-          if (match) {
-            targetYear = parseInt(match[3], 10);
-            const idx = months.findIndex(m => m.toLowerCase() === match[2].toLowerCase());
+          const m = datePart.match(/(\d+)\s+([A-Za-z]+)\s+(\d{4})/);
+          if (m) {
+            targetYear = parseInt(m[3], 10);
+            const idx = months.findIndex(mo => mo.toLowerCase() === m[2].toLowerCase());
             if (idx !== -1) targetMonthIndex = idx;
           }
         } catch (e) {
           console.warn('Could not decode ID for historical fetch', e);
         }
 
-        // When navigated with a snapshot that has no bulletin link (e.g. from
-        // the Stars page), the event must still be resolved against the PHIVOLCS
-        // feeds so reported intensities, origin, and bulletins can load.
-        const needsResolution = !earthquake?.link;
-        let found = needsResolution ? null : earthquake;
+        // 1. Always try the live feed first (covers most recent events).
+        //    fetchEarthquakeData respects the preferred source (PHIVOLCS or
+        //    USGS); normalize so USGS GeoJSON features match the same shape
+        //    as PHIVOLCS rows.
+        try {
+          const liveRes = await fetchEarthquakeData();
+          const live = matchId(normalizeEarthquakes(liveRes.data));
+          if (live) return live;
+        } catch { /* continue */ }
 
-        if (!found) {
-          // 1. Always try the live feed first (covers most recent events).
-          //    fetchEarthquakeData respects the preferred source (PHIVOLCS or
-          //    USGS); normalize so USGS GeoJSON features match the same shape
-          //    as PHIVOLCS rows.
-          try {
-            const liveRes = await fetchEarthquakeData();
-            found = matchId(normalizeEarthquakes(liveRes.data));
-          } catch { /* continue */ }
+        // 2. Try the archive for the decoded month (respects the preferred API)
+        try {
+          const archiveRes = await fetchArchiveData(targetYear, months[targetMonthIndex]);
+          const arch = matchId(normalizeEarthquakes(archiveRes.data));
+          if (arch) return arch;
+        } catch { /* continue */ }
+
+        // 3. Try the previous month (handles month-boundary events)
+        const prevMonthIndex = targetMonthIndex === 0 ? 11 : targetMonthIndex - 1;
+        const prevYear = targetMonthIndex === 0 ? targetYear - 1 : targetYear;
+        try {
+          const prevRes = await fetchArchiveData(prevYear, months[prevMonthIndex]);
+          const prev = matchId(normalizeEarthquakes(prevRes.data));
+          if (prev) return prev;
+        } catch { /* continue */ }
+
+        // 4. Try next month (in case of time-zone edge cases)
+        const nextMonthIndex = (targetMonthIndex + 1) % 12;
+        const nextYear = targetMonthIndex === 11 ? targetYear + 1 : targetYear;
+        try {
+          const nextRes = await fetchArchiveData(nextYear, months[nextMonthIndex]);
+          const next = matchId(normalizeEarthquakes(nextRes.data));
+          if (next) return next;
+        } catch { /* continue */ }
+
+        return null;
+      };
+
+      try {
+        // The snapshot is what we show. If it lacks a bulletin link (e.g. a
+        // starred event) we still display it and only try to recover the link
+        // so details/bulletins can load — the snapshot's own fields are never
+        // replaced by a feed match, which would risk showing the wrong event.
+        let display: PhivolcsEarthquake | null = snapUsable ? snap! : null;
+        let resolvedLink: string | undefined = snap?.link || undefined;
+
+        // When there's no usable snapshot, we must resolve the whole event by id.
+        // When the snapshot is missing its link, we only need to recover the link.
+        if (!display || (!resolvedLink && snapUsable)) {
+          const matched = await resolveFromFeeds();
+          if (matched) {
+            if (!display) display = matched;
+            if (!resolvedLink) resolvedLink = matched.link;
+          }
+
+          // Fallback for shared links: PHIVOLCS only publishes the monthly archive
+          // after the month closes, so a recent event can be unreachable there.
+          // USGS keeps every event for ~30 days, so query it by coordinates/time.
+          if (!matched) {
+            const usgsMatch = await resolveUsgsById(id!);
+            if (usgsMatch) {
+              if (!display) display = usgsMatch;
+              if (!resolvedLink) resolvedLink = usgsMatch.link;
+            }
+          }
         }
 
-        if (!found) {
-          // 2. Try the archive for the decoded month (respects the preferred API)
-          try {
-            const archiveRes = await fetchArchiveData(targetYear, months[targetMonthIndex]);
-            found = matchId(normalizeEarthquakes(archiveRes.data));
-          } catch { /* continue */ }
-        }
-
-        if (!found) {
-          // 3. Try the previous month (handles month-boundary events)
-          const prevMonthIndex = targetMonthIndex === 0 ? 11 : targetMonthIndex - 1;
-          const prevYear = targetMonthIndex === 0 ? targetYear - 1 : targetYear;
-          try {
-            const prevRes = await fetchArchiveData(prevYear, months[prevMonthIndex]);
-            found = matchId(normalizeEarthquakes(prevRes.data));
-          } catch { /* continue */ }
-        }
-
-        if (!found) {
-          // 4. Try next month (in case of time-zone edge cases)
-          const nextMonthIndex = (targetMonthIndex + 1) % 12;
-          const nextYear = targetMonthIndex === 11 ? targetYear + 1 : targetYear;
-          try {
-            const nextRes = await fetchArchiveData(nextYear, months[nextMonthIndex]);
-            found = matchId(normalizeEarthquakes(nextRes.data));
-          } catch { /* continue */ }
-        }
-
-        if (found) {
-          if (needsResolution) setEarthquake(found);
+        if (display) {
+          // Enrich a link-less snapshot with the recovered link (keeping its own
+          // location/time/etc.) so bulletins and details can load; otherwise
+          // just display the snapshot/resolved event.
+          if (snapUsable && !snap!.link && resolvedLink) {
+            setEarthquake({ ...snap!, link: resolvedLink });
+          } else {
+            setEarthquake(display);
+          }
           setLoading(false);
-          setActiveLink(found.link);
+          setActiveLink(resolvedLink || display.link);
 
-          // PHIVOLCS revises events, so the URL slug may encode pre-revision
-          // time/coords and differ from the resolved event's canonical slug.
-          // Merge engagement (stars/likes/comments) that users recorded under
-          // that old slug into the canonical slug, so the state shows no matter
-          // which entry point led here (old link, Archive, Notifications).
-          const canonicalEqId = earthquakeToEqId(found);
-          if (id && canonicalEqId !== id) {
-            const pair = `${id}|${canonicalEqId}`;
-            if (!migratedEngagementRef.current.has(pair)) {
-              migratedEngagementRef.current.add(pair);
-              migrateEventEngagement(id, canonicalEqId).catch(() => {
-                // Allow a retry on the next visit if the merge failed.
-                migratedEngagementRef.current.delete(pair);
-              });
+          // When there was no snapshot (id-only entry), the URL slug may encode
+          // pre-revision time/coords and differ from the resolved event's
+          // canonical slug. Merge engagement recorded under that old slug into
+          // the canonical one so stars/likes/comments show consistently.
+          if (!snapUsable) {
+            const canonicalEqId = earthquakeToEqId(display);
+            if (id && canonicalEqId !== id) {
+              const pair = `${id}|${canonicalEqId}`;
+              if (!migratedEngagementRef.current.has(pair)) {
+                migratedEngagementRef.current.add(pair);
+                migrateEventEngagement(id, canonicalEqId).catch(() => {
+                  migratedEngagementRef.current.delete(pair);
+                });
+              }
             }
           }
 
-          if (found.link) {
+          const linkForDetails = resolvedLink || display.link;
+          if (linkForDetails) {
             try {
-              const det = await fetchEarthquakeDetails(found.link);
+              const det = await fetchEarthquakeDetails(linkForDetails);
               if (det) setDetails(det);
             } catch (err) {
               console.error('Failed to load extra details:', err);
             }
           }
-        } else if (earthquake) {
-          // Snapshot exists (e.g. a starred event) but the event can't be
-          // re-resolved — keep showing the saved data rather than an error.
+        } else if (snapUsable) {
+          // Snapshot exists but we couldn't recover a link — keep showing the
+          // saved data rather than erroring out.
+          setEarthquake(snap!);
           setLoading(false);
+          setActiveLink(undefined);
         } else {
           setError(true);
         }
@@ -433,7 +540,8 @@ export function Details() {
       }
     }
     loadEq();
-  }, [id, earthquake]);
+    // Keyed by `id` (see DetailsByUrl in App.tsx) so this runs once per event.
+  }, [id]);
 
    // Discover all bulletins PHIVOLCS published for this earthquake sequence
    useEffect(() => {
