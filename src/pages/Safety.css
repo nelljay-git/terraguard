@@ -216,3 +216,151 @@
   margin-top: 3px;
   color: #eab308;
 }
+
+/* Stat grid */
+.safety-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin: 8px 0 18px;
+}
+
+.safety-stat {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 16px;
+  padding: 16px 14px;
+  text-align: center;
+}
+
+.safety-stat-num {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #3b82f6;
+  line-height: 1.1;
+}
+
+.safety-stat-label {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Callout */
+.safety-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(234, 179, 8, 0.08);
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  border-left: 3px solid #eab308;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-top: 6px;
+}
+
+.safety-callout-icon {
+  color: #eab308;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.safety-callout p {
+  margin: 0 !important;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+/* Feel scale */
+.safety-feel-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 16px;
+}
+
+.safety-feel-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.08));
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.safety-feel-mag {
+  flex-shrink: 0;
+  min-width: 54px;
+  font-weight: 800;
+  color: #3b82f6;
+  text-align: center;
+}
+
+/* Timeline */
+.safety-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 6px 0 16px;
+  padding-left: 4px;
+}
+
+.safety-timeline-item {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.safety-timeline-year {
+  flex-shrink: 0;
+  min-width: 56px;
+  font-weight: 800;
+  color: #3b82f6;
+  font-size: 1.05rem;
+  padding-top: 1px;
+}
+
+.safety-timeline-body {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* Myths vs facts */
+.safety-myth {
+  border-radius: 14px;
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+  background: rgba(255, 255, 255, 0.02);
+  padding: 14px 18px;
+  margin-bottom: 12px;
+}
+
+.safety-myth-q {
+  font-weight: 700;
+  color: #f87171;
+  font-size: 0.95rem;
+  margin-bottom: 6px;
+}
+
+.safety-myth-a {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+@media (max-width: 640px) {
+  .safety-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .safety-feel-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}
