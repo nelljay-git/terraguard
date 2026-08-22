@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { fetchEarthquakeData, fetchArchiveData, fetchEarthquakeDetails, fetchBulletins, normalizeEarthquakes, normalizeEarthquake, type PhivolcsEarthquake, type EarthquakeDetails, type BulletinRef } from '../api/phivolcs';
+import { fetchEarthquakeData, fetchArchiveData, fetchEarthquakeDetails, fetchBulletins, normalizeEarthquakes, normalizeEarthquake, type PhivolcsEarthquake, type NormalizedEarthquake, type EarthquakeDetails, type BulletinRef } from '../api/phivolcs';
 import { getPreferredApi } from '../lib/apiPreference';
 import { earthquakeToEqId, migrateEventEngagement } from '../lib/supabase';
 import { getSeverityColor, getSeverityLabel, haversineKm, timeAgo } from '../lib/utils';
@@ -298,7 +298,7 @@ export function Details() {
   // the migration RPC runs at most once per resolution even when the load
   // effect re-runs after the earthquake snapshot is set.
   const migratedEngagementRef = useRef<Set<string>>(new Set());
-  const dataSource = (earthquake as unknown as { source?: 'phivolcs' | 'usgs' }).source || (getPreferredApi() === 'usgs' ? 'usgs' : 'phivolcs');
+  const dataSource = (earthquake as NormalizedEarthquake | null)?.source || (getPreferredApi() === 'usgs' ? 'usgs' : 'phivolcs');
   const sourceLabel = dataSource === 'usgs' ? 'USGS' : 'PHIVOLCS';
   const reportingAgency = dataSource === 'usgs' ? 'USGS' : 'PHIVOLCS-DOST';
   const isUsgs = dataSource === 'usgs';
