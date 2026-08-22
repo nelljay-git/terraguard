@@ -56,6 +56,10 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Don't let the SPA app-shell fallback intercept non-app files. Without
+        // this, a navigation to /ads.txt or /robots.txt is served index.html by
+        // the service worker instead of the real static file.
+        navigateFallbackDenylist: [/^\/ads\.txt$/, /^\/robots\.txt$/],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
