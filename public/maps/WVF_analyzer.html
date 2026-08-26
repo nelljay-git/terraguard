@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>West Valley Fault M7.2 Scenario — Interactive Earthquake Hazard Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+  :root{
+    --bg:#0b0f17; --panel:rgba(17,24,39,.82); --panel-solid:#111827;
+    --stroke:rgba(255,255,255,.10); --accent:#ff5a5f; --accent2:#36c2ff;
+    --text:#e7edf5; --muted:#93a1b5; --good:#36d399; --warn:#fbbd23; --danger:#f87272;
+    --shadow:0 8px 30px rgba(0,0,0,.45);
+    --font:'Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;overflow:hidden}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);overflow:hidden}
+  #app{display:flex;flex-direction:column;height:100vh;width:100vw}
+
+  /* ---------- Top bar ---------- */
+  header{
+    display:flex;align-items:center;gap:14px;padding:10px 16px;
+    background:linear-gradient(90deg,#0e1420,#141d2e);
+    border-bottom:1px solid var(--stroke);z-index:1200;flex-wrap:wrap;
+  }
+  .brand{display:flex;align-items:center;gap:12px;min-width:0}
+  .brand .logo{
+    width:38px;height:38px;border-radius:9px;flex:0 0 auto;
+    background:radial-gradient(circle at 30% 30%,#ff7a7f,#c81e1e);
+    display:flex;align-items:center;justify-content:center;font-size:20px;
+    box-shadow:0 0 14px rgba(255,90,95,.5);
+  }
+  .brand h1{font-size:15px;line-height:1.15;margin:0;font-weight:700;letter-spacing:.2px}
+  .brand p{margin:0;font-size:11px;color:var(--muted)}
+  .scenario-badge{
+    margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center
+  }
+  .badge{
+    background:rgba(255,90,95,.14);border:1px solid rgba(255,90,95,.4);
+    color:#ffd9da;padding:5px 10px;border-radius:999px;font-size:11.5px;font-weight:600;
+    white-space:nowrap;
+  }
+  .badge.alt{background:rgba(54,194,255,.12);border-color:rgba(54,194,255,.4);color:#cdeeff}
+  .btn{
+    cursor:pointer;border:1px solid var(--stroke);background:rgba(255,255,255,.05);
+    color:var(--text);padding:7px 11px;border-radius:8px;font-size:12.5px;font-weight:600;
+    transition:.15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  }
+  .btn:hover{background:rgba(255,255,255,.12)}
+  .btn.primary{background:linear-gradient(180deg,#ff6b70,#d61f25);border-color:#ff6b70;color:#fff}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:5px 8px;font-size:11.5px}
+
+  /* ---------- Layout ---------- */
+  .main{flex:1;display:flex;min-height:0;position:relative}
+  #map{flex:1;height:100%;background:#0b0f17;overflow:hidden}
+  .leaflet-container{background:#0b0f17;font-family:var(--font)}
+
+  /* ---------- Sidebar ---------- */
+  aside{
+    width:360px;flex:0 0 360px;background:var(--panel);backdrop-filter:blur(8px);
+    border-left:1px solid var(--stroke);display:flex;flex-direction:column;
+    z-index:1100;overflow:hidden;
+  }
+  .side-scroll{overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px}
+  .panel{background:rgba(255,255,255,.04);border:1px solid var(--stroke);border-radius:12px;padding:13px}
+  .panel h2{margin:0 0 10px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .loc-name{font-size:21px;font-weight:800;line-height:1.1;margin:0 0 2px}
+  .loc-sub{font-size:12px;color:var(--muted)}
+
+  .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .metric{background:rgba(0,0,0,.25);border:1px solid var(--stroke);border-radius:10px;padding:10px}
+  .metric .k{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .metric .v{font-size:16px;font-weight:700;margin-top:3px}
+
+  .intensity-show{display:flex;align-items:center;gap:14px}
+  .int-badge{
+    width:84px;height:84px;border-radius:16px;flex:0 0 auto;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;font-weight:900;color:#08121f;box-shadow:var(--shadow);
+  }
+  .int-badge .num{font-size:34px;line-height:1}
+  .int-badge .lab{font-size:10px;font-weight:800;letter-spacing:.1em;margin-top:2px}
+  .int-text .t{font-size:16px;font-weight:800}
+  .int-text .d{font-size:12px;color:var(--muted);margin-top:2px}
+  .sev{display:inline-block;margin-top:6px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px}
+
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed rgba(255,255,255,.07);font-size:13px}
+  .eye-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:0;line-height:0;display:inline-flex}
+  .eye-btn:hover{color:#fff}
+  .kv:last-child{border-bottom:none}
+  .kv .k{color:var(--muted)}
+  .kv .v{font-weight:600;text-align:right}
+  .tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px}
+  .tag.green{background:rgba(54,211,153,.15);color:#9af7d2}
+  .tag.amber{background:rgba(251,189,35,.15);color:#ffe2a0}
+  .tag.red{background:rgba(248,114,114,.15);color:#ffc2c2}
+
+  .hint{font-size:11.5px;color:var(--muted);line-height:1.5}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:8px;padding:8px;border-left:2px solid var(--accent2);background:rgba(54,194,255,.06)}
+
+  /* ---------- Floating controls ---------- */
+  .floating{position:absolute;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .left-controls{top:14px;left:14px;width:248px}
+  #panelShow{position:absolute;top:14px;left:14px;z-index:1300;display:none}
+  body.hidden-panels #panelShow{display:flex}
+  body.sidebar-open #panelShow{display:none}
+  body.hidden-panels .left-controls{display:none}
+  .panel-hide{align-self:stretch;justify-content:center;margin:0 0 2px;opacity:.8}
+  .ctl-card{background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--stroke);
+    border-radius:12px;padding:12px;box-shadow:var(--shadow)}
+  .ctl-card h3{margin:0 0 9px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+    display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;user-select:none}
+  .ctl-card h3 .chev{font-size:10px;opacity:.6;transition:transform .15s}
+  .ctl-card.collapsed > *:not(h3){display:none}
+  .ctl-card.collapsed h3{margin-bottom:0}
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;font-size:12.5px}
+  .switch{position:relative;width:38px;height:21px;flex:0 0 auto}
+  .switch input{opacity:0;width:0;height:0}
+  .slider{position:absolute;cursor:pointer;inset:0;background:rgba(255,255,255,.18);border-radius:999px;transition:.2s}
+  .slider:before{content:"";position:absolute;height:15px;width:15px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+  input:checked + .slider{background:var(--accent2)}
+  input:checked + .slider:before{transform:translateX(17px)}
+  .slider.acc:before{background:#fff}
+  input:checked + .slider.acc{background:var(--accent)}
+
+  .search-row{display:flex;gap:6px}
+  input[type=text]{flex:1;background:rgba(0,0,0,.3);border:1px solid var(--stroke);color:var(--text);
+    border-radius:8px;padding:7px 9px;font-size:12.5px;min-width:0}
+  input[type=text]::placeholder{color:#6b788c}
+  .slider-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  input[type=range]{flex:1;accent-color:var(--accent2)}
+  .draw-info{font-size:11.5px;color:var(--muted);margin-top:8px;min-height:14px;line-height:1.4}
+  .draw-info b{color:#ffe08a}
+  #map.drawing{cursor:crosshair}
+  .draw-label{background:none;border:none}
+  .coord-box{width:100%;margin-top:8px;font:11px ui-monospace,SFMono-Regular,Menlo,monospace;
+    background:#0e1117;color:#bfe9ff;border:1px solid var(--stroke);border-radius:8px;padding:6px;resize:vertical;display:none;white-space:pre}
+
+  /* ---------- Legend & scale ---------- */
+  .legend{position:absolute;right:14px;bottom:26px;z-index:1000;background:var(--panel);
+    backdrop-filter:blur(8px);border:1px solid var(--stroke);border-radius:12px;padding:12px;width:210px;box-shadow:var(--shadow)}
+  .legend h3{margin:0 0 8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+    display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;user-select:none}
+  .legend h3 .chev{font-size:10px;opacity:.6;transition:transform .15s}
+  .legend.collapsed > *:not(h3){display:none}
+  .legend.collapsed h3{margin-bottom:0}
+  .leg-item{display:flex;align-items:center;gap:8px;font-size:11.5px;padding:2px 0}
+  .leg-sw{width:16px;height:16px;border-radius:4px;flex:0 0 auto;border:1px solid rgba(255,255,255,.2)}
+  .north{position:absolute;right:14px;top:14px;z-index:1000;width:46px;height:46px;background:var(--panel);
+    border:1px solid var(--stroke);border-radius:10px;display:flex;align-items:center;justify-content:center;
+    box-shadow:var(--shadow);font-size:11px;color:var(--muted)}
+  .north .arrow{font-size:22px;color:var(--accent);line-height:1}
+  .leaflet-popup-content .pop-details{display:inline-block;margin-top:5px;color:#0a3d91;cursor:pointer;font-weight:700;font-size:12.5px}
+
+  /* ---------- Disclaimer / About ---------- */
+  .disclaimer{background:rgba(251,189,35,.12);border-bottom:1px solid rgba(251,189,35,.35);
+    color:#ffe9b0;font-size:11.5px;padding:6px 16px;text-align:center;line-height:1.4;z-index:1150}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;display:none;align-items:center;justify-content:center;padding:18px}
+  .modal-bg.open{display:flex}
+  .modal{background:var(--panel-solid);border:1px solid var(--stroke);border-radius:14px;max-width:680px;
+    width:100%;max-height:85vh;overflow-y:auto;padding:22px;box-shadow:var(--shadow)}
+  .modal h2{margin:0 0 6px;font-size:18px}
+  .modal h3{margin:18px 0 6px;font-size:13px;color:var(--accent2);letter-spacing:.04em}
+  .modal p,.modal li{font-size:13px;line-height:1.6;color:#d4dce8}
+  .modal .close{float:right;cursor:pointer;font-size:20px;color:var(--muted);border:none;background:none}
+  .src{font-size:11.5px;color:var(--muted);border-top:1px solid var(--stroke);margin-top:14px;padding-top:10px;line-height:1.5}
+
+  /* ---------- Mobile ---------- */
+  .side-toggle{display:none}
+  @media (max-width:860px){
+    aside{position:absolute;right:0;top:0;bottom:0;width:100%;flex:none;transform:translateX(100%);transition:.25s;box-shadow:var(--shadow)}
+    aside.open{transform:translateX(0)}
+  .side-toggle{display:none}
+  .side-close{position:absolute;top:10px;right:10px;z-index:6;display:none}
+  @media (max-width:860px){ #sidebar.open .side-close{display:flex} }
+    .north{top:14px}
+    .left-controls{width:212px;max-height:calc(100% - 235px);overflow-y:auto}
+    .legend{width:168px;bottom:14px}
+  }
+  @media (max-width:480px){
+    .brand p{display:none}
+    .left-controls{width:168px}
+    .legend{width:120px;bottom:10px}
+    .badge{font-size:10.5px;padding:4px 8px}
+  }
+  .leaflet-control-attribution{background:rgba(0,0,0,.55)!important;color:#aab!important}
+  .leaflet-control-attribution a{color:#cdeeff!important}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">
+      <div class="logo">⚠</div>
+      <div>
+        <h1>West Valley Fault — M7.2 Scenario</h1>
+        <p>Interactive earthquake hazard &amp; intensity dashboard · Metro Manila &amp; CALABARZON / Central Luzon</p>
+      </div>
+    </div>
+    <div class="scenario-badge">
+      <button class="btn ghost sm" id="aboutBtn">ℹ About / Methodology</button>
+    </div>
+  </header>
+
+  <div class="disclaimer">
+    ⚠ <b>HYPOTHETICAL SCENARIO.</b> This is a fictional Magnitude 7.2 West Valley Fault earthquake scenario for education &amp; visualization. It is <b>NOT an earthquake prediction.</b> Actual intensity depends on source, geology, soil, and structures.
+  </div>
+
+  <div class="main">
+    <div id="map"></div>
+
+    <button class="btn sm" id="panelShow">☰ Controls</button>
+
+    <!-- Left floating controls -->
+    <div class="floating left-controls">
+      <button class="btn sm panel-hide" id="panelHide">✕ Hide panels</button>
+
+      <div class="ctl-card">
+        <h3>Search &amp; Location</h3>
+        <div class="search-row">
+          <input type="text" id="searchInput" list="cityList" placeholder="Search city / municipality…" autocomplete="off"/>
+          <button class="btn sm" id="searchBtn">Go</button>
+        </div>
+        <datalist id="cityList"></datalist>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn sm" id="locateBtn">◎ Locate me</button>
+          <button class="btn sm" id="resetBtn">⟲ Reset view</button>
+          <button class="btn sm" id="fsBtn">⛶ Fullscreen</button>
+        </div>
+      </div>
+
+      <div class="ctl-card">
+        <h3>Layers</h3>
+        <div class="toggle-row"><span>Fault trace (PHIVOLCS)</span>
+          <label class="switch"><input type="checkbox" id="tFault" checked><span class="slider acc"></span></label></div>
+        <div class="toggle-row"><span>Intensity — PEIS (PHIVOLCS)</span>
+          <label class="switch"><input type="checkbox" id="tOfficial" checked><span class="slider acc"></span></label></div>
+        <div class="toggle-row"><span>Modeled intensity field</span>
+          <label class="switch"><input type="checkbox" id="tModel"><span class="slider acc"></span></label></div>
+        <div class="toggle-row"><span>Liquefaction (PHIVOLCS)</span>
+          <label class="switch"><input type="checkbox" id="tLiq"><span class="slider acc"></span></label></div>
+        <div class="toggle-row"><span>Metro Manila boundary</span>
+          <label class="switch"><input type="checkbox" id="tBound"><span class="slider acc"></span></label></div>
+        <div class="toggle-row"><span>Cities &amp; labels</span>
+          <label class="switch"><input type="checkbox" id="tCities" checked><span class="slider acc"></span></label></div>
+        <div class="slider-row" style="margin-top:8px">
+          <span>Intensity opacity</span>
+          <input type="range" id="opSlider" min="10" max="100" value="72">
+          <span id="opVal">72%</span>
+        </div>
+      </div>
+
+      <div class="ctl-card">
+        <h3>Draw &amp; Measure</h3>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn sm" id="drawBtn">✏ Draw line</button>
+          <button class="btn sm" id="drawFinish" disabled>✔ Finish</button>
+          <button class="btn sm" id="drawClear" disabled>🗑 Clear</button>
+        </div>
+        <div class="draw-info" id="drawInfo">Click <b>Draw line</b>, then click the map to add points. Double-click or <b>Finish</b> to close.</div>
+        <textarea id="drawCoords" class="coord-box" rows="4" readonly spellcheck="false"></textarea>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn sm" id="drawCopy" disabled>⧉ Copy coordinates</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="north" title="North"><div style="text-align:center"><div class="arrow">↑</div>N</div></div>
+
+    <div class="legend">
+      <h3>PEIS Intensity</h3>
+      <div id="legendItems"></div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:8px">PHIVOLCS Earthquake Intensity Scale</div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <button class="btn sm side-close" id="sideClose" title="Close">✕</button>
+      <div class="side-scroll">
+        <div class="panel">
+          <h2>Location Analysis</h2>
+          <div id="locName" class="loc-name">Tap the map</div>
+          <div id="locSub" class="loc-sub">Click anywhere to analyze estimated shaking</div>
+        </div>
+
+        <div class="panel">
+          <div class="intensity-show">
+            <div id="intBadge" class="int-badge" style="background:#8dd3c7">
+              <div class="num" id="intNum">–</div><div class="lab" id="intLab">PEIS</div>
+            </div>
+            <div class="int-text">
+              <div class="t" id="intTitle">Awaiting selection</div>
+              <div class="d" id="intDesc">Estimated intensity will appear here.</div>
+              <span class="sev" id="intSev" style="background:#444;color:#fff">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Key Metrics</h2>
+          <div class="metric-grid">
+            <div class="metric"><div class="k">Distance to fault</div><div class="v" id="mDist">–</div></div>
+            <div class="metric"><div class="k">Est. PGA</div><div class="v" id="mPga">–</div></div>
+          </div>
+          <div class="kv"><span class="k">Nearest city / municipality</span><span class="v" id="mCity">–</span></div>
+          <div class="kv"><span class="k">Coordinates</span><span style="display:flex;align-items:center;gap:6px"><span class="v" id="mCoord">–</span><button class="eye-btn" id="coordEye" title="Show coordinates"></button></span></div>
+          <div class="kv"><span class="k">On / near fault trace</span><span class="v" id="mNear"></span></div>
+          <div class="kv"><span class="k">Liquefaction exposure</span><span class="v" id="mLiq"></span></div>
+          <div class="kv"><span class="k">Scenario</span><span class="v">Mw 7.2 · WVF</span></div>
+        </div>
+
+        <div class="panel">
+          <h2>What this means</h2>
+          <p class="hint" id="explain">This value is a <b>modeled estimate</b> of ground-shaking intensity (PEIS) based on distance to the modeled West Valley Fault rupture, magnitude 7.2 and a shallow scenario depth. Real shaking varies with local geology, soil amplification, building vulnerability and other factors. The authoritative PHIVOLCS intensity field is shown on the map (toggle “Intensity — PEIS”).</p>
+          <div class="note" id="srcNote">Source: <b>Modeled</b> (derived from a point-source attenuation relation). Official PHIVOLCS deterministic scenario layer rendered as the map overlay. Fault geometry: official PHIVOLCS WMS; centerline used for distance is a simplified trace (see About).</div>
+        </div>
+      </div>
+    </aside>
+
+    <button class="btn side-toggle" id="sideToggle">☰ Analysis</button>
+  </div>
+</div>
+
+<!-- About modal -->
+<div class="modal-bg" id="aboutModal">
+  <div class="modal">
+    <button class="close" id="aboutClose">×</button>
+    <h2>About this Simulation</h2>
+    <p>This interactive tool visualizes a <b>hypothetical Magnitude 7.2 earthquake on the West Valley Fault (WVF)</b> — the ~100&nbsp;km active fault traversing Bulacan, Rizal, Metro Manila, Cavite and Laguna. It is built for <b>education and disaster-preparedness visualization only</b>.</p>
+
+    <h3>⚠ Important disclaimer</h3>
+    <p>This is a <b>scenario / hypothetical visualization, NOT an earthquake prediction.</b> DOST-PHIVOLCS has not issued a forecast. Actual earthquake intensity and impacts will differ depending on the precise earthquake source (location, depth, rupture direction), local geology, soil conditions, building vulnerability, and other factors.</p>
+
+    <h3>Data sources &amp; how it is built</h3>
+    <ul>
+      <li><b>Fault trace (map):</b> Rendered live from the official <b>DOST-PHIVOLCS</b> Active Fault map service (ArcGIS WMS / <i>export</i>). This is the authoritative fault geometry and is shown directly.</li>
+      <li><b>Ground-shaking intensity (map):</b> The official <b>PHIVOLCS “Ground Shaking (Deterministic)”</b> layer — estimates of maximum PEIS intensities for the Valley Fault System M7.2 scenarios — is rendered as the official intensity overlay.</li>
+      <li><b>Liquefaction (map):</b> Official <b>PHIVOLCS Liquefaction</b> susceptibility layer.</li>
+      <li><b>Administrative boundary:</b> Metro Manila (NCR) districts boundary, derived from PSA/NAMRIA data (faeldon/philippines-json-maps, MIT).</li>
+    </ul>
+
+    <h3>Click analysis — modeled values</h3>
+    <p>When you click the map, the sidebar shows a <b>modeled estimate</b> of intensity computed from a transparent attenuation relation:</p>
+    <p style="background:rgba(0,0,0,.3);padding:8px 10px;border-radius:8px;font-family:ui-monospace,monospace;font-size:12px">
+      PGA(g) = 10<sup>0.55·Mw − 2.5</sup> / (R + 20)<sup>1.15</sup><br>
+      R = horizontal distance to fault (km), capped at ≥1 km<br>
+      × site amplification (×1.3) where soft / liquefiable soils are likely
+    </p>
+    <p>PGA is then mapped to the <b>PHIVOLCS Earthquake Intensity Scale (PEIS)</b>. This is a simplified, deterministic approximation — it prioritizes clarity over the full physics of finite-fault rupture and 3-D site response. <b>Where available, prefer the official PHIVOLCS intensity overlay on the map.</b></p>
+
+    <h3>Assumptions</h3>
+    <ul>
+      <li>Magnitude <b>Mw 7.2</b> (consistent with PHIVOLCS Valley Fault System maximum-credible scenario).</li>
+      <li><b>Scenario hypocentral depth ≈ 10 km</b> — a model assumption; the exact depth is not specified by the source and strongly influences near-field shaking.</li>
+      <li>Epicenter placed near the central Metro Manila segment of the WVF for animation purposes (assumption).</li>
+      <li>The fault <b>centerline</b> used only for distance math is a <b>simplified representation</b> of the published PHIVOLCS Valley Fault System trace; the authoritative trace is the PHIVOLCS WMS layer above.</li>
+    </ul>
+
+    <h3>Live data note</h3>
+    <p>The app also attempts a live ArcGIS REST query to the official PHIVOLCS Active Fault service to retrieve the WVF geometry directly. If that request is blocked by the server/CORS in your network, the tool gracefully falls back to the embedded simplified centerline and the official WMS rendering remains the source of truth for the map.</p>
+
+    <div class="src">
+      <b>Attribution:</b> Basemap © OpenStreetMap contributors &amp; CARTO. Fault / Ground-shaking / Liquefaction layers: <b>DOST-PHIVOLCS</b> (gisweb.phivolcs.dost.gov.ph). Boundary: PSA/NAMRIA via faeldon/philippines-json-maps (MIT). Intensity scale: PHIVOLCS Earthquake Intensity Scale (PEIS).
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+/* =========================================================================
+   WEST VALLEY FAULT M7.2 SCENARIO — interactive dashboard
+   Data / configuration
+   ========================================================================= */
+const CONFIG = {
+  magnitude: 7.2,
+  depthKm: 10,                       // scenario assumption
+  epicenter: [14.63, 121.08],        // scenario assumption (central Metro Manila segment)
+  faultName: "West Valley Fault",
+  defaultCenter: [14.58, 121.04],
+  defaultZoom: 11,
+  hostPhivolcs: "https://gisweb.phivolcs.dost.gov.ph/arcgis/rest/services/PHIVOLCSPublic"
+};
+
+// PEIS intensity scale (PHIVOLCS) — roman, description, severity, color
+const PEIS = [
+  {n:1,  roman:"I",    desc:"Scarcely Perceptible",     sev:"Minimal",    color:"#8dd3c7"},
+  {n:2,  roman:"II",   desc:"Slightly Felt",            sev:"Minimal",    color:"#7fc8e0"},
+  {n:3,  roman:"III",  desc:"Weak",                    sev:"Light",      color:"#f9e0a0"},
+  {n:4,  roman:"IV",   desc:"Moderately Strong",        sev:"Light",      color:"#f6c667"},
+  {n:5,  roman:"V",    desc:"Strong",                  sev:"Moderate",   color:"#f5a04e"},
+  {n:6,  roman:"VI",   desc:"Very Strong",             sev:"Strong",     color:"#ef7a4f"},
+  {n:7,  roman:"VII",  desc:"Destructive",             sev:"Severe",     color:"#e6533c"},
+  {n:8,  roman:"VIII", desc:"Very Destructive",        sev:"Very Severe",color:"#cf2222"},
+  {n:9,  roman:"IX",   desc:"Devastating",             sev:"Extreme",    color:"#9b1d1d"},
+  {n:10, roman:"X+",   desc:"Completely Devastating",  sev:"Catastrophic",color:"#5e0a0a"}
+];
+const PGA_THRESH = [0.022,0.044,0.088,0.176,0.352,0.703,1.03,1.51,2.20]; // lower bounds for I..IX (X+ >= 2.20)
+
+// Simplified West Valley Fault centerline (N→S) — derived from the published
+// PHIVOLCS Valley Fault System trace; used ONLY for distance computation.
+// The authoritative trace is the official PHIVOLCS WMS layer rendered on the map.
+// West Valley Fault centerline — traced coordinates (lat,lng), used for distance math.
+const WVF_CENTERLINE = [
+  [14.16786,121.0556],[14.1905,121.03981],[14.21913,121.04942],[14.25041,121.03432],
+  [14.28036,121.0405],[14.30565,121.0247],[14.33027,121.03432],[14.3622,121.03775],
+  [14.39081,121.04599],[14.43138,121.04805],[14.51117,121.05423],[14.56435,121.06384],
+  [14.62815,121.07895],[14.68329,121.10229],[14.76299,121.138],[14.80881,121.15036],
+  [14.88647,121.16959],[14.96145,121.19362],[15.01916,121.20461]
+];
+
+// Major cities / municipalities in the affected region (lat,lng,liquefaction class)
+const CITIES = [
+  ["Manila",14.5995,120.9842,"High"],["Quezon City",14.6760,121.0437,"High"],
+  ["Makati",14.5547,121.0244,"High"],["Pasig",14.5759,121.0850,"High"],
+  ["Taguig",14.5171,121.0509,"High"],["Mandaluyong",14.5794,121.0359,"High"],
+  ["San Juan",14.6019,121.0359,"High"],["Pasay",14.5545,120.9822,"High"],
+  ["Paranaque",14.4795,121.0198,"High"],["Las Pinas",14.4493,120.9846,"High"],
+  ["Muntinlupa",14.3993,121.0196,"High"],["Caloocan",14.6538,120.9687,"Moderate"],
+  ["Valenzuela",14.7000,120.9920,"Moderate"],["Malabon",14.6637,120.9564,"High"],
+  ["Navotas",14.6660,120.9420,"High"],["Marikina",14.6507,121.1029,"Moderate"],
+  ["Pateros",14.5390,121.0640,"High"],
+  ["Antipolo",14.6234,121.1246,"Low"],["Rodriguez (Montalban)",14.7370,121.1240,"Moderate"],
+  ["San Mateo",14.6960,121.1150,"Moderate"],["Cainta",14.5700,121.1150,"High"],
+  ["Taytay",14.5660,121.1450,"High"],["Angono",14.5230,121.1430,"High"],
+  ["Binangonan",14.4510,121.1900,"Moderate"],["Morong",14.3980,121.2180,"Low"],
+  ["San Jose del Monte",14.8130,121.0480,"Low"],["Meycauayan",14.7390,120.9590,"Moderate"],
+  ["Marilao",14.7580,120.9470,"Moderate"],["Bocaue",14.7920,120.9410,"Moderate"],
+  ["Santa Maria",14.7960,120.9260,"Moderate"],["Balagtas",14.8220,120.9160,"Moderate"],
+  ["Guiguinto",14.8310,120.9030,"Moderate"],["Plaridel",14.8550,120.8710,"Moderate"],
+  ["Pulilan",14.8680,120.8520,"Moderate"],["Malolos",14.8430,120.8070,"Moderate"],
+  ["Norzagaray",14.9330,121.0310,"Low"],
+  ["Bacoor",14.4640,120.9440,"High"],["Imus",14.4300,120.9420,"High"],
+  ["Dasmariñas",14.3600,120.9720,"High"],["General Trias",14.3330,120.9130,"High"],
+  ["Trece Martires",14.2830,120.8730,"Moderate"],["Tagaytay",14.1150,120.9620,"Low"],
+  ["Kawit",14.4320,120.9000,"High"],["Tanza",14.3940,120.8650,"High"],
+  ["Rosario",14.4150,120.8480,"High"],
+  ["San Pedro",14.3590,121.0580,"High"],["Biñan",14.3260,121.0820,"High"],
+  ["Santa Rosa",14.3080,121.1110,"High"],["Cabuyao",14.2730,121.1230,"High"],
+  ["Calamba",14.2130,121.1620,"High"],["Los Baños",14.1780,121.2230,"Moderate"],
+  ["San Pablo",14.0700,121.3250,"Moderate"]
+];
+
+// Metro Manila (NCR) district boundary — PSA/NAMRIA via faeldon/philippines-json-maps (MIT)
+const NCR_BOUNDARY = {"type":"FeatureCollection","features":[
+{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[120.99197344400011,14.636527028000048],[120.95779251100011,14.633909253000073],[120.95903865900003,14.584665776000065],[120.98589039800005,14.560101142000061],[121.01761120300011,14.579408116000026],[121.02346203800005,14.599584719000067],[120.99197344400011,14.636527028000048]]]},"properties":{"adm2_en":"NCR, City of Manila (First District)"}},
+{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[121.1033378410001,14.531997657000032],[121.0968965510001,14.569254547000074],[121.11044978200005,14.592235448000055],[121.10549838300007,14.632654354000065],[121.13486852100006,14.65885238300007],[121.11188912900003,14.671163089000059],[121.12478007000006,14.766289029000061],[121.09972917900006,14.765222305000064],[121.0750391780001,14.74019406700006],[121.04083690900006,14.742111187000035],[121.01443080000003,14.719158309000022],[121.02265398600002,14.687140174000033],[120.99197344400011,14.636527028000048],[121.02346203800005,14.599584719000067],[121.01761120300011,14.579408116000026],[121.05041966400006,14.568402103000038],[121.1033378410001,14.531997657000032]]]},"properties":{"adm2_en":"NCR, Second District"}},
+{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[121.09972917900006,14.765222305000064],[121.05542050700002,14.782563240000059],[121.02402399100004,14.763034879000028],[120.9901370550001,14.75706363100005],[120.97852281100006,14.73480671900006],[120.92596146500011,14.734299748000069],[120.95312750500011,14.694240067000067],[120.92536221600005,14.683986922000035],[120.95779251100011,14.633909253000073],[120.99197344400011,14.636527028000048],[121.02265398600002,14.687140174000033],[121.01443080000003,14.719158309000022],[121.04083690900006,14.742111187000035],[121.0750391780001,14.74019406700006],[121.09972917900006,14.765222305000064]]]},"properties":{"adm2_en":"NCR, Third District"}},
+{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[121.1033378410001,14.531997657000032],[121.05041966400006,14.568402103000038],[121.01761120300011,14.579408116000026],[120.98589039800005,14.560101142000061],[120.98145922900007,14.48827595700004],[120.9660033990001,14.465722366000023],[121.01161116900006,14.380260945000037],[121.00759085400011,14.355170370000051],[121.05150154700004,14.369658617000026],[121.0533802880001,14.454051363000076],[121.06932934800011,14.50668639300005],[121.1033378410001,14.531997657000032]]]},"properties":{"adm2_en":"NCR, Fourth District"}}
+]};
+
+/* =========================================================================
+   MODEL — deterministic intensity estimate
+   ========================================================================= */
+function haversine(lat1,lng1,lat2,lng2){
+  const R=6371,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+// minimum distance (km) from a point to the WVF centerline polyline
+function distanceToFault(lat,lng){
+  let min=1e9;
+  for(let i=0;i<WVF_CENTERLINE.length-1;i++){
+    const [la1,lo1]=WVF_CENTERLINE[i],[la2,lo2]=WVF_CENTERLINE[i+1];
+    const latc=la1*Math.PI/180;
+    const x=(lng-lo1)*Math.cos(latc)*111320, y=(lat-la1)*110540;
+    const x2=(lo2-lo1)*Math.cos(latc)*111320, y2=(la2-la1)*110540;
+    let t=((x*x2)+(y*y2))/((x2*x2+y2*y2)||1); t=Math.max(0,Math.min(1,t));
+    const dx=x-t*x2, dy=y-t*y2;
+    const d=Math.sqrt(dx*dx+dy*dy);
+    if(d<min) min=d;
+  }
+  return min/1000; // km
+}
+// closest lat/lng point on the WVF centerline to a given coordinate
+function nearestPointOnFault(lat,lng){
+  let best=null,bd=1e9;
+  for(let i=0;i<WVF_CENTERLINE.length-1;i++){
+    const [la1,lo1]=WVF_CENTERLINE[i],[la2,lo2]=WVF_CENTERLINE[i+1];
+    const latc=la1*Math.PI/180;
+    const x=(lng-lo1)*Math.cos(latc)*111320, y=(lat-la1)*110540;
+    const x2=(lo2-lo1)*Math.cos(latc)*111320, y2=(la2-la1)*110540;
+    let t=((x*x2)+(y*y2))/((x2*x2+y2*y2)||1); t=Math.max(0,Math.min(1,t));
+    const plat=la1+t*(la2-la1), plng=lo1+t*(lo2-lo1);
+    const dx=x-t*x2, dy=y-t*y2;
+    const d=Math.sqrt(dx*dx+dy*dy);
+    if(d<bd){bd=d;best=[plat,plng];}
+  }
+  return best;
+}
+function nearestCity(lat,lng){
+  let best=null,bd=1e9;
+  for(const c of CITIES){const d=haversine(lat,lng,c[1],c[2]); if(d<bd){bd=d;best=c;}}
+  return {name:best[0],dist:bd,liq:best[3]};
+}
+function pgaToPeis(pga){
+  let n=1; // intensity I when below all thresholds
+  for(const t of PGA_THRESH){ if(pga>=t) n++; } // each met threshold raises one PEIS level
+  return n; // 1..10 (10 = X+)
+}
+function estimateIntensity(lat,lng){
+  const dist=distanceToFault(lat,lng);
+  const R=Math.max(dist,1);
+  let pga=Math.pow(10,0.55*CONFIG.magnitude-2.5)/Math.pow(R+20,1.15);
+  const nc=nearestCity(lat,lng);
+  const liqClass=nc.liq;
+  const softSoil = (liqClass==="High"); // simplistic site amplification
+  if(softSoil) pga*=1.3;
+  const peis=pgaToPeis(pga);
+  return {dist,pga,peis,liqClass,softSoil,nearest:nc};
+}
+
+/* =========================================================================
+   MAP
+   ========================================================================= */
+const map=L.map('map',{center:CONFIG.defaultCenter,zoom:CONFIG.defaultZoom,
+  zoomControl:true,attributionControl:true,maxZoom:18});
+L.control.scale({imperial:false,position:'bottomright'}).addTo(map);
+
+// Keyless dark basemap (Esri World Dark Gray). CARTO now requires an API key,
+// so we use Esri's free, keyless dark canvas + reference (labels) layers.
+const esriBase=L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+  {maxZoom:19,attribution:'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, NAVTEQ, UNHCR, USGS, NASA, EPA, NPS'}).addTo(map);
+L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+  {maxZoom:19,attribution:''}).addTo(map);
+
+// Official PHIVOLCS layers via ArcGIS export (works in Web Mercator 3857)
+function makePhivolcsLayer(service,attribution){
+  const Layer=L.GridLayer.extend({
+    createTile(coords){
+      const tile=document.createElement('img'); tile.alt=''; tile.style.width='256px'; tile.style.height='256px';
+      const b=this._tileCoordsToBounds(coords);
+      const sw=L.Projection.SphericalMercator.project(b.getSouthWest());
+      const ne=L.Projection.SphericalMercator.project(b.getNorthEast());
+      const bbox=[sw.x,sw.y,ne.x,ne.y].join(',');
+      const url=`${CONFIG.hostPhivolcs}/${service}/MapServer/export?bbox=${bbox}`
+        +`&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image&layers=show:0`;
+      tile.onerror=()=>{tile.style.visibility='hidden';};
+      tile.src=url;
+      return tile;
+    }
+  });
+  return new Layer({tileSize:256,opacity:.72,attribution:attribution});
+}
+const layerFault  = makePhivolcsLayer('ActiveFault','Fault: © DOST-PHIVOLCS').addTo(map);
+const layerOfficial = makePhivolcsLayer('GroundShaking','Ground shaking (PEIS): © DOST-PHIVOLCS').addTo(map);
+const layerLiq    = makePhivolcsLayer('Liquefaction','Liquefaction: © DOST-PHIVOLCS');
+
+// Modeled intensity field (smooth grid)
+let layerModel=null;
+function buildModelGrid(){
+  const cells=[];
+  for(let lat=14.10; lat<=15.02; lat+=0.03){
+    for(let lng=120.68; lng<=121.62; lng+=0.03){
+      const r=estimateIntensity(lat+0.015,lng+0.015);
+      const c=PEIS[r.peis-1].color;
+      cells.push({type:'Feature',properties:{peis:r.peis,color:c},
+        geometry:{type:'Polygon',coordinates:[[[lng,lat],[lng+0.03,lat],[lng+0.03,lat+0.03],[lng,lat+0.03],[lng,lat]]]}});
+    }
+  }
+  return L.geoJSON(cells,{
+    style:f=>({color:f.properties.color,weight:0,fillColor:f.properties.color,fillOpacity:1}),
+    interactive:false
+  });
+}
+
+// WVF simplified centerline (distance reference) + official epicenter
+const layerCenterline=L.polyline(WVF_CENTERLINE,{color:'#ff5a5f',weight:2,dashArray:'6 6',opacity:.85,interactive:false}).addTo(map);
+const epiIcon=L.divIcon({className:'',html:'<div style="font-size:26px;line-height:1;text-align:center;filter:drop-shadow(0 0 6px #ffce3a);">⚡</div>',iconSize:[26,26],iconAnchor:[13,13]});
+const epiMarker=L.marker(CONFIG.epicenter,{icon:epiIcon,interactive:false,zIndexOffset:1000}).addTo(map);
+epiMarker.bindTooltip('Scenario epicenter (assumption)',{direction:'top'});
+
+// Boundary + cities
+const layerBound=L.geoJSON(NCR_BOUNDARY,{style:{color:'#36c2ff',weight:1.5,fill:false,opacity:.7,interactive:false}});
+const cityLayer=L.layerGroup();
+CITIES.forEach(c=>{
+  const m=L.circleMarker([c[1],c[2]],{radius:3.5,color:'#fff',weight:1,fillColor:'#36c2ff',fillOpacity:.9});
+  m.bindTooltip(c[0],{direction:'top',opacity:.9});
+  m.on('click',()=>analyze(c[1],c[2])); // clicking a city dot analyzes that city (otherwise the marker swallows the map click)
+  cityLayer.addLayer(m);
+});
+cityLayer.addTo(map);
+
+// populate search datalist
+const dl=document.getElementById('cityList');
+CITIES.forEach(c=>{const o=document.createElement('option');o.value=c[0];dl.appendChild(o);});
+
+/* =========================================================================
+   SIDEBAR / INTERACTION
+   ========================================================================= */
+let selMarker=null;
+let selLine=null;
+let lastCoord=null, coordsVisible=false;
+const EYE_OPEN='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20C5 20 1 12 1 12a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+function updateEyeIcon(){const b=document.getElementById('coordEye');b.innerHTML=coordsVisible?EYE_OPEN:EYE_OFF;b.title=coordsVisible?'Hide coordinates':'Show coordinates';}
+function renderCoord(){const el=document.getElementById('mCoord');if(!lastCoord){el.textContent='–';return;}el.textContent=coordsVisible?lastCoord[0].toFixed(4)+', '+lastCoord[1].toFixed(4):'••••••';}
+function colorFor(n){return PEIS[n-1].color;}
+function sevStyle(sev){
+  const m={Minimal:'green',Light:'green',Moderate:'amber',Strong:'amber',Severe:'red','Very Severe':'red',Extreme:'red',Catastrophic:'red'};
+  return 'tag '+(m[sev]||'green');
+}
+function analyze(lat,lng){
+  const r=estimateIntensity(lat,lng);
+  const p=PEIS[r.peis-1];
+  const nc=r.nearest;
+
+  document.getElementById('locName').textContent=nc.name;
+  document.getElementById('locSub').textContent='Analysis for clicked point';
+
+  const badge=document.getElementById('intBadge');
+  badge.style.background=p.color;
+  document.getElementById('intNum').textContent=p.roman;
+  document.getElementById('intLab').textContent='PEIS';
+  document.getElementById('intTitle').textContent=p.roman+' — '+p.desc;
+  document.getElementById('intDesc').textContent='Estimated shaking intensity per PHIVOLCS Earthquake Intensity Scale.';
+  const sev=document.getElementById('intSev');
+  sev.textContent=p.sev; sev.className='sev'; sev.style.background=colorFor(r.peis); sev.style.color='#08121f';
+
+  document.getElementById('mDist').textContent=r.dist.toFixed(1)+' km';
+  document.getElementById('mPga').textContent=r.pga.toFixed(2)+' g';
+  document.getElementById('mCity').textContent=nc.name+' ('+nc.dist.toFixed(1)+' km)';
+  lastCoord=[lat,lng]; renderCoord();
+
+  const near=document.getElementById('mNear');
+  if(r.dist<5){near.innerHTML='<span class="tag red">Yes — within 5 m buffer</span>';}
+  else if(r.dist<15){near.innerHTML='<span class="tag amber">Near ('+r.dist.toFixed(1)+' km)</span>';}
+  else{near.innerHTML='<span class="tag green">No ('+r.dist.toFixed(1)+' km)</span>';}
+
+  const liq=document.getElementById('mLiq');
+  const lmap={High:['red','High / Likely'],Moderate:['amber','Moderate'],Low:['green','Low']};
+  const lr=lmap[r.liqClass]||lmap.Low;
+  liq.innerHTML=`<span class="${lr[0]==='red'?'tag red':lr[0]==='amber'?'tag amber':'tag green'}">${lr[1]}</span> <span style="font-size:11px;color:var(--muted)">(modeled)</span>`;
+
+  if(selMarker) map.removeLayer(selMarker);
+  const icon=L.divIcon({className:'',html:
+    `<div style="transform:translate(-50%,-100%);text-align:center">
+       <div style="width:18px;height:18px;border-radius:50% 50% 50% 0;background:${p.color};border:2px solid #fff;transform:rotate(-45deg);box-shadow:0 0 8px ${p.color}"></div>
+     </div>`,iconSize:[18,18],iconAnchor:[9,18]});
+  selMarker=L.marker([lat,lng],{icon,interactive:false}).addTo(map);
+  selMarker.bindPopup(`<b>${nc.name}</b><br>PEIS ${p.roman} — ${p.desc}<br>Dist to fault: ${r.dist.toFixed(1)} km<br><span class="pop-details">See details ›</span>`).openPopup();
+
+  if(selLine) map.removeLayer(selLine);
+  const fp=nearestPointOnFault(lat,lng);
+  selLine=L.polyline([[lat,lng],fp],{color:p.color,weight:2,opacity:.9,dashArray:'4 5',interactive:false}).addTo(map);
+
+}
+document.addEventListener('click',e=>{
+  if(e.target&&e.target.classList&&e.target.classList.contains('pop-details')){
+    document.getElementById('sidebar').classList.add('open');
+    document.body.classList.add('sidebar-open');
+    map.closePopup();
+  }
+});
+
+map.on('click',e=>{ if(draw.active) return; analyze(e.latlng.lat,e.latlng.lng); });
+
+/* =========================================================================
+   DRAW & MEASURE TOOL  (self-contained polyline drawing + length)
+   ========================================================================= */
+const drawLayer=L.layerGroup().addTo(map);
+const draw={active:false,pts:[],preview:null};
+const drawBtn=document.getElementById('drawBtn');
+const drawFinish=document.getElementById('drawFinish');
+const drawClear=document.getElementById('drawClear');
+const drawInfo=document.getElementById('drawInfo');
+const DRAW_STYLE={color:'#ffe08a',weight:3,opacity:.95,dashArray:'6 6'};
+const VERT_STYLE={radius:4,color:'#ffe08a',weight:2,fillColor:'#1b1f2a',fillOpacity:1};
+
+function fmtLen(m){ return m>=1000 ? (m/1000).toFixed(2)+' km' : Math.round(m)+' m'; }
+function totalLen(pts){ let s=0; for(let i=1;i<pts.length;i++) s+=pts[i-1].distanceTo(pts[i]); return s; }
+
+function startDraw(){
+  draw.active=true; draw.pts=[]; drawLayer.clearLayers(); draw.preview=null;
+  map.doubleClickZoom.disable();
+  document.getElementById('map').classList.add('drawing');
+  drawBtn.textContent='✏ Drawing…'; drawBtn.classList.add('primary');
+  drawFinish.disabled=false; drawClear.disabled=false;
+  drawInfo.innerHTML='Click on the map to add points. <b>Double-click</b> or <b>Finish</b> to close the line.';
+}
+function endDraw(){
+  draw.active=false;
+  if(draw.preview){ drawLayer.removeLayer(draw.preview); draw.preview=null; }
+  map.doubleClickZoom.enable();
+  document.getElementById('map').classList.remove('drawing');
+  drawBtn.textContent='✏ Draw line'; drawBtn.classList.remove('primary');
+  // drop near-duplicate points left by the final double-click
+  draw.pts=draw.pts.filter((p,i)=> i===0 || p.distanceTo(draw.pts[i-1])>1);
+  const n=draw.pts.length;
+  if(n<2){
+    drawLayer.clearLayers(); draw.pts=[];
+    drawFinish.disabled=true; drawClear.disabled=true;
+    drawInfo.innerHTML='A line needs at least 2 points. Click <b>Draw line</b> to retry.';
+    return;
+  }
+  redrawLine();
+  const Lm=totalLen(draw.pts);
+  const mid=draw.pts[Math.floor((draw.pts.length-1)/2)];
+  L.marker(mid,{icon:L.divIcon({className:'draw-label',
+    html:`<div style="background:#1b1f2aee;border:1px solid #ffe08a;color:#ffe08a;padding:2px 6px;border-radius:6px;font:600 11px system-ui;white-space:nowrap">${fmtLen(Lm)}</div>`,
+    iconSize:[-20,-10],iconAnchor:[0,0]})}).addTo(drawLayer);
+  drawInfo.innerHTML=`<b>${n}</b> points · total length <b>${fmtLen(Lm)}</b>`;
+  showCoords();
+  drawFinish.disabled=true;
+}
+function clearDraw(){
+  draw.active=false; draw.pts=[];
+  drawLayer.clearLayers(); draw.preview=null;
+  map.doubleClickZoom.enable();
+  document.getElementById('map').classList.remove('drawing');
+  drawBtn.textContent='✏ Draw line'; drawBtn.classList.remove('primary');
+  drawFinish.disabled=true; drawClear.disabled=true;
+  hideCoords();
+  drawInfo.innerHTML='Click <b>Draw line</b>, then click the map to add points.';
+}
+function addDrawPoint(ll){
+  draw.pts.push(ll);
+  L.circleMarker(ll,VERT_STYLE).addTo(drawLayer);
+  redrawLine();
+  const Lm=totalLen(draw.pts);
+  drawInfo.innerHTML = draw.pts.length<2
+    ? 'Point added. Click again to extend the line.'
+    : `<b>${draw.pts.length}</b> points · length so far <b>${fmtLen(Lm)}</b>`;
+}
+function redrawLine(){
+  drawLayer.eachLayer(l=>{ if(l instanceof L.Polyline && l!==draw.preview) drawLayer.removeLayer(l); });
+  if(draw.pts.length>1) L.polyline(draw.pts,DRAW_STYLE).addTo(drawLayer);
+}
+function updatePreview(ll){
+  const last=draw.pts[draw.pts.length-1];
+  if(!draw.preview){
+    draw.preview=L.polyline([last,ll],{...DRAW_STYLE,dashArray:'2 6',opacity:.6}).addTo(drawLayer);
+  } else { draw.preview.setLatLngs([last,ll]); }
+}
+map.on('click',e=>{ if(draw.active) addDrawPoint(e.latlng); });
+map.on('mousemove',e=>{ if(draw.active && draw.pts.length) updatePreview(e.latlng); });
+map.on('dblclick',e=>{ if(draw.active) endDraw(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && draw.active) endDraw(); });
+drawBtn.addEventListener('click',()=>{ draw.active?endDraw():startDraw(); });
+drawFinish.addEventListener('click',endDraw);
+drawClear.addEventListener('click',clearDraw);
+
+function coordText(){
+  const arr=draw.pts.map(p=>[+p.lat.toFixed(5),+p.lng.toFixed(5)]);
+  return `// WVF M7.2 scenario — drawn line: ${draw.pts.length} pts, ${fmtLen(totalLen(draw.pts))}\n${JSON.stringify(arr,null,2)}`;
+}
+function showCoords(){
+  const ta=document.getElementById('drawCoords');
+  ta.value=coordText(); ta.style.display='block';
+  document.getElementById('drawCopy').disabled=false;
+}
+function hideCoords(){
+  const ta=document.getElementById('drawCoords');
+  ta.value=''; ta.style.display='none';
+  document.getElementById('drawCopy').disabled=true;
+}
+function fallbackCopy(t){
+  const ta=document.createElement('textarea'); ta.value=t;
+  ta.style.position='fixed'; ta.style.top='-2000px'; document.body.appendChild(ta);
+  ta.focus(); ta.select(); let ok=false; try{ ok=document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta); return ok;
+}
+function copyText(t){
+  return new Promise(res=>{
+    if(navigator.clipboard && window.isSecureContext){
+      navigator.clipboard.writeText(t).then(()=>res(true)).catch(()=>res(fallbackCopy(t)));
+    } else res(fallbackCopy(t));
+  });
+}
+document.getElementById('drawCopy').addEventListener('click',async ()=>{
+  const btn=document.getElementById('drawCopy'); const old=btn.textContent;
+  const ok=await copyText(document.getElementById('drawCoords').value);
+  btn.textContent= ok ? '✓ Copied!' : '⧉ Copy failed';
+  setTimeout(()=>btn.textContent=old,1400);
+});
+
+/* =========================================================================
+   COLLAPSIBLE CONTROL CARDS  (so panels don't hog the map, esp. on mobile)
+   ========================================================================= */
+function setupCardCollapse(){
+  document.querySelectorAll('.ctl-card').forEach(card=>{
+    const h=card.querySelector('h3'); if(!h) return;
+    const chev=document.createElement('span'); chev.className='chev'; chev.textContent='▾';
+    h.appendChild(chev);
+    h.addEventListener('click',()=>{
+      card.classList.toggle('collapsed');
+      chev.textContent=card.classList.contains('collapsed')?'▸':'▾';
+    });
+  });
+  // On phones, start with secondary cards folded so the map is visible.
+  if(window.innerWidth<=860){
+    const left=document.querySelector('.left-controls');
+    if(left){ left.querySelectorAll('.ctl-card').forEach((c,i)=>{ if(i>0){ c.classList.add('collapsed'); const ch=c.querySelector('.chev'); if(ch) ch.textContent='▸'; } }); }
+    const leg=document.querySelector('.legend');
+    if(leg){ leg.classList.add('collapsed'); const lch=leg.querySelector('.chev'); if(lch) lch.textContent='▸'; }
+  }
+}
+
+/* Make the PEIS legend collapsible too (fold its header on mobile). */
+(function(){
+  const leg=document.querySelector('.legend'); if(!leg) return;
+  const h=leg.querySelector('h3'); if(!h) return;
+  const chev=document.createElement('span'); chev.className='chev'; chev.textContent='▾';
+  h.appendChild(chev);
+  h.addEventListener('click',()=>{ leg.classList.toggle('collapsed'); chev.textContent=leg.classList.contains('collapsed')?'▸':'▾'; });
+})();
+setupCardCollapse();
+
+/* Master show/hide for the floating control panels (keeps the map clear,
+   especially on small screens — panels start hidden on mobile). */
+document.getElementById('panelHide').addEventListener('click',()=>document.body.classList.add('hidden-panels'));
+document.getElementById('panelShow').addEventListener('click',()=>document.body.classList.remove('hidden-panels'));
+if(window.innerWidth<=860) document.body.classList.add('hidden-panels');
+
+/* =========================================================================
+   CONTROLS
+   ========================================================================= */
+function setIntensityOpacity(v){
+  const o=v/100;
+  layerOfficial.setOpacity(o);
+  layerFault.setOpacity(o);
+  if(layerModel) layerModel.setOpacity(o);
+  if(layerLiq) layerLiq.setOpacity(o*0.9);
+}
+document.getElementById('opSlider').addEventListener('input',e=>{
+  const v=+e.target.value; document.getElementById('opVal').textContent=v+'%'; setIntensityOpacity(v);
+});
+
+document.getElementById('tFault').addEventListener('change',e=>e.target.checked?layerFault.addTo(map):map.removeLayer(layerFault));
+document.getElementById('tOfficial').addEventListener('change',e=>e.target.checked?layerOfficial.addTo(map):map.removeLayer(layerOfficial));
+document.getElementById('tLiq').addEventListener('change',e=>e.target.checked?layerLiq.addTo(map):map.removeLayer(layerLiq));
+document.getElementById('tBound').addEventListener('change',e=>e.target.checked?layerBound.addTo(map):map.removeLayer(layerBound));
+document.getElementById('tCities').addEventListener('change',e=>e.target.checked?cityLayer.addTo(map):map.removeLayer(cityLayer));
+document.getElementById('tModel').addEventListener('change',e=>{
+  if(e.target.checked){ if(!layerModel){layerModel=buildModelGrid();} layerModel.addTo(map); layerModel.setOpacity(+document.getElementById('opSlider').value/100);}
+  else if(layerModel){ map.removeLayer(layerModel); }
+});
+
+function goToCity(name){
+  const c=CITIES.find(x=>x[0].toLowerCase()===name.toLowerCase());
+  if(c){ map.flyTo([c[1],c[2]],13); analyze(c[1],c[2]); }
+  else { // partial match
+    const p=CITIES.find(x=>x[0].toLowerCase().includes(name.toLowerCase()));
+    if(p){ map.flyTo([p[1],p[2]],13); analyze(p[1],p[2]); }
+  }
+}
+document.getElementById('searchBtn').addEventListener('click',()=>goToCity(document.getElementById('searchInput').value.trim()));
+document.getElementById('searchInput').addEventListener('change',()=>goToCity(document.getElementById('searchInput').value.trim()));
+
+document.getElementById('resetBtn').addEventListener('click',()=>{
+  map.setView(CONFIG.defaultCenter,CONFIG.defaultZoom);
+  if(selMarker){map.removeLayer(selMarker);selMarker=null;}
+  if(selLine){map.removeLayer(selLine);selLine=null;}
+});
+document.getElementById('locateBtn').addEventListener('click',()=>{
+  if(!navigator.geolocation){alert('Geolocation not available.');return;}
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const la=pos.coords.latitude,ln=pos.coords.longitude;
+    map.flyTo([la,ln],13); analyze(la,ln);
+  },()=>alert('Could not get your location.'));
+});
+document.getElementById('fsBtn').addEventListener('click',()=>{
+  const el=document.getElementById('app');
+  if(!document.fullscreenElement){ (el.requestFullscreen||el.webkitRequestFullscreen).call(el); }
+  else{ document.exitFullscreen(); }
+});
+document.getElementById('sideToggle').addEventListener('click',()=>{document.getElementById('sidebar').classList.toggle('open');document.body.classList.toggle('sidebar-open',document.getElementById('sidebar').classList.contains('open'));});
+document.getElementById('sideClose').addEventListener('click',()=>{document.getElementById('sidebar').classList.remove('open');document.body.classList.remove('sidebar-open');});
+document.getElementById('coordEye').addEventListener('click',()=>{coordsVisible=!coordsVisible;updateEyeIcon();renderCoord();});
+updateEyeIcon();
+
+// About modal
+const aboutModal=document.getElementById('aboutModal');
+document.getElementById('aboutBtn').addEventListener('click',()=>aboutModal.classList.add('open'));
+document.getElementById('aboutClose').addEventListener('click',()=>aboutModal.classList.remove('open'));
+aboutModal.addEventListener('click',e=>{if(e.target===aboutModal)aboutModal.classList.remove('open');});
+
+/* =========================================================================
+   LEGEND
+   ========================================================================= */
+(function(){
+  const box=document.getElementById('legendItems');
+  PEIS.forEach(p=>{
+    const d=document.createElement('div'); d.className='leg-item';
+    d.innerHTML=`<span class="leg-sw" style="background:${p.color}"></span><span>${p.roman} · ${p.desc}</span>`;
+    box.appendChild(d);
+  });
+})();
+
+/* =========================================================================
+   LIVE ATTEMPT to fetch official WVF geometry (graceful fallback)
+   ========================================================================= */
+(function tryLiveFaultFetch(){
+  const url=`${CONFIG.hostPhivolcs}/ActiveFault/MapServer/0/query?where=1%3D1&outFields=*&returnGeometry=true&f=geojson`;
+  fetch(url).then(r=>r.json()).then(j=>{
+    if(j&&j.features&&j.features.length){
+      const pts=[];
+      j.features.forEach(f=>{
+        const g=f.geometry; const cs=g.type==='LineString'?g.coordinates:g.coordinates[0];
+        cs.forEach(c=>pts.push([c[1],c[0]]));
+      });
+      if(pts.length>1){ WVF_CENTERLINE.length=0; pts.forEach(p=>WVF_CENTERLINE.push(p)); }
+    }
+  }).catch(()=>{ /* blocked by server/CORS — fall back to embedded centerline */ });
+})();
+
+setIntensityOpacity(+document.getElementById('opSlider').value);
+</script>
+</body>
+</html>
