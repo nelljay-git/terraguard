@@ -1003,8 +1003,8 @@ export function Details() {
                 !isNaN(lat) && !isNaN(lng) ? (
                   <MapContainer center={[lat, lng]} zoom={8} scrollWheelZoom={false} style={{ height: '100%', width: '100%', zIndex: 0 }}>
                     <TileLayer
-                      attribution='&copy; OpenStreetMap &copy; CARTO'
-                      url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                      attribution='&copy; OpenStreetMap &copy; CARTO &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics'
+                      url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                     />
                     <WMSTileLayer
                       url="https://gisweb.phivolcs.dost.gov.ph/arcgis/services/PHIVOLCSPublic/Trenches/MapServer/WMSServer"
