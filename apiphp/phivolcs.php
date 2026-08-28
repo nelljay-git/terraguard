@@ -288,6 +288,9 @@ function fetchPhivolcsPage(string $targetUrl): array {
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // mirrors process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
     curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+    // Auto-decompress gzip/bzip2/deflate responses (PHIVOLCS now serves
+    // compressed HTML; without this curl returns raw bytes and 0 rows parse).
+    curl_setopt($ch, CURLOPT_ENCODING, '');
     curl_setopt($ch, CURLOPT_TIMEOUT, 8);
     $body = curl_exec($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
