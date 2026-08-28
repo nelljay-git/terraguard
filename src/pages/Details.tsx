@@ -1025,7 +1025,7 @@ export function Details() {
                       transition: 'all 0.2s'
                     }}
                   >
-                    <MapIcon size={14} /> Interactive
+                    <MapIcon size={14} />{!isMobile && ' Interactive'}
                   </button>
                   <button 
                     className={`map-toggle-btn ${mapView === 'official' ? 'active' : ''}`}
@@ -1045,7 +1045,7 @@ export function Details() {
                       transition: 'all 0.2s'
                     }}
                   >
-                    <ImageIcon size={14} /> Official
+                    <ImageIcon size={14} />{!isMobile && ' Official'}
                   </button>
                   {isUsgs && (
                     <button
@@ -1069,7 +1069,7 @@ export function Details() {
                         transition: 'all 0.2s',
                       }}
                     >
-                      <Menu size={14} /> Overlays
+                      <Menu size={14} />{!isMobile && ' Overlays'}
                     </button>
                   )}
                 </div>
@@ -1142,7 +1142,7 @@ export function Details() {
             <div className="details-map-container" ref={mapContainerRef} style={{ flex: 1, minHeight: '380px' }}>
               {mapView === 'interactive' ? (
                 !isNaN(lat) && !isNaN(lng) ? (
-                  <MapContainer center={[lat, lng]} zoom={8} scrollWheelZoom={false} style={{ height: '100%', width: '100%', zIndex: 0 }}>
+                  <MapContainer center={[lat, lng]} zoom={8} scrollWheelZoom={false} attributionControl={false} style={{ height: '100%', width: '100%', zIndex: 0 }}>
                     <TileLayer
                       attribution='&copy; OpenStreetMap &copy; CARTO &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics'
                       url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"

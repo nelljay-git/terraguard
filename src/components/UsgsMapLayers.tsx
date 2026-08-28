@@ -53,9 +53,9 @@ function UsgsLayer({
 }) {
   if (layer.type === 'image') {
     return (
-      <ImageOverlay
+      <ImageOverlayLayer
         url={layer.url}
-        bounds={layer.bounds as LatLngBoundsExpression}
+        bounds={layer.bounds}
         opacity={layer.opacity ?? 0.75}
       />
     );
@@ -154,6 +154,105 @@ function MarkerLayer({ layer }: { layer: { type: 'markers'; color: string; load:
         );
       })}
     </>
+  );
+}
+
+// Adjust an image overlay's bounds so the rectangle's projected (Web-Mercator)
+// aspect ratio matches the image's own pixel aspect ratio. This keeps the image
+// from being stretched when its lat/lon extent doesn't match its pixels (e.g.
+// global models that fall back to world bounds). Latitude span (true coverage)
+// is preserved; the longitude span is recomputed around the same center.
+function aspectCorrectedBounds(
+  bounds: [[number, number], [number, number]],
+  imgW: number,
+  imgH: number,
+): [[number, number], [number, number]] {
+  const [[minLat, minLon], [maxLat, maxLon]] = bounds;
+  // Mercator breaks down near the poles; skip correction for world-spanning bounds.
+  if (minLat <= -89.5 || maxLat >= 89.5) return bounds;
+  if (imgW <= 0 || imgH <= 0 || maxLat <= minLat) return bounds;
+  const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+  const mercV = Math.abs(mercY(maxLat) - mercY(minLat));
+  if (mercV === 0) return bounds;
+  const lonCenter = (minLon + maxLon) / 2;
+  // desired longitude span (degrees) so projected aspect == pixel aspect
+  const dLonDeg = ((imgW / imgH) * mercV * 180) / Math.PI;
+  return [
+    [minLat, lonCenter - dLonDeg / 2],
+    [maxLat, lonCenter + dLonDeg / 2],
+  ];
+}
+
+// Shift an overlay's bounds by a percentage of its own size. Negative values
+// move the image down (south) and left (west). Used to correct a small USGS
+// ShakeMap registration offset (2% down / 2% left).
+function offsetBounds(
+  bounds: [[number, number], [number, number]],
+  latShiftPct: number,
+  lonShiftPct: number,
+): [[number, number], [number, number]] {
+  const [[minLat, minLon], [maxLat, maxLon]] = bounds;
+  const dLat = (maxLat - minLat) * latShiftPct;
+  const dLon = (maxLon - minLon) * lonShiftPct;
+  return [
+    [minLat - dLat, minLon - dLon],
+    [maxLat - dLat, maxLon - dLon],
+  ];
+}
+
+// Enlarge/shrink an overlay's bounds around its own center by `factor`
+// (1.2 = scale up 20%). The image is stretched to fill the bounds, so a larger
+// bounds makes the raster appear bigger on the map.
+function scaleBounds(
+  bounds: [[number, number], [number, number]],
+  factor: number,
+): [[number, number], [number, number]] {
+  const [[minLat, minLon], [maxLat, maxLon]] = bounds;
+  const latC = (minLat + maxLat) / 2;
+  const lonC = (minLon + maxLon) / 2;
+  const h = ((maxLat - minLat) * factor) / 2;
+  const w = ((maxLon - minLon) * factor) / 2;
+  return [
+    [latC - h, lonC - w],
+    [latC + h, lonC + w],
+  ];
+}
+
+// Renders a USGS raster overlay, correcting its bounds to preserve the image's
+// native aspect ratio once the image's pixel dimensions are known.
+function ImageOverlayLayer({
+  url,
+  bounds,
+  opacity,
+}: {
+  url: string;
+  bounds: [[number, number], [number, number]];
+  opacity: number;
+}) {
+  const [finalBounds, setFinalBounds] = useState<[[number, number], [number, number]]>(bounds);
+
+  useEffect(() => {
+    setFinalBounds(offsetBounds(scaleBounds(bounds, 1.21), 0.038, 0.026));
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      if (img.naturalWidth && img.naturalHeight) {
+        setFinalBounds(offsetBounds(scaleBounds(aspectCorrectedBounds(bounds, img.naturalWidth, img.naturalHeight), 1.21), 0.038, 0.026));
+      }
+    };
+    img.src = url;
+    return () => {
+      cancelled = true;
+    };
+  }, [url, bounds]);
+
+  return (
+    <ImageOverlay
+      url={url}
+      bounds={finalBounds as LatLngBoundsExpression}
+      opacity={opacity}
+    />
   );
 }
 

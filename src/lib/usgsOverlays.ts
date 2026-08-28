@@ -373,12 +373,6 @@ export const USGS_OVERLAY_ITEMS: OverlayItem[] = [
     resolve: contourLayer('download/cont_mmi.json'),
   },
   {
-    key: 'image_overlay',
-    label: 'Image Overlay',
-    available: (p) => !!p?.shakemap,
-    resolve: imageOverlay('shakemap', /download\/intensity\.jpg$/i, 0.9),
-  },
-  {
     key: 'pga_contours',
     label: 'PGA Contours',
     available: (p) => !!p?.shakemap,
