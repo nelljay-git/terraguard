@@ -81,11 +81,12 @@ define(['./workbox-8d0d8005'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.1qc25uhqblo"
+    "revision": "0.n287gr94ioc"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
-    allowlist: [/^\/$/]
+    allowlist: [/^\/$/],
+    denylist: [/^\/ads\.txt$/, /^\/robots\.txt$/, /^\/maps\//]
   }));
   workbox.registerRoute(/^https:\/\/earthquake\.phivolcs\.dost\.gov\.ph\/.*/i, new workbox.NetworkFirst({
     "cacheName": "phivolcs-api-cache",

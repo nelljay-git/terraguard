@@ -7,15 +7,17 @@ import { getSeverityColor, getSeverityLabel, haversineKm, timeAgo } from '../lib
 import { PH_PROVINCES, PH_CITIES } from '../data/phLocations';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation, Menu, Download } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
 import { FunFactLoader } from '../components/FunFactLoader';
 import { ActiveFaultsLayer } from '../components/ActiveFaultsLayer';
+import { UsgsMapLayers } from '../components/UsgsMapLayers';
 import { AftershockTracker } from '../components/AftershockTracker';
 import { SeismicWaveLayer } from '../components/SeismicWaveLayer';
 import { CommunitySection } from '../components/CommunitySection';
 import './Details.css';
+import { fetchUsgsProducts, extractUsgsEventId, USGS_OVERLAY_ITEMS } from '../lib/usgsOverlays';
 
 // Match earthquakes even when PHIVOLCS revises the data (e.g. coordinates change),
 // which would otherwise invalidate shared /details links. We fall back to matching
@@ -291,6 +293,10 @@ export function Details() {
   const [copied, setCopied] = useState(false);
   const [mapView, setMapView] = useState<'interactive' | 'official'>('interactive');
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [usgsProducts, setUsgsProducts] = useState<Record<string, any[]> | null>(null);
+  const [usgsEventMeta, setUsgsEventMeta] = useState<{ timeMs: number | null; lat: number | null; lng: number | null } | null>(null);
+  const [overlayPanelOpen, setOverlayPanelOpen] = useState(false);
+  const [activeOverlays, setActiveOverlays] = useState<Set<string>>(new Set());
   const [bulletins, setBulletins] = useState<BulletinRef[]>([]);
   const [activeLink, setActiveLink] = useState<string | undefined>(earthquake?.link);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -303,6 +309,53 @@ export function Details() {
   const reportingAgency = dataSource === 'usgs' ? 'USGS' : 'PHIVOLCS-DOST';
   const isUsgs = dataSource === 'usgs';
   const [originExpanded, setOriginExpanded] = useState(false);
+
+  // For USGS events, pull the raw event "products" so the overlay panel can show
+  // ShakeMap / DYFI / ground-failure / aftershock layers on the interactive map.
+  useEffect(() => {
+    let cancelled = false;
+    if (isUsgs) {
+      const id = extractUsgsEventId(earthquake?.link);
+      if (id) {
+        setUsgsProducts(null);
+        setUsgsEventMeta(null);
+        setActiveOverlays(new Set());
+        fetchUsgsProducts(id).then((bundle) => {
+          if (cancelled || !bundle) return;
+          setUsgsProducts(bundle.products);
+          setUsgsEventMeta({ timeMs: bundle.timeMs, lat: bundle.lat, lng: bundle.lng });
+        });
+      }
+    } else {
+      setUsgsProducts(null);
+      setUsgsEventMeta(null);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [isUsgs, earthquake?.link]);
+
+  // Download a USGS overlay image (ShakeMap, PGA/PGV, DYFI, ground-failure,
+  // etc.) by fetching it as a blob and saving it locally. USGS serves these with
+  // CORS enabled, so a same-origin object URL download works.
+  const handleOverlayDownload = async (url: string, name: string) => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const obj = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = obj;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(obj);
+    } catch (e) {
+      console.warn('Overlay download failed:', e);
+      window.open(url, '_blank', 'noopener');
+    }
+  };
 
   // Set document title immediately and update when data arrives
   useEffect(() => {
@@ -994,9 +1047,97 @@ export function Details() {
                   >
                     <ImageIcon size={14} /> Official
                   </button>
+                  {isUsgs && (
+                    <button
+                      type="button"
+                      className={`map-overlay-btn${overlayPanelOpen ? ' active' : ''}`}
+                      onClick={() => setOverlayPanelOpen((o) => !o)}
+                      aria-label="Toggle map overlays"
+                      title="Map overlays"
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        background: overlayPanelOpen ? color : 'transparent',
+                        color: overlayPanelOpen ? '#fff' : 'var(--text-secondary)',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      <Menu size={14} /> Overlays
+                    </button>
+                  )}
                 </div>
               )}
             </div>
+            {isUsgs && overlayPanelOpen && (
+              <div className="map-overlay-panel">
+                <div className="map-overlay-panel-header">USGS Overlays</div>
+                {!usgsProducts ? (
+                  <div className="map-overlay-loading">Loading products…</div>
+                ) : (
+                  <div className="map-overlay-list">
+                    {USGS_OVERLAY_ITEMS.map((item) => {
+                      const available = item.available(usgsProducts);
+                      const active = activeOverlays.has(item.key);
+                      const panelCtx = {
+                        eventTimeMs: usgsEventMeta?.timeMs ?? undefined,
+                        lat,
+                        lng,
+                      };
+                      const resolved = item.resolve(usgsProducts, panelCtx);
+                      const imgUrl =
+                        resolved && resolved.type === 'image' ? resolved.url : null;
+                      const ext = /\.png(\?|$)/i.test(imgUrl ?? '') ? '.png' : '.jpg';
+                      return (
+                        <label
+                          key={item.key}
+                          className={`map-overlay-row${available ? '' : ' disabled'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={active}
+                            disabled={!available}
+                            onChange={() =>
+                              setActiveOverlays((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(item.key)) next.delete(item.key);
+                                else next.add(item.key);
+                                return next;
+                              })
+                            }
+                          />
+                          <span className="map-overlay-label">{item.label}</span>
+                          {imgUrl && (
+                            <button
+                              type="button"
+                              className="map-overlay-dl"
+                              title={`Download ${item.label} image`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleOverlayDownload(
+                                  imgUrl,
+                                  `terraguard_${item.key}${ext}`,
+                                );
+                              }}
+                            >
+                              <Download size={13} />
+                            </button>
+                          )}
+                          {!available && <span className="map-overlay-na">n/a</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
             
             <div className="details-map-container" ref={mapContainerRef} style={{ flex: 1, minHeight: '380px' }}>
               {mapView === 'interactive' ? (
@@ -1037,6 +1178,16 @@ export function Details() {
                       color={color}
                       containerRef={mapContainerRef}
                     />
+                    {isUsgs && usgsProducts && (
+                      <UsgsMapLayers
+                        products={usgsProducts}
+                        active={activeOverlays}
+                        lat={lat}
+                        lng={lng}
+                        origin={details?.origin}
+                        eventTimeMs={usgsEventMeta?.timeMs ?? undefined}
+                      />
+                    )}
                   </MapContainer>
                 ) : (
                   <div className="flex-center" style={{ height: '100%' }}>Invalid Coordinates</div>
