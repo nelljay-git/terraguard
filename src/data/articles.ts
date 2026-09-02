@@ -17,13 +17,13 @@ export const articles: Article[] = [
     readTime: '6 min read',
     publishedAt: '2026-08-15',
     content: [
-      'When PHIVOLCS or USGS reports an earthquake, two numbers often appear: magnitude and intensity. While they seem similar, they measure fundamentally different things — and understanding both is essential for interpreting earthquake reports correctly.',
+      'When USGS reports an earthquake, two numbers often appear: magnitude and intensity. While they seem similar, they measure fundamentally different things — and understanding both is essential for interpreting earthquake reports correctly.',
       '## What is Magnitude?',
       'Magnitude measures the energy released at the earthquake\'s source, called the hypocenter or focus. It is calculated using seismograph recordings and is expressed as a single number on a logarithmic scale.',
       'The most commonly used scale today is the Moment Magnitude Scale (Mw), which has largely replaced the older Richter Scale. Each whole number increase represents approximately 31.6 times more energy released. A magnitude 6.0 earthquake releases about 31.6 times more energy than a magnitude 5.0.',
       'Magnitude is an objective measurement — it does not change depending on where you are. A magnitude 5.2 earthquake near Batangas has the same magnitude whether you are in Manila, Cebu, or Davao.',
       '## What is Intensity?',
-      'Intensity measures the shaking and damage experienced at a specific location. In the Philippines, PHIVOLCS uses the PHIVOLCS Earthquake Intensity Scale (PEIS), while USGS uses the Modified Mercalli Intensity Scale (MMI). Both scales range from barely felt to catastrophic destruction.',
+      'Intensity measures the shaking and damage experienced at a specific location. USGS uses the Modified Mercalli Intensity Scale (MMI), which ranges from barely felt to catastrophic destruction.',
       'Unlike magnitude, intensity varies by location. An earthquake\'s intensity depends on several factors:',
       'Distance from the epicenter — areas closer to the source experience stronger shaking.',
       'Soil conditions — soft, unconsolidated soils amplify shaking, while solid bedrock reduces it.',
@@ -33,7 +33,7 @@ export const articles: Article[] = [
       'Consider a magnitude 7.0 earthquake occurring 100 kilometers offshore. The magnitude is significant, but the intensity felt on land may be moderate due to the distance. Meanwhile, a smaller magnitude 5.0 earthquake occurring directly beneath a city at shallow depth may produce severe intensity in that area.',
       'This is why you might see reports like: "Magnitude 5.2 earthquake felt at Intensity IV in Quezon City." The magnitude tells you the event\'s size; the intensity tells you how it was experienced in that specific location.',
       '## Intensity Scales',
-      'Different agencies use different intensity scales. Here is a quick reference for the PHIVOLCS Earthquake Intensity Scale (PEIS), which is commonly used in the Philippines:',
+      'Different agencies use different intensity scales. Here is a quick reference for the USGS Modified Mercalli Intensity Scale (MMI):',
       'Intensity I — Instrumental: Not felt except by very sensitive instruments.',
       'Intensity II — Scarcely felt: Felt by very few people indoors.',
       'Intensity III — Weak: Felt indoors by many, like a truck passing.',
@@ -60,7 +60,7 @@ export const articles: Article[] = [
       'The Philippines sits on the Pacific Ring of Fire, making it one of the most seismically active countries in the world. Earthquakes can strike at any time without warning. Preparation is not optional — it is a responsibility every Filipino household must take seriously.',
       '## Step 1: Know Your Risk',
       'The first step is understanding the seismic hazard in your area. The Philippines has several major fault systems, including the West Valley Fault, the Marikina Valley Fault System, and the Philippine Fault Zone. Check if your home or workplace is near an active fault line.',
-      'TerraGuard provides real-time earthquake monitoring from both PHIVOLCS and USGS data sources. Use the app to track seismic activity, set up location-based alerts, and stay informed about earthquakes that may affect your area.',
+      'TerraGuard provides real-time earthquake monitoring from USGS data. Use the app to track seismic activity, set up location-based alerts, and stay informed about earthquakes that may affect your area.',
       '## Step 2: Secure Your Home',
       'Earthquakes do not kill — collapsing objects do. Take these steps to earthquake-proof your home:',
       'Anchor heavy furniture like bookshelves, cabinets, and refrigerators to wall studs. Use L-brackets, metal straps, or earthquake putty.',
@@ -83,7 +83,7 @@ export const articles: Article[] = [
       'During an earthquake, family members may be separated. Establish a plan in advance:',
       'Designate a meeting place outside your home in a safe, open area away from buildings and power lines.',
       'Choose an out-of-area contact person. After a disaster, local phone lines may be overloaded, but long-distance calls often work. Have everyone check in with this person.',
-      'Program emergency numbers into all family members\' phones: NDRRMC (911), PHIVOLCS (02-8426-1468 to 79), and your local disaster risk reduction office.',
+      'Program emergency numbers into all family members\' phones: NDRRMC (911), USGS (1-888-275-8747), and your local disaster risk reduction office.',
       'Practice the Drop, Cover, and Hold On drill regularly with all family members.',
       '## Step 5: Know What to Do During an Earthquake',
       'When shaking begins, remember three words: Drop, Cover, and Hold On.',
@@ -96,7 +96,7 @@ export const articles: Article[] = [
       'Earthquake preparedness is a community effort. Organize neighborhood drills, share emergency contacts, and identify community resources such as evacuation centers, medical facilities, and water sources.',
       'Volunteer with your local barangay disaster risk reduction and management team (BDRRMT). They coordinate response efforts and can provide training on first aid, search and rescue, and emergency management.',
       '## Stay Informed with TerraGuard',
-      'TerraGuard provides real-time earthquake monitoring from PHIVOLCS and USGS data sources. Use the app to track seismic activity, set up location-based alerts, and stay informed about earthquakes that may affect your area.'
+      'TerraGuard provides real-time earthquake monitoring from USGS data sources. Use the app to track seismic activity, set up location-based alerts, and stay informed about earthquakes that may affect your area.'
     ]
   },
   {
@@ -128,11 +128,11 @@ export const articles: Article[] = [
       '## Lessons from History',
       'These historical earthquakes share common themes that remain relevant today:',
       'Building codes matter. Structures built to older, less stringent codes suffered disproportionate damage. The Philippines has progressively improved its National Structural Code of the Philippines, but enforcement remains a challenge.',
-      'Early warning saves lives. The development of earthquake monitoring systems like PHIVOLCS, USGS, and tools like TerraGuard provide critical seconds of warning that can save lives.',
+      'Early warning saves lives. The development of earthquake monitoring systems like USGS and tools like TerraGuard provide critical seconds of warning that can save lives.',
       'Community preparedness is essential. Communities that practice earthquake drills and have established emergency plans recover faster from seismic events.',
       'Heritage preservation requires proactive effort. Historic structures need seismic retrofitting to survive earthquakes while preserving cultural heritage.',
       '## Staying Informed Today',
-      'While we cannot prevent earthquakes, we can stay informed and prepared. TerraGuard provides real-time earthquake monitoring from PHIVOLCS and USGS, helping you track seismic activity and receive alerts for earthquakes that may affect your area.'
+      'While we cannot prevent earthquakes, we can stay informed and prepared. TerraGuard provides real-time earthquake monitoring from USGS, helping you track seismic activity and receive alerts for earthquakes that may affect your area.'
     ]
   },
   {
@@ -143,7 +143,7 @@ export const articles: Article[] = [
     readTime: '6 min read',
     publishedAt: '2026-08-28',
     content: [
-      'Earthquakes strike without warning. Knowing exactly what to do during and after the shaking can mean the difference between life and death. This guide provides clear, actionable steps based on official recommendations from PHIVOLCS, USGS, and international disaster management agencies.',
+      'Earthquakes strike without warning. Knowing exactly what to do during and after the shaking can mean the difference between life and death. This guide provides clear, actionable steps based on official recommendations from USGS, and international disaster management agencies.',
       '## During the Earthquake',
       '### If You Are Indoors',
       'The moment you feel shaking, follow the Drop, Cover, and Hold On protocol:',
@@ -172,7 +172,7 @@ export const articles: Article[] = [
       '### Communication and Information',
       'Check on your neighbors, especially elderly or disabled individuals who may need assistance.',
       'Use your phone for emergency calls only. Text messages are more likely to get through than voice calls during emergencies.',
-      'Monitor official sources for updates: PHIVOLCS and USGS for seismic information, NDRRMC for disaster response, and your local government for evacuation orders.',
+      'Monitor official sources for updates: USGS for seismic information, NDRRMC for disaster response, and your local government for evacuation orders.',
       'TerraGuard provides real-time earthquake data and can help you monitor aftershock activity in your area.',
       '### Evacuation',
       'If authorities order an evacuation, follow their instructions immediately. Proceed to the designated evacuation center with your emergency kit.',
@@ -192,14 +192,14 @@ export const articles: Article[] = [
     readTime: '7 min read',
     publishedAt: '2026-09-01',
     content: [
-      'When an earthquake occurs, PHIVOLCS and USGS publish bulletins containing specific technical data. Understanding what each term means helps you assess the actual risk and make informed decisions. This guide explains how to read and interpret earthquake data.',
+      'When an earthquake occurs, USGS publish bulletins containing specific technical data. Understanding what each term means helps you assess the actual risk and make informed decisions. This guide explains how to read and interpret earthquake data.',
       '## Anatomy of an Earthquake Bulletin',
       'A typical earthquake bulletin includes these key pieces of information:',
       'Date and Time — the exact moment the earthquake occurred, usually in Coordinated Universal Time (UTC) and Philippine Standard Time (PST).',
       'Location — the geographic coordinates (latitude and longitude) and a descriptive location relative to nearby towns or cities.',
       'Depth — how far below the Earth\'s surface the earthquake originated.',
       'Magnitude — the size of the earthquake, measured on the Moment Magnitude Scale (Mw).',
-      'Intensity — the observed shaking and damage at specific locations, measured using the PHIVOLCS Earthquake Intensity Scale (PEIS) or the USGS Modified Mercalli Intensity Scale (MMI).',
+      'Intensity — the observed shaking and damage at specific locations, measured using the USGS Modified Mercalli Intensity Scale (MMI).',
       '## Understanding Magnitude',
       'Magnitude is the most commonly referenced number in earthquake reports, but it is often misunderstood. Here is what you need to know:',
       'Magnitude is logarithmic. Each whole number increase represents about 31.6 times more energy released. A magnitude 6.0 earthquake releases 31.6 times more energy than a magnitude 5.0.',
@@ -213,7 +213,7 @@ export const articles: Article[] = [
       'Deep: 300 to 700 kilometers — typically cause less surface damage but may be felt over a very large area.',
       'A shallow magnitude 5.0 earthquake can cause more damage than a deep magnitude 6.0 earthquake because the energy reaches the surface with less attenuation.',
       '## Understanding Intensity',
-      'While magnitude measures the earthquake\'s size at its source, intensity measures the actual shaking experienced at a specific location. In the Philippines, PHIVOLCS uses the PHIVOLCS Earthquake Intensity Scale (PEIS), while USGS uses the Modified Mercalli Intensity Scale (MMI). Both scales range from barely felt to catastrophic destruction.',
+      'While magnitude measures the earthquake\'s size at its source, intensity measures the actual shaking experienced at a specific location. USGS uses the Modified Mercalli Intensity Scale (MMI), which ranges from barely felt to catastrophic destruction.',
       'Intensity reports are valuable because they describe real-world impact. Two earthquakes of the same magnitude can produce very different intensities depending on local conditions.',
       'When reading intensity reports, note that soft soil amplifies shaking while bedrock reduces it. Buildings on soft soil may experience higher intensity than those on solid ground nearby.',
       '## Reading the Map',
@@ -223,7 +223,7 @@ export const articles: Article[] = [
       'Concentric circles or shaded areas may indicate the estimated range of felt intensities.',
       'Fault lines shown on the map indicate known active faults in the region.',
       '## Using TerraGuard to Read Earthquake Data',
-      'TerraGuard presents earthquake data from PHIVOLCS and USGS in an easy-to-understand format. Here is how to interpret the information you see:',
+      'TerraGuard presents earthquake data from USGS in an easy-to-understand format. Here is how to interpret the information you see:',
       'The Dashboard shows recent earthquakes sorted by time. Each entry displays the magnitude, location, depth, and the time since the event occurred.',
       'The color coding on earthquake cards corresponds to severity levels, from micro (green) to major (red).',
       'Click on any earthquake to see detailed information including the exact coordinates, depth, and any available intensity reports.',
@@ -272,7 +272,7 @@ export const articles: Article[] = [
       'A loud roaring sound coming from the ocean.',
       'Unusual ocean behavior, such as sudden waves or rapid changes in water level.',
       'Official warning signs:',
-      'Tsunami warnings issued by PHIVOLCS, PTWC (Pacific Tsunami Warning Center), or your local government.',
+      'Tsunami warnings issued by PTWC (Pacific Tsunami Warning Center) or your local government.',
       'Sirens or public address systems near the coast.',
       'Emergency alerts on your phone.',
       '## What to Do During a Tsunami Warning',
@@ -321,18 +321,18 @@ export const articles: Article[] = [
       '### The Philippine Trench',
       'The Philippine Trench is one of the deepest oceanic trenches in the world, reaching depths of over 10,000 meters. It runs along the eastern edge of the Philippines and is capable of producing powerful earthquakes and tsunamis that affect the eastern seaboard.',
       '## Seismic Hazard Zones',
-      'The Philippine Institute of Volcanology and Seismology (PHIVOLCS) has classified the country into seismic hazard zones:',
+      'USGS has classified the Philippines into seismic hazard zones:',
       'High hazard zones — areas near active faults where strong shaking is expected.',
       'Medium hazard zones — areas at moderate risk from nearby faults.',
       'Low hazard zones — areas with lower but still significant seismic risk.',
-      'Check PHIVOLCS seismic hazard maps to understand your specific risk level. TerraGuard integrates this data to help you monitor earthquakes in your area.',
+      'Check USGS seismic hazard maps to understand your specific risk level. TerraGuard integrates this data to help you monitor earthquakes in your area.',
       '## Why Fault Awareness Matters',
       'Knowing which fault system you live near helps you:',
       'Understand the magnitude and intensity of earthquakes you may experience.',
       'Prepare appropriate emergency plans and evacuation routes.',
       'Make informed decisions about building construction and retrofitting.',
       'Stay informed about seismic activity that may affect your specific area.',
-      'Earthquake preparedness begins with understanding your risk. Use TerraGuard to monitor seismic activity from both PHIVOLCS and USGS, and set up location-based alerts to stay informed about earthquakes near you.'
+      'Earthquake preparedness begins with understanding your risk. Use TerraGuard to monitor seismic activity from both USGS, and set up location-based alerts to stay informed about earthquakes near you.'
     ]
   },
   {
@@ -420,23 +420,23 @@ export const articles: Article[] = [
       'Bulusan Volcano — regularly generates seismic swarms even without visible eruptions.',
       'Kanlaon Volcano — produces periodic earthquake swarms indicating subsurface activity.',
       'Pinatubo — while less active since its catastrophic 1991 eruption, it still generates seismic events.',
-      'PHIVOLCS monitors volcanic seismicity around all active volcanoes in the Philippines. Changes in earthquake frequency, depth, and magnitude can indicate escalating volcanic activity.',
+      'USGS monitors volcanic seismicity around all active volcanoes in the Philippines. Changes in earthquake frequency, depth, and magnitude can indicate escalating volcanic activity.',
       '## Reading Volcanic Earthquake Data',
       'When monitoring volcanic earthquakes, pay attention to:',
       'Frequency — an increase in the number of earthquakes may indicate escalating activity.',
       'Depth — shallower earthquakes often indicate magma is closer to the surface.',
       'Magnitude — larger earthquakes may indicate significant rock fracturing.',
       'Earthquake swarms — clusters of earthquakes without a clear mainshock often indicate volcanic unrest.',
-      'TerraGuard displays earthquake data from both PHIVOLCS and USGS, allowing you to monitor seismic activity near active volcanoes in real time.',
+      'TerraGuard displays earthquake data from both USGS, allowing you to monitor seismic activity near active volcanoes in real time.',
       '## Safety During Volcanic Eruptions',
       'If a volcano near you shows signs of increased seismic activity:',
-      'Monitor PHIVOLCS bulletins for official warnings and alert levels.',
+      'Monitor USGS bulletins for official warnings and alert levels.',
       'Know the danger zones around the volcano — these vary by volcano and eruption type.',
       'Prepare evacuation plans and emergency supplies.',
       'If an eruption occurs, follow evacuation orders immediately. Ashfall, pyroclastic flows, and lahars pose immediate threats.',
       'After an eruption, be aware of lahar risks — volcanic mudflows can occur for months or years after an eruption, especially during heavy rain.',
       '## Staying Informed',
-      'Volcanic and seismic monitoring go hand in hand. TerraGuard provides real-time earthquake data from PHIVOLCS and USGS, helping you track seismic activity that may be related to volcanic unrest in the Philippines.'
+      'Volcanic and seismic monitoring go hand in hand. TerraGuard provides real-time earthquake data from USGS, helping you track seismic activity that may be related to volcanic unrest in the Philippines.'
     ]
   },
   {
@@ -490,7 +490,7 @@ export const articles: Article[] = [
       'Emergency communication procedures.',
       'CERT members are often the first on the scene in their communities, providing critical assistance before professional responders arrive.',
       '## Staying Connected',
-      'After a major earthquake, communication is critical. TerraGuard provides real-time earthquake data from PHIVOLCS and USGS, helping you and your community stay informed about seismic activity and aftershocks. Set up location-based alerts to receive immediate notifications when earthquakes affect your area.'
+      'After a major earthquake, communication is critical. TerraGuard provides real-time earthquake data from USGS, helping you and your community stay informed about seismic activity and aftershocks. Set up location-based alerts to receive immediate notifications when earthquakes affect your area.'
     ]
   }
 ];
