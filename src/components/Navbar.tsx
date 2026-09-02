@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, Globe2, BarChart2, Newspaper, HelpCircle, User, LogOut, Star, Menu, X, Settings, MessagesSquare, Shield, FileText } from 'lucide-react';
+import { Activity, Globe2, BarChart2, Newspaper, HelpCircle, User, LogOut, Star, Menu, X, Settings, MessagesSquare, Shield, FileText, BookOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
@@ -35,6 +35,7 @@ export function Navbar() {
     { name: 'Archive', path: '/archive', icon: Globe2 },
     { name: 'Statistics', path: '/stats', icon: BarChart2 },
     { name: 'News', path: '/news', icon: Newspaper },
+    { name: 'Blog', path: '/blog', icon: BookOpen },
     { name: 'Safety Guide', path: '/safety', icon: Shield },
     { name: 'Forum', path: '/forum', icon: MessagesSquare },
   ];

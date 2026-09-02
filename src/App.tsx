@@ -20,6 +20,8 @@ import { Stars } from './pages/Stars';
 import { Forum } from './pages/Forum';
 import { ForumPost } from './pages/ForumPost';
 import { ForumEdit } from './pages/ForumEdit';
+import { Blog } from './pages/Blog';
+import { BlogPost } from './pages/BlogPost';
 import './App.css';
 
 // Keyed wrapper so navigating between two /details/:id URLs remounts the
@@ -64,6 +66,8 @@ function App() {
             <Route path="/forum/new" element={<ForumEdit />} />
             <Route path="/forum/:id" element={<ForumPost />} />
             <Route path="/forum/:id/edit" element={<ForumEdit />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/blog/:slug" element={<BlogPost />} />
           </Routes>
         </main>
       </div>
