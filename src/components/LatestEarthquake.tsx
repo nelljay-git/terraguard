@@ -11,7 +11,9 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
   const color = getSeverityColor(mag);
   const label = getSeverityLabel(mag);
   const eqId = btoa(`${earthquake.datetime}-${earthquake.latitude}-${earthquake.longitude}`).replace(/=/g, '');
-  const isUsgs = getPreferredApi() === 'usgs';
+  const prefLE = getPreferredApi();
+  const isUsgs = prefLE === 'usgs';
+  const isEmsc = prefLE === 'emsc';
 
   // Track the previous earthquake's unique key to detect updates
   const prevEqKeyRef = useRef<string | null>(null);
@@ -54,7 +56,7 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
   };
 
   return (
-    <div className="latest-eq-card glass" style={{ borderLeft: `4px solid ${color}`, backgroundImage: `url(${isUsgs ? '/image-usgs.jpg' : '/image.png'})` }}>
+    <div className="latest-eq-card glass" style={{ borderLeft: `4px solid ${color}`, backgroundImage: `url(${isUsgs ? '/image-usgs.jpg' : isEmsc ? '/image-emsc.jpg' : '/image.png'})` }}>
       {/* Decorative background glow */}
       <div className="eq-glow" style={{ background: `radial-gradient(circle at 20% 30%, ${color}12 0%, transparent 60%)` }}></div>
 

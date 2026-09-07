@@ -305,10 +305,12 @@ export function Details() {
   // the migration RPC runs at most once per resolution even when the load
   // effect re-runs after the earthquake snapshot is set.
   const migratedEngagementRef = useRef<Set<string>>(new Set());
-  const dataSource = (earthquake as NormalizedEarthquake | null)?.source || (getPreferredApi() === 'usgs' ? 'usgs' : 'phivolcs');
-  const sourceLabel = dataSource === 'usgs' ? 'USGS' : 'PHIVOLCS';
-  const reportingAgency = dataSource === 'usgs' ? 'USGS' : 'PHIVOLCS-DOST';
+  const pref = getPreferredApi();
+  const dataSource = (earthquake as NormalizedEarthquake | null)?.source || (pref === 'usgs' ? 'usgs' : pref === 'emsc' ? 'emsc' : 'phivolcs');
+  const sourceLabel = dataSource === 'usgs' ? 'USGS' : dataSource === 'emsc' ? 'EMSC' : 'PHIVOLCS';
+  const reportingAgency = dataSource === 'usgs' ? 'USGS' : dataSource === 'emsc' ? 'EMSC-CSEM' : 'PHIVOLCS-DOST';
   const isUsgs = dataSource === 'usgs';
+  const isEmsc = dataSource === 'emsc';
   const [originExpanded, setOriginExpanded] = useState(false);
   const { user } = useAuth();
   const isWebhookAuthorized = user?.email?.toLowerCase() === 'gianganwneljae@gmail.com';
@@ -945,7 +947,7 @@ export function Details() {
             title={activeLink || earthquake?.link}
           >
             <ExternalLink size={16} />
-            <span>Open to {reportingAgency === 'USGS' ? 'USGS' : 'PHIVOLCS'}</span>
+            <span>Open to {reportingAgency === 'USGS' ? 'USGS' : reportingAgency === 'EMSC-CSEM' ? 'EMSC' : 'PHIVOLCS'}</span>
           </button>
           <button className="action-btn glass flex-center" onClick={handleCopy} title="Copy Link">
             {copied ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
@@ -981,11 +983,13 @@ export function Details() {
 
       {/* Hero Header Card */}
       <div
-        className="details-hero glass"
+        className={`details-hero glass${isEmsc ? ' details-hero--emsc' : isUsgs ? ' details-hero--usgs' : ''}`}
         style={{
           '--severity-color': color,
-          backgroundImage: isUsgs ? "url('/image-usgs.jpg')" : "url('/image.png')",
+          backgroundImage: isEmsc ? "url('/image-esmc.jpg')" : isUsgs ? "url('/image-usgs.jpg')" : "url('/image.png')",
           backgroundRepeat: 'repeat',
+          backgroundSize: 'auto',
+          backgroundPosition: '0 0',
           color: '#ffffffff'
 
         } as React.CSSProperties}
@@ -1544,7 +1548,7 @@ export function Details() {
           Rendered outside the motion.div so position: fixed stays
           viewport-relative (a transformed ancestor would otherwise become its
           containing block). */}
-      {revisionInfo && <RevisionToast key={id} info={revisionInfo} sourceName={getPreferredApi() === 'usgs' ? 'USGS' : 'PHIVOLCS'} />}
+      {revisionInfo && <RevisionToast key={id} info={revisionInfo} sourceName={pref === 'usgs' ? 'USGS' : pref === 'emsc' ? 'EMSC' : 'PHIVOLCS'} />}
     </>
   );
 }

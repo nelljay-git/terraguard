@@ -16,9 +16,10 @@ import { apiUrl } from '../lib/apiBase';
 import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
 import { getPreferredApi } from '../lib/apiPreference';
 
-// PHIVOLCS mode scopes news to the Philippines; USGS mode pulls global earthquake news.
+// PHIVOLCS scopes to Philippines; USGS/EMSC pull global
 function buildNewsQuery(): string {
-  const query = getPreferredApi() === 'usgs' ? 'earthquake' : 'earthquake location:Philippines';
+  const pref = getPreferredApi();
+  const query = pref === 'usgs' || pref === 'emsc' ? 'earthquake' : 'earthquake location:Philippines';
   return 'https://news.google.com/rss/search?q=' + encodeURIComponent(query) + '&hl=en-PH&gl=PH&ceid=PH:en';
 }
 
@@ -66,7 +67,7 @@ export async function fetchNews(): Promise<NewsResponse> {
 
     // Native: scrape the Google News RSS feed directly (CORS-free via plugin).
     // Web/dev: use the Vercel function or local Vite proxy (pass scope as a param).
-    const isGlobal = getPreferredApi() === 'usgs';
+    const isGlobal = getPreferredApi() === 'usgs' || getPreferredApi() === 'emsc';
     const url = IS_NATIVE
       ? buildNewsQuery()
       : apiUrl(`/api/news${isGlobal ? '?global=1' : ''}`);

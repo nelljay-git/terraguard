@@ -334,7 +334,7 @@ export async function updateTheme(uid: string, theme: string): Promise<string | 
   return error ? getErrorMessage(error) : null;
 }
 
-export async function updatePreferredApi(uid: string, api: 'phivolcs' | 'usgs'): Promise<string | null> {
+export async function updatePreferredApi(uid: string, api: 'phivolcs' | 'usgs' | 'emsc'): Promise<string | null> {
   const { error } = await supabase.from('profiles').update({ preferred_api: api }).eq('id', uid);
   return error ? getErrorMessage(error) : null;
 }

@@ -36,7 +36,7 @@ export function News() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeCategory, setActiveCategory] = useState<Category>('All News');
 
-  const isGlobal = getPreferredApi() === 'usgs';
+  const isGlobal = getPreferredApi() === 'usgs' || getPreferredApi() === 'emsc';
 
   const loadNews = useCallback(async (forceRefresh = false) => {
     if (forceRefresh) {

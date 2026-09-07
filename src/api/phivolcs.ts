@@ -15,23 +15,39 @@ export interface PhivolcsResponse {
   error?: string;
 }
 
-export type Earthquake = PhivolcsEarthquake | UsgsEarthquake;
+import type { EmscEarthquake } from './emsc';
+export type Earthquake = PhivolcsEarthquake | import('./usgs').UsgsEarthquake | EmscEarthquake;
 
 export interface NormalizedEarthquake extends PhivolcsEarthquake {
-  source: 'phivolcs' | 'usgs';
+  source: 'phivolcs' | 'usgs' | 'emsc';
 }
 
 export function normalizeEarthquake(eq: Earthquake): NormalizedEarthquake {
   if ('properties' in eq) {
+    const p = (eq as unknown as { properties: Record<string, unknown> }).properties as Record<string, unknown>;
+    // EMSC has flynn_region + unid, USGS has place + net
+    if (typeof p.flynn_region === 'string' || typeof p.unid === 'string') {
+      const emsc = eq as unknown as EmscEarthquake;
+      return {
+        source: 'emsc',
+        datetime: formatUtc(new Date(emsc.properties.time)),
+        latitude: (Math.round(emsc.properties.lat * 100) / 100).toFixed(2),
+        longitude: (Math.round(emsc.properties.lon * 100) / 100).toFixed(2),
+        depth: String(Math.round(emsc.properties.depth)),
+        magnitude: (Math.round(emsc.properties.mag * 10) / 10).toFixed(1),
+        location: emsc.properties.flynn_region,
+        link: `https://www.emsc-csem.org/Earthquake_information/earthquake.php?id=${emsc.properties.source_id}`,
+      };
+    }
     return {
       source: 'usgs',
-      datetime: formatUtc(new Date(eq.properties.time)),
-      latitude: (Math.round(eq.geometry.coordinates[1] * 100) / 100).toFixed(2),
-      longitude: (Math.round(eq.geometry.coordinates[0] * 100) / 100).toFixed(2),
-      depth: String(Math.round(eq.geometry.coordinates[2])),
-      magnitude: (Math.round(eq.properties.mag * 10) / 10).toFixed(1),
-      location: eq.properties.place,
-      link: eq.properties.url,
+      datetime: formatUtc(new Date((eq as UsgsEarthquake).properties.time)),
+      latitude: (Math.round((eq as UsgsEarthquake).geometry.coordinates[1] * 100) / 100).toFixed(2),
+      longitude: (Math.round((eq as UsgsEarthquake).geometry.coordinates[0] * 100) / 100).toFixed(2),
+      depth: String(Math.round((eq as UsgsEarthquake).geometry.coordinates[2])),
+      magnitude: (Math.round((eq as UsgsEarthquake).properties.mag * 10) / 10).toFixed(1),
+      location: (eq as UsgsEarthquake).properties.place,
+      link: (eq as UsgsEarthquake).properties.url,
     };
   }
   // PHIVOLCS is the exception: keep the source (Philippine Time) string as-is
@@ -62,6 +78,7 @@ export interface BulletinRef {
 import { apiUrl, phivolcsListUrl, phivolcsArchiveUrl, phivolcsDetailUrl, phivolcsBulletinsUrl, usePhpApi } from '../lib/apiBase';
 import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
 import { type UsgsEarthquake, fetchUsgsData, getCachedUsgsData, fetchUsgsArchiveData } from './usgs';
+import { fetchEmscData, getCachedEmscData, fetchEmscArchiveData } from './emsc';
 import { getPreferredApi } from '../lib/apiPreference';
 // USGS event times are displayed in UTC as "d MMMM yyyy - HH:mm:ss UTC"
 // (24-hour, with seconds) so they match the source event time exactly.
@@ -199,19 +216,27 @@ export async function fetchPhivolcsData(): Promise<PhivolcsResponse> {
 }
 
 export async function fetchEarthquakeData(): Promise<
-  PhivolcsResponse | { success: boolean; count: number; data: UsgsEarthquake[] }
+  PhivolcsResponse | { success: boolean; count: number; data: UsgsEarthquake[] } | { success: boolean; count: number; data: EmscEarthquake[] }
 > {
   if (getPreferredApi() === 'usgs') {
     const usgsData = await fetchUsgsData();
     return { success: true, count: usgsData.length, data: usgsData };
   }
+  if (getPreferredApi() === 'emsc') {
+    const emscData = await fetchEmscData();
+    return { success: true, count: emscData.length, data: emscData };
+  }
   return fetchPhivolcsData();
 }
 
-export function getCachedData(): PhivolcsResponse | { success: boolean; count: number; data: UsgsEarthquake[] } | null {
+export function getCachedData(): PhivolcsResponse | { success: boolean; count: number; data: UsgsEarthquake[] } | { success: boolean; count: number; data: EmscEarthquake[] } | null {
   if (getPreferredApi() === 'usgs') {
     const usgsData = getCachedUsgsData();
     return { success: true, count: usgsData.length, data: usgsData };
+  }
+  if (getPreferredApi() === 'emsc') {
+    const emscData = getCachedEmscData();
+    return { success: true, count: emscData.length, data: emscData };
   }
   return getCachedPhivolcsData();
 }
@@ -219,10 +244,14 @@ export function getCachedData(): PhivolcsResponse | { success: boolean; count: n
 export async function fetchArchiveData(
   year: number,
   monthName: string
-): Promise<PhivolcsResponse | { success: boolean; count: number; data: UsgsEarthquake[] }> {
+): Promise<PhivolcsResponse | { success: boolean; count: number; data: UsgsEarthquake[] } | { success: boolean; count: number; data: EmscEarthquake[] }> {
   if (getPreferredApi() === 'usgs') {
     const usgsData = await fetchUsgsArchiveData(year, monthName);
     return { success: true, count: usgsData.length, data: usgsData };
+  }
+  if (getPreferredApi() === 'emsc') {
+    const emscData = await fetchEmscArchiveData(year, monthName);
+    return { success: true, count: emscData.length, data: emscData };
   }
   return fetchPhivolcsArchiveData(year, monthName);
 }
@@ -638,6 +667,55 @@ export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDet
       }
     } catch (error) {
       console.warn('Failed to fetch USGS details:', error);
+    }
+    return null;
+  }
+
+  // EMSC links: fetch via FDSNWS JSON for details; no bulletin HTML to scrape
+  if (/emsc-csem\.org|seismicportal\.eu/.test(url)) {
+    try {
+      // url is like https://www.emsc-csem.org/Earthquake_information/earthquake.php?id=2056916
+      // or FDSN query with eventid/unid. Try to extract id and fetch via FDSN.
+      const mId = /[?&]id=([0-9]+)/.exec(url);
+      const mUnid = /[?&]eventid=([^&]+)/.exec(url);
+      const mEvid = /[?&]evid=([0-9]+)/.exec(url);
+      let fdsnUrl: string | null = null;
+      if (mUnid) fdsnUrl = `https://www.seismicportal.eu/fdsnws/event/1/query?format=json&eventid=${encodeURIComponent(mUnid[1])}`;
+      else if (mEvid) fdsnUrl = `https://www.seismicportal.eu/fdsnws/event/1/query?format=json&evid=${encodeURIComponent(mEvid[1])}`;
+      else if (mId) fdsnUrl = `https://www.seismicportal.eu/fdsnws/event/1/query?format=json&evid=${encodeURIComponent(mId[1])}`;
+      if (fdsnUrl) {
+        const res = await fetch(fdsnUrl);
+        if (res.ok && res.status !== 204) {
+          const j = await res.json() as { features?: Array<{ properties: { flynn_region: string; auth: string; magtype: string; source_catalog: string; lat: number; lon: number } }> };
+          const feat = j.features?.[0];
+          if (feat) {
+            const lat = feat.properties.lat;
+            const lon = feat.properties.lon;
+            const hasCoords = typeof lat === 'number' && typeof lon === 'number' && !isNaN(lat) && !isNaN(lon);
+            const mapUrl = hasCoords
+              ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lon},${lat}&z=6&size=650,400&l=map&pt=${lon},${lat},pm2rdl`
+              : "";
+            return {
+              origin: `${feat.properties.auth || "EMSC"} — ${feat.properties.flynn_region} (${feat.properties.source_catalog || "EMSC"}) • Mag type ${feat.properties.magtype || "m"}`,
+              reportedIntensities: "",
+              instrumentalIntensities: "",
+              note: "EMSC-CSEM Euro-Mediterranean Seismological Centre • CC BY 4.0",
+              mapUrl,
+              tsunami: "",
+            };
+          }
+        }
+      }
+      return {
+        origin: "Tectonic (EMSC-CSEM)",
+        reportedIntensities: "",
+        instrumentalIntensities: "",
+        note: "EMSC-CSEM Euro-Mediterranean Seismological Centre • CC BY 4.0",
+        mapUrl: "",
+        tsunami: "",
+      };
+    } catch (e) {
+      console.warn("EMSC details failed", e);
     }
     return null;
   }

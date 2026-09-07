@@ -17,7 +17,7 @@ export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [apiSource, setApiSource] = useState<'phivolcs' | 'usgs'>(() => getPreferredApi());
+  const [apiSource, setApiSource] = useState<'phivolcs' | 'usgs' | 'emsc'>(() => getPreferredApi());
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -104,9 +104,9 @@ export function Navbar() {
           })}
         </div>
 
-        <div className={`nav-source-badge${apiSource === 'usgs' ? ' nav-source-badge--usgs' : ''}`}>
+        <div className={`nav-source-badge${apiSource === 'usgs' ? ' nav-source-badge--usgs' : apiSource === 'emsc' ? ' nav-source-badge--emsc' : ''}`}>
           <span className="source-dot"></span>
-          {apiSource === 'usgs' ? 'USGS' : 'PHIVOLCS'}
+          {apiSource === 'usgs' ? 'USGS' : apiSource === 'emsc' ? 'EMSC' : 'PHIVOLCS'}
         </div>
 
         <div className="nav-right-actions">

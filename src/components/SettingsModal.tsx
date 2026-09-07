@@ -35,7 +35,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [themeError, setThemeError] = useState<string | null>(null);
   const [themeSuccess, setThemeSuccess] = useState<string | null>(null);
 
-  const [preferredApi, setPreferredApi] = useState<'phivolcs' | 'usgs'>(profile?.preferred_api ?? 'phivolcs');
+  const [preferredApi, setPreferredApi] = useState<'phivolcs' | 'usgs' | 'emsc'>(profile?.preferred_api ?? 'phivolcs');
   const [apiSaving, setApiSaving] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [apiSuccess, setApiSuccess] = useState<string | null>(null);
@@ -119,7 +119,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const handleApiSave = async (next: 'phivolcs' | 'usgs') => {
+  const handleApiSave = async (next: 'phivolcs' | 'usgs' | 'emsc') => {
     setApiError(null);
     setApiSuccess(null);
     setApiSaving(true);
@@ -301,6 +301,14 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 disabled={apiSaving}
               >
                 USGS
+              </button>
+              <button
+                type="button"
+                className={`settings-api-btn${preferredApi === 'emsc' ? ' active' : ''}`}
+                onClick={() => handleApiSave('emsc')}
+                disabled={apiSaving}
+              >
+                EMSC
               </button>
             </div>
             <p className="settings-hint">

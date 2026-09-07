@@ -23,7 +23,8 @@ export function Archive() {
   const [visibleCount, setVisibleCount] = useState(10);
 
   const currentYear = new Date().getFullYear();
-  const sourceName = getPreferredApi() === 'usgs' ? 'USGS' : 'PHIVOLCS';
+  const pref = getPreferredApi();
+  const sourceName = pref === 'usgs' ? 'USGS' : pref === 'emsc' ? 'EMSC' : 'PHIVOLCS';
   const [fetchMode, setFetchMode] = useState<'latest' | 'archive'>(() => {
     return (sessionStorage.getItem('archive_fetchMode') as 'latest' | 'archive') || 'latest';
   });
@@ -35,7 +36,7 @@ export function Archive() {
     return sessionStorage.getItem('archive_selectedMonth') || 'January';
   });
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const minArchiveYear = getPreferredApi() === 'usgs' ? 1900 : 2018;
+  const minArchiveYear = pref === 'usgs' ? 1900 : pref === 'emsc' ? 1998 : 2018;
   const years = Array.from({ length: currentYear - minArchiveYear + 1 }, (_, i) => currentYear - i); // oldest available year to current
 
   // Persist state

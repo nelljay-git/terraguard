@@ -77,7 +77,8 @@ export function Dashboard() {
   }, [loadData]);
 
   const currentMonth = new Date();
-  const sourceName = getPreferredApi() === 'usgs' ? 'USGS' : 'PHIVOLCS';
+  const prefDash = getPreferredApi();
+  const sourceName = prefDash === 'usgs' ? 'USGS' : prefDash === 'emsc' ? 'EMSC' : 'PHIVOLCS';
   const monthlyEarthquakes = earthquakes.filter(eq => {
     const datePart = eq.datetime.split(' - ')[0]?.trim();
     if (!datePart) return false;

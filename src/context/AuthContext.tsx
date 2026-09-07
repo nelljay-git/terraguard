@@ -19,7 +19,7 @@ export interface Profile {
   verified: boolean;
   avatar_url: string | null;
   theme: ThemePreference;
-  preferred_api: 'phivolcs' | 'usgs';
+  preferred_api: 'phivolcs' | 'usgs' | 'emsc';
 }
 
 interface AuthContextValue {
@@ -32,7 +32,7 @@ interface AuthContextValue {
   updateUsername: (username: string) => Promise<string | null>;
   updateAvatarUrl: (url: string | null) => Promise<string | null>;
   updateTheme: (theme: ThemePreference) => Promise<string | null>;
-  updatePreferredApi: (api: 'phivolcs' | 'usgs') => Promise<string | null>;
+  updatePreferredApi: (api: 'phivolcs' | 'usgs' | 'emsc') => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -158,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
-  const updatePreferredApi = async (api: 'phivolcs' | 'usgs'): Promise<string | null> => {
+  const updatePreferredApi = async (api: 'phivolcs' | 'usgs' | 'emsc'): Promise<string | null> => {
     if (!user) return 'Not signed in.';
     const error = await dbUpdatePreferredApi(user.id, api);
     if (error) return error;

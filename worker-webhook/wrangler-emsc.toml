@@ -1,0 +1,23 @@
+name = "terraguard-emsc"
+main = "src/emsc.ts"
+compatibility_date = "2026-09-07"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["*/2 * * * *"] # global EMSC, every 2 mins (use */5 for less)
+
+[[kv_namespaces]]
+binding = "WEBHOOK_KV"
+id = "REPLACE_WITH_SAME_KV_ID_AS_USGS" # can reuse terraguard-push
+preview_id = "REPLACE_WITH_PREVIEW_ID"
+
+[vars]
+EMSC_MIN_MAG = "1.0" # global M1.0; set 4.5 for significant only
+EMSC_MIN_LAT = "-90"
+EMSC_MAX_LAT = "90"
+EMSC_MIN_LNG = "-180"
+EMSC_MAX_LNG = "180"
+
+# Secrets (set via `wrangler secret put` on this worker):
+# EMSC_WEBHOOK_URL = "https://discord.com/api/webhooks/..."
+# CRON_SECRET = "same secret as other workers or new"

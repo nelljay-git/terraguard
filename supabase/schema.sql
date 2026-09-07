@@ -572,11 +572,11 @@ alter table public.profiles add column if not exists theme text not null default
 -- -----------------------------------------------------------------------------
 alter table public.profiles add column if not exists preferred_api text not null default 'phivolcs';
 
--- Constrain the value to the two supported sources.
+-- Constrain the value to the three supported sources.
 alter table public.profiles drop constraint if exists profiles_preferred_api_check;
 alter table public.profiles
   add constraint profiles_preferred_api_check
-  check (preferred_api in ('phivolcs', 'usgs'));
+  check (preferred_api in ('phivolcs', 'usgs', 'emsc'));
 
 -- Grant existing rows the default (no-op for brand-new profiles, but covers
 -- profiles created before this migration).
