@@ -7,9 +7,10 @@ import { getSeverityColor, getSeverityLabel, haversineKm, timeAgo } from '../lib
 import { PH_PROVINCES, PH_CITIES } from '../data/phLocations';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation, Menu, Download } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation, Menu, Download, Send, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
+import { useAuth } from '../context/AuthContext';
 import { FunFactLoader } from '../components/FunFactLoader';
 import { ActiveFaultsLayer } from '../components/ActiveFaultsLayer';
 import { UsgsMapLayers } from '../components/UsgsMapLayers';
@@ -309,6 +310,9 @@ export function Details() {
   const reportingAgency = dataSource === 'usgs' ? 'USGS' : 'PHIVOLCS-DOST';
   const isUsgs = dataSource === 'usgs';
   const [originExpanded, setOriginExpanded] = useState(false);
+  const { user } = useAuth();
+  const isWebhookAuthorized = user?.email?.toLowerCase() === 'gianganwneljae@gmail.com';
+  const [webhookStatus, setWebhookStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
 
   // For USGS events, pull the raw event "products" so the overlay panel can show
   // ShakeMap / DYFI / ground-failure / aftershock layers on the interactive map.
@@ -784,6 +788,100 @@ export function Details() {
     }
   };
 
+  // Discord webhook — gated to gianganwneljae@gmail.com only
+  const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1546330478221598761/V8cOp8RPHxGozQYtclAO5JvOHoAllA1jJn5fvXRn4-hiO4v3eglWcimndhc2S-3mZ7d5';
+
+  const formatWebhookDateTimeUST = (raw: string, isUsgsSource: boolean): { date: string; time: string } => {
+    // PHIVOLCS datetime is PHT (UTC+8) — convert to UST/UTC by subtracting 8h
+    // USGS datetime is already UTC
+    const d = isUsgsSource ? parseDateTime(raw) : parsePhivolcsAsUtc(raw);
+    if (!d) {
+      // fallback: try to extract date/time substrings from raw
+      const dm = /(\d{1,2}\s+[A-Za-z]+\s+\d{4})/.exec(raw);
+      const tm = /(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)/i.exec(raw);
+      return { date: dm ? dm[1] : raw, time: tm ? `${tm[1].toUpperCase()} UST` : '' };
+    }
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const dateStr = `${String(d.getUTCDate()).padStart(2,'0')} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+    let h = d.getUTCHours();
+    const m = String(d.getUTCMinutes()).padStart(2,'0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    const timeStr = `${String(h).padStart(2,'0')}:${m} ${ampm} UST`;
+    return { date: dateStr, time: timeStr };
+  };
+
+  const handleSendToWebhook = async () => {
+    if (!earthquake || !isWebhookAuthorized) return;
+    if (webhookStatus === 'sending') return;
+    setWebhookStatus('sending');
+    try {
+      const lat = parseFloat(earthquake.latitude);
+      const lng = parseFloat(earthquake.longitude);
+      const hasCoords = !isNaN(lat) && !isNaN(lng);
+      const { date, time } = formatWebhookDateTimeUST(earthquake.datetime, isUsgs);
+      const tsunamiRaw = (details?.tsunami || '').trim();
+      const tsunamiInfoLocal = classifyTsunami(tsunamiRaw);
+      // Template expects NONE when no threat; map advisory/warning accordingly
+      const tsunamiLabel = !tsunamiRaw ? 'NONE' : tsunamiInfoLocal ? tsunamiInfoLocal.label.toUpperCase() : 'NONE';
+      // Static epicenter map — prefer PHIVOLCS/USGS official map if available, else Yandex
+      const epicenterImage = details?.mapUrl && /^https?:\/\//i.test(details.mapUrl)
+        ? details.mapUrl
+        : hasCoords
+          ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=7&size=600,400&l=map&pt=${lng},${lat},pm2rdm`
+          : `${window.location.origin}/pwa-512x512.png`;
+      // Color for Discord embed (decimal)
+      const hex = color.replace('#','');
+      const embedColor = parseInt(hex.length === 3 ? hex.split('').map(c=>c+c).join('') : hex, 16) || 0x3b82f6;
+
+      const content =
+`🚨 **EARTHQUAKE ALERT** 🚨
+
+💥 **M${earthquake.magnitude}** earthquake detected near **${earthquake.location}**.
+
+📅 **Date:** ${date}
+⏰ **Time:** ${time}
+📏 **Depth:** ${earthquake.depth} km
+📍 **Epicenter:** ${earthquake.location}
+🌐 **Coordinates:** ${earthquake.latitude}°N, ${earthquake.longitude}°E
+
+🌊 **Tsunami Threat:** ${tsunamiLabel}
+
+📡 **Source:** ${reportingAgency}`;
+
+      const payload = {
+        content,
+        embeds: [
+          {
+            title: `🌍 M${earthquake.magnitude} — ${earthquake.location}`,
+            description: `[View on TerraGuard](${window.location.href}) • [Open ${reportingAgency}](${activeLink || earthquake.link || window.location.href})`,
+            color: embedColor,
+            image: { url: epicenterImage },
+            footer: { text: `TerraGuard • ${date} ${time} • ${reportingAgency}` },
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const res = await fetch(DISCORD_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(()=>'');
+        throw new Error(`Webhook failed ${res.status} ${txt}`);
+      }
+      setWebhookStatus('success');
+      setTimeout(() => setWebhookStatus('idle'), 3000);
+    } catch (e) {
+      console.error('Webhook send failed:', e);
+      // CORS fallback: open webhook URL hint
+      setWebhookStatus('error');
+      setTimeout(() => setWebhookStatus('idle'), 4000);
+    }
+  };
+
   const renderIntensities = (text: string) => {
     if (!text) return null;
     const lines = text.split(/Intensity\s+/i).filter(line => line.trim().length > 0);
@@ -861,6 +959,21 @@ export function Details() {
             >
               <Share2 size={16} />
               <span>Share</span>
+            </button>
+          )}
+          {isWebhookAuthorized && (
+            <button
+              className="action-btn glass flex-center"
+              onClick={handleSendToWebhook}
+              disabled={webhookStatus === 'sending'}
+              title="Send to Discord Webhook"
+              style={{
+                background: webhookStatus === 'success' ? 'rgba(16,185,129,0.15)' : webhookStatus === 'error' ? 'rgba(239,68,68,0.15)' : undefined,
+                borderColor: webhookStatus === 'success' ? 'rgba(16,185,129,0.4)' : webhookStatus === 'error' ? 'rgba(239,68,68,0.4)' : undefined,
+              }}
+            >
+              {webhookStatus === 'sending' ? <Loader2 size={16} className="spinner-icon" /> : webhookStatus === 'success' ? <Check size={16} color="#10b981" /> : webhookStatus === 'error' ? <AlertTriangle size={16} color="#ef4444" /> : <Send size={16} />}
+              <span>{webhookStatus === 'sending' ? 'Sending...' : webhookStatus === 'success' ? 'Sent!' : webhookStatus === 'error' ? 'Failed' : 'Send to Webhooks'}</span>
             </button>
           )}
         </div>
