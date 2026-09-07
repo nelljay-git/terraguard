@@ -56,7 +56,7 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
   };
 
   return (
-    <div className="latest-eq-card glass" style={{ borderLeft: `4px solid ${color}`, backgroundImage: `url(${isUsgs ? '/image-usgs.jpg' : isEmsc ? '/image-emsc.jpg' : '/image.png'})` }}>
+    <div className={`latest-eq-card glass${isEmsc ? ' latest-eq-card--emsc' : isUsgs ? ' latest-eq-card--usgs' : ''}`} style={{ borderLeft: `4px solid ${color}`, backgroundImage: `url(${isUsgs ? '/image-usgs.jpg' : isEmsc ? '/image-emsc.jpg' : '/image.png'})`, backgroundRepeat: 'repeat', backgroundSize: 'auto' }}>
       {/* Decorative background glow */}
       <div className="eq-glow" style={{ background: `radial-gradient(circle at 20% 30%, ${color}12 0%, transparent 60%)` }}></div>
 
