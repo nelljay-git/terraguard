@@ -1,0 +1,19 @@
+name = "terraguard-tsunami"
+main = "src/tsunami.ts"
+compatibility_date = "2026-09-07"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["*/5 * * * *"] # check tsunami.gov every 5 mins (warnings are rare)
+
+[[kv_namespaces]]
+binding = "WEBHOOK_KV"
+id = "REPLACE_WITH_SAME_KV_ID_AS_EARTHQUAKE" # can reuse terraguard-push
+preview_id = "REPLACE_WITH_PREVIEW_ID"
+
+[vars]
+TSUNAMI_MIN_SEVERITY = "" # "" = all (Warning/Advisory/Watch), "advisory" = Advisory+Warning, "warning" = Warning only
+
+# Secrets (set via `wrangler secret put` on this worker):
+# TSUNAMI_WEBHOOK_URL = "https://discord.com/api/webhooks/1546370195818553426/..."
+# CRON_SECRET = "same-or-different-secret"

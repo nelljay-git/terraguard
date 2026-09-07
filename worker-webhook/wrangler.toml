@@ -1,0 +1,25 @@
+name = "terraguard-webhook-cron"
+main = "src/index.ts"
+compatibility_date = "2026-09-07"
+compatibility_flags = ["nodejs_compat"]
+
+# USGS only — every 2 minutes (use "*/5 * * * *" for 5 mins to save quota)
+[triggers]
+crons = ["*/2 * * * *"]
+
+[[kv_namespaces]]
+binding = "WEBHOOK_KV"
+id = "REPLACE_WITH_YOUR_KV_ID" # wrangler kv namespace create WEBHOOK_KV
+preview_id = "REPLACE_WITH_PREVIEW_ID"
+
+[vars]
+MIN_MAGNITUDE = "4.5" # global M>=4.5; set "1.0" for all, "6.0" for only strong
+USGS_MIN_LAT = "-90"
+USGS_MAX_LAT = "90"
+USGS_MIN_LNG = "-180"
+USGS_MAX_LNG = "180"
+USGS_FEED = "all_day.geojson" # or "significant_day.geojson" for M5+ only
+
+# Secrets (set via `wrangler secret put`):
+# DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/..."
+# CRON_SECRET = "random-long-string-for-manual-trigger"
