@@ -74,7 +74,9 @@ async function sendEmscWebhook(eq: NonNullable<Awaited<ReturnType<typeof fetchLa
   const {date,time}=formatUstFromMs(eq.timeMs);
   const epicenterImage = hasCoords ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=7&size=600,400&l=map&pt=${lng},${lat},pm2rdm` : `https://terraguard.pages.dev/pwa-512x512.png`;
   const mag=parseFloat(eq.magnitude); const hex=color(isNaN(mag)?5:mag).replace("#",""); const embedColor=parseInt(hex.length===3?hex.split("").map(c=>c+c).join(""):hex,16)||0x3b82f6;
-  const content = `🌐 **EMSC EARTHQUAKE ALERT** 🌐
+  const magNum = parseFloat(eq.magnitude);
+  const mention = magNum >= 7 ? "@everyone " : "";
+  const content = `${mention}🌐 **EMSC EARTHQUAKE ALERT** 🌐
 
 💥 **M${eq.magnitude} (${eq.magtype})** earthquake near **${eq.location}**.
 
@@ -88,7 +90,7 @@ async function sendEmscWebhook(eq: NonNullable<Awaited<ReturnType<typeof fetchLa
 📡 **Source:** EMSC-CSEM (${eq.unid})
 
 ❓ **Did you feel it?** React ✅ for Yes, ❎ for No`;
-  const payload={ content, embeds:[{ title:`🌐 M${eq.magnitude} — ${eq.location}`, description:`[View on EMSC](https://www.emsc-csem.org/Earthquake_information/earthquake.php?id=${eq.source_id}) • [View on TerraGuard](https://terraguard.pages.dev/details/${eqId(eq.datetime, eq.latitude, eq.longitude)})`, color:embedColor, image:{url:epicenterImage}, footer:{text:`TerraGuard • EMSC-CSEM • ${date} ${time}`}, timestamp:new Date(eq.timeMs).toISOString() }] };
+  const payload={ content, allowed_mentions: { parse: ["everyone"] }, embeds:[{ title:`🌐 M${eq.magnitude} — ${eq.location}`, description:`[View on EMSC](https://www.emsc-csem.org/Earthquake_information/earthquake.php?id=${eq.source_id}) • [View on TerraGuard](https://terraguard.pages.dev/details/${eqId(eq.datetime, eq.latitude, eq.longitude)})`, color:embedColor, image:{url:epicenterImage}, footer:{text:`TerraGuard • EMSC-CSEM • ${date} ${time}`}, timestamp:new Date(eq.timeMs).toISOString() }] };
   const waitUrl = wh.includes("?")?`${wh}&wait=true`:`${wh}?wait=true`;
   const res = await fetch(waitUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
   if(!res.ok){ const t=await res.text().catch(()=> ""); throw new Error(`EMSC webhook ${res.status}: ${t.slice(0,500)}`);}

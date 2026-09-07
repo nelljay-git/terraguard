@@ -101,11 +101,14 @@ async function sendDiscordWebhook(eq, env) {
   const tsunamiLabel = usgsTsunamiLabel(eq.tsunami);
   const epicenterImage = hasCoords ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=7&size=600,400&l=map&pt=${lng},${lat},pm2rdm` : `https://terraguard.pages.dev/pwa-512x512.png`;
   const mag = parseFloat(eq.magnitude);
+  const magNum = mag;
+  const mention = magNum >= 7 ? "@everyone " : "";
   const colorHex = severityColor(isNaN(mag) ? 5 : mag).replace("#","");
   const embedColor = parseInt(colorHex.length === 3 ? colorHex.split("").map(c=>c+c).join("") : colorHex, 16) || 0x3b82f6;
-  const content = `🚨 **EARTHQUAKE ALERT** 🚨\n\n💥 **M${eq.magnitude}** earthquake detected near **${eq.location}**.\n\n📅 **Date:** ${date}\n⏰ **Time:** ${time}\n📏 **Depth:** ${eq.depth} km\n📍 **Epicenter:** ${eq.location}\n🌐 **Coordinates:** ${eq.latitude}°N, ${eq.longitude}°E\n\n🌊 **Tsunami Threat:** ${tsunamiLabel}\n\n📡 **Source:** USGS\n\n❓ **Did you feel it?** React ✅ for Yes, ❎ for No`;
+  const content = `${mention}🚨 **EARTHQUAKE ALERT** 🚨\n\n💥 **M${eq.magnitude}** earthquake detected near **${eq.location}**.\n\n📅 **Date:** ${date}\n⏰ **Time:** ${time}\n📏 **Depth:** ${eq.depth} km\n📍 **Epicenter:** ${eq.location}\n🌐 **Coordinates:** ${eq.latitude}°N, ${eq.longitude}°E\n\n🌊 **Tsunami Threat:** ${tsunamiLabel}\n\n📡 **Source:** USGS\n\n❓ **Did you feel it?** React ✅ for Yes, ❎ for No`;
   const payload = {
     content,
+    allowed_mentions: { parse: ["everyone"] },
     embeds: [{ title: `🌍 M${eq.magnitude} — ${eq.location}`, description: `[View on TerraGuard](https://terraguard-ph.pages.dev/details/${earthquakeToEqId(eq)}) • [Open USGS](${eq.link})`, color: embedColor, image: { url: epicenterImage }, footer: { text: `TerraGuard • ${date} ${time} • USGS` }, timestamp: new Date(eq.timeMs).toISOString() }],
   };
   const waitUrl = webhook.includes("?") ? `${webhook}&wait=true` : `${webhook}?wait=true`;

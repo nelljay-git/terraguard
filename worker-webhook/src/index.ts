@@ -152,10 +152,12 @@ async function sendDiscordWebhook(eq: Earthquake, env: Env): Promise<void> {
     ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=7&size=600,400&l=map&pt=${lng},${lat},pm2rdm`
     : `https://terraguard.pages.dev/pwa-512x512.png`;
   const mag = parseFloat(eq.magnitude);
+  const magNum = mag;
+  const mention = magNum >= 7 ? "@everyone " : "";
   const colorHex = severityColor(isNaN(mag) ? 5 : mag).replace("#","");
   const embedColor = parseInt(colorHex.length === 3 ? colorHex.split("").map(c=>c+c).join("") : colorHex, 16) || 0x3b82f6;
 
-  const content = `🚨 **EARTHQUAKE ALERT** 🚨
+  const content = `${mention}🚨 **EARTHQUAKE ALERT** 🚨
 
 💥 **M${eq.magnitude}** earthquake detected near **${eq.location}**.
 
@@ -173,6 +175,7 @@ async function sendDiscordWebhook(eq: Earthquake, env: Env): Promise<void> {
 
   const payload = {
     content,
+    allowed_mentions: { parse: ["everyone"] },
     embeds: [
       {
         title: `🌍 M${eq.magnitude} — ${eq.location}`,

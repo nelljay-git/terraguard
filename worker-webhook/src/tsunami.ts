@@ -127,7 +127,9 @@ async function sendTsunamiWebhook(alert: ReturnType<typeof fetchTsunamiAlerts> e
   const dateStr = sentDate.toLocaleDateString("en-US", { timeZone: "UTC", year:"numeric", month:"long", day:"2-digit" });
   const timeStr = sentDate.toLocaleTimeString("en-US", { timeZone: "UTC", hour:"2-digit", minute:"2-digit", hour12:true, timeZoneName:"short" });
 
-  const content = `${emoji} **TSUNAMI ${alert.event.toUpperCase()}** ${emoji}
+  const isThreat = !/no tsunami|no warning.*or threat/i.test(alert.event) && /warning|advisory|watch/i.test(alert.event);
+  const mention = isThreat ? "@everyone " : "";
+  const content = `${mention}${emoji} **TSUNAMI ${alert.event.toUpperCase()}** ${emoji}
 
 **${alert.headline}**
 
@@ -141,6 +143,7 @@ ${alert.description?.slice(0, 900) || ""}
 
   const payload = {
     content,
+    allowed_mentions: isThreat ? { parse: ["everyone"] } : undefined,
     embeds: [{
       title: `${emoji} ${alert.event} — ${alert.headline.slice(0, 80)}`,
       description: `${alert.description?.slice(0, 1000) || ""}\n\n[View on tsunami.gov](${alert.tsunamiGovLink || alert.link})`,

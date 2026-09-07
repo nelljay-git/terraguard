@@ -40,8 +40,10 @@ async function sendTsunamiWebhook(alert, env){
   const sentDate=new Date(alert.sent||alert.effective);
   const dateStr=sentDate.toLocaleDateString("en-US",{timeZone:"UTC",year:"numeric",month:"long",day:"2-digit"});
   const timeStr=sentDate.toLocaleTimeString("en-US",{timeZone:"UTC",hour:"2-digit",minute:"2-digit",hour12:true,timeZoneName:"short"});
-  const content=`${emoji} **TSUNAMI ${alert.event.toUpperCase()}** ${emoji}\n\n**${alert.headline}**\n\n📍 **Areas:** ${alert.areaDesc?.slice(0,400)||"See details"}\n📅 **Issued:** ${dateStr} ${timeStr}\n🔗 **Details:** ${alert.link}\n\n${alert.description?.slice(0,900)||""}\n\n*Source: tsunami.gov / NWS*`;
-  const payload={ content, embeds:[{ title:`${emoji} ${alert.event} — ${alert.headline.slice(0,80)}`, description:`${alert.description?.slice(0,1000)||""}\n\n[View on tsunami.gov](${alert.tsunamiGovLink||alert.link})`, color, footer:{text:`TerraGuard Tsunami • ${dateStr} ${timeStr}`}, timestamp:sentDate.toISOString() }] };
+  const isThreat=!/no tsunami|no warning.*or threat/i.test(alert.event) && /warning|advisory|watch/i.test(alert.event);
+  const mention=isThreat?"@everyone ":"";
+  const content=`${mention}${emoji} **TSUNAMI ${alert.event.toUpperCase()}** ${emoji}\n\n**${alert.headline}**\n\n📍 **Areas:** ${alert.areaDesc?.slice(0,400)||"See details"}\n📅 **Issued:** ${dateStr} ${timeStr}\n🔗 **Details:** ${alert.link}\n\n${alert.description?.slice(0,900)||""}\n\n*Source: tsunami.gov / NWS*`;
+  const payload={ content, ...(isThreat?{allowed_mentions:{parse:["everyone"]}}:{}), embeds:[{ title:`${emoji} ${alert.event} — ${alert.headline.slice(0,80)}`, description:`${alert.description?.slice(0,1000)||""}\n\n[View on tsunami.gov](${alert.tsunamiGovLink||alert.link})`, color, footer:{text:`TerraGuard Tsunami • ${dateStr} ${timeStr}`}, timestamp:sentDate.toISOString() }] };
   const waitUrl=webhook.includes("?")?`${webhook}&wait=true`:`${webhook}?wait=true`;
   const res=await fetch(waitUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
   if(!res.ok){ const t=await res.text().catch(()=> ""); throw new Error(`Tsunami webhook ${res.status}: ${t.slice(0,500)}`);}
