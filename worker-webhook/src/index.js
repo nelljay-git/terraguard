@@ -99,10 +99,10 @@ async function sendDiscordWebhook(eq, env) {
   const hasCoords = !isNaN(lat) && !isNaN(lng);
   const { date, time } = formatUstFromMs(eq.timeMs);
   const tsunamiLabel = usgsTsunamiLabel(eq.tsunami);
-  const epicenterImage = hasCoords ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=7&size=600,400&l=map&pt=${lng},${lat},pm2rdm` : `https://terraguard.pages.dev/pwa-512x512.png`;
+  const epicenterImage = hasCoords ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=7&size=600,400&l=map&pt=${lng},${lat},pm2rdm` : `https://terraguard-ph.pages.dev/pwa-512x512.png`;
   const mag = parseFloat(eq.magnitude);
   const magNum = mag;
-  const mention = magNum >= 7 ? "@everyone " : "";
+  const mention = magNum >= 6 ? "@everyone " : "";
   const colorHex = severityColor(isNaN(mag) ? 5 : mag).replace("#","");
   const embedColor = parseInt(colorHex.length === 3 ? colorHex.split("").map(c=>c+c).join("") : colorHex, 16) || 0x3b82f6;
   const content = `${mention}🚨 **EARTHQUAKE ALERT** 🚨\n\n💥 **M${eq.magnitude}** earthquake detected near **${eq.location}**.\n\n📅 **Date:** ${date}\n⏰ **Time:** ${time}\n📏 **Depth:** ${eq.depth} km\n📍 **Epicenter:** ${eq.location}\n🌐 **Coordinates:** ${eq.latitude}°N, ${eq.longitude}°E\n\n🌊 **Tsunami Threat:** ${tsunamiLabel}\n\n📡 **Source:** USGS\n\n❓ **Did you feel it?** React ✅ for Yes, ❎ for No`;
@@ -117,13 +117,15 @@ async function sendDiscordWebhook(eq, env) {
   try {
     const msg = await res.json();
     if (msg?.id) {
-      const m = /\/webhooks\/(\d+)\/([^/?]+)/.exec(webhook);
-      if (m) {
-        const whId = m[1], whToken = m[2];
-        for (const emoji of ["%E2%9C%85", "%E2%9D%8E"]) {
-          await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${emoji}/@me`, { method: "PUT" }).catch(()=>{});
+      const emojis = ["%E2%9C%85", "%E2%9D%8E"];
+      if (env.BOT_TOKEN && msg.channel_id) {
+        for (const emoji of emojis) {
+          await fetch(`https://discord.com/api/v10/channels/${msg.channel_id}/messages/${msg.id}/reactions/${emoji}/@me`, { method: "PUT", headers: { Authorization: `Bot ${env.BOT_TOKEN}` } }).catch(()=>{});
           await new Promise(r=> setTimeout(r, 300));
         }
+      } else {
+        const m = /\/webhooks\/(\d+)\/([^/?]+)/.exec(webhook);
+        if (m) { const whId=m[1],whToken=m[2]; for(const emoji of emojis){ await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${emoji}/@me`,{method:"PUT"}).catch(()=>{}); await new Promise(r=>setTimeout(r,300)); } }
       }
     }
   } catch (_) {}

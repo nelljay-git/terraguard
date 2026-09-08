@@ -47,7 +47,7 @@ async function sendTsunamiWebhook(alert, env){
   const waitUrl=webhook.includes("?")?`${webhook}&wait=true`:`${webhook}?wait=true`;
   const res=await fetch(waitUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
   if(!res.ok){ const t=await res.text().catch(()=> ""); throw new Error(`Tsunami webhook ${res.status}: ${t.slice(0,500)}`);}
-  try{ const msg=await res.json(); if(msg?.id){ const m=/\/webhooks\/(\d+)\/([^/?]+)/.exec(webhook); if(m){ const whId=m[1],whToken=m[2]; for(const e of ["%F0%9F%8C%8A","%E2%9A%A0%EF%B8%8F"]){ await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${e}/@me`,{method:"PUT"}).catch(()=>{}); await new Promise(r=>setTimeout(r,300)); } } } }catch{}
+  try{ const msg=await res.json(); if(msg?.id){ const emojis=["%F0%9F%8C%8A","%E2%9A%A0%EF%B8%8F"]; if(env.BOT_TOKEN && msg.channel_id){ for(const e of emojis){ await fetch(`https://discord.com/api/v10/channels/${msg.channel_id}/messages/${msg.id}/reactions/${e}/@me`,{method:"PUT",headers:{Authorization:`Bot ${env.BOT_TOKEN}`}}).catch(()=>{}); await new Promise(r=>setTimeout(r,300)); } } else { const m=/\/webhooks\/(\d+)\/([^/?]+)/.exec(webhook); if(m){ const whId=m[1],whToken=m[2]; for(const e of emojis){ await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${e}/@me`,{method:"PUT"}).catch(()=>{}); await new Promise(r=>setTimeout(r,300)); } } } } }catch{}
 }
 async function handleCron(env){
   const alerts=await fetchTsunamiAlerts();

@@ -32,15 +32,54 @@ async function sendEmscWebhook(eq, env){
   const wh=env.EMSC_WEBHOOK_URL; if(!wh) throw new Error("EMSC_WEBHOOK_URL not set");
   const lat=parseFloat(eq.latitude), lng=parseFloat(eq.longitude), hasCoords=!isNaN(lat)&&!isNaN(lng);
   const {date,time}=formatUstFromMs(eq.timeMs);
-  const epicenterImage=hasCoords?`https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=7&size=600,400&l=map&pt=${lng},${lat},pm2rdm`:`https://terraguard.pages.dev/pwa-512x512.png`;
+  const epicenterImage=hasCoords?`https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=7&size=600,400&l=map&pt=${lng},${lat},pm2rdm`:`https://terraguard-ph.pages.dev/pwa-512x512.png`;
   const mag=parseFloat(eq.magnitude), hex=color(isNaN(mag)?5:mag).replace("#",""), embedColor=parseInt(hex.length===3?hex.split("").map(c=>c+c).join(""):hex,16)||0x3b82f6;
-  const magNum=parseFloat(eq.magnitude), mention=magNum>=7?"@everyone ":"";
+  const magNum=parseFloat(eq.magnitude);
+  const mention=magNum>=7?"@everyone ":"";
   const content=`${mention}🌐 **EMSC EARTHQUAKE ALERT** 🌐\n\n💥 **M${eq.magnitude} (${eq.magtype})** earthquake near **${eq.location}**.\n\n📅 **Date:** ${date}\n⏰ **Time:** ${time}\n📏 **Depth:** ${eq.depth} km\n📍 **Epicenter:** ${eq.location}\n🌐 **Coordinates:** ${eq.latitude}°N, ${eq.longitude}°E\n🏛️ **Authority:** ${eq.auth}\n\n📡 **Source:** EMSC-CSEM (${eq.unid})\n\n❓ **Did you feel it?** React ✅ for Yes, ❎ for No`;
   const payload={ content, allowed_mentions:{parse:["everyone"]}, embeds:[{ title:`🌐 M${eq.magnitude} — ${eq.location}`, description:`[View on EMSC](https://www.emsc-csem.org/Earthquake_information/earthquake.php?id=${eq.source_id}) • [View on TerraGuard](https://terraguard-ph.pages.dev/details/${eqId(eq.datetime, eq.latitude, eq.longitude)})`, color:embedColor, image:{url:epicenterImage}, footer:{text:`TerraGuard • EMSC-CSEM • ${date} ${time}`}, timestamp:new Date(eq.timeMs).toISOString() }] };
   const waitUrl=wh.includes("?")?`${wh}&wait=true`:`${wh}?wait=true`;
   const res=await fetch(waitUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
   if(!res.ok){ const t=await res.text().catch(()=> ""); throw new Error(`EMSC webhook ${res.status}: ${t.slice(0,500)}`);}
-  try{ const msg=await res.json(); if(msg?.id){ const m=/\/webhooks\/(\d+)\/([^/?]+)/.exec(wh); if(m){ const whId=m[1],whToken=m[2]; for(const e of ["%E2%9C%85","%E2%9D%8E"]){ await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${e}/@me`,{method:"PUT"}).catch(()=>{}); await new Promise(r=>setTimeout(r,300)); } } } }catch{}
+  try{
+    const msg=await res.json();
+    if(msg?.id){
+      const emojis=["%E2%9C%85","%E2%9D%8E"];
+      if(env.BOT_TOKEN && msg.channel_id){
+        for(const e of emojis){
+          await fetch(`https://discord.com/api/v10/channels/${msg.channel_id}/messages/${msg.id}/reactions/${e}/@me`,{method:"PUT",headers:{Authorization:`Bot ${env.BOT_TOKEN}`}}).catch(()=>{});
+          await new Promise(r=>setTimeout(r,300));
+        }
+      } else {
+        const m=/\/webhooks\/(\d+)\/([^/?]+)/.exec(wh);
+        if(m){
+          const whId=m[1],whToken=m[2];
+          for(const e of emojis){
+            await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${e}/@me`,{method:"PUT"}).catch(()=>{});
+            await new Promise(r=>setTimeout(r,300));
+          }
+        }
+      }
+    }
+    if(env.FELT_REPORTS_WEBHOOK_URL){
+      const poll={ question:{text:`Did you feel M${eq.magnitude} near ${eq.location.slice(0,80)}?`}, answers:[{poll_media:{text:"Yes ✅"}},{poll_media:{text:"No ❎"}}], duration:24, allow_multiselect:false, layout_type:1 };
+      const pollWait=env.FELT_REPORTS_WEBHOOK_URL.includes("?")?`${env.FELT_REPORTS_WEBHOOK_URL}&wait=true`:`${env.FELT_REPORTS_WEBHOOK_URL}?wait=true`;
+      const pollRes=await fetch(pollWait,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:`📝 **Felt Report Poll** for M${eq.magnitude} — ${eq.location}`, poll})}).catch(()=>null);
+      if(pollRes && pollRes.ok){
+        const pollMsg=await pollRes.json();
+        if(pollMsg?.id && pollMsg?.channel_id && env.BOT_TOKEN){
+          const threadName=`💬 Experiences — M${eq.magnitude} ${eq.location.slice(0,60)}`;
+          const threadRes=await fetch(`https://discord.com/api/v10/channels/${pollMsg.channel_id}/messages/${pollMsg.id}/threads`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bot ${env.BOT_TOKEN}`},body:JSON.stringify({name:threadName,auto_archive_duration:1440})});
+          if(threadRes.ok){
+            const thread=await threadRes.json();
+            if(thread?.id){
+              await fetch(`https://discord.com/api/v10/channels/${thread.id}/messages`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bot ${env.BOT_TOKEN}`},body:JSON.stringify({content:`Share your experience for **M${eq.magnitude} near ${eq.location}** — where were you, what did you feel? (photos/videos welcome)`})}).catch(()=>{});
+            }
+          }
+        }
+      }
+    }
+  } catch{}
 }
 async function handleCron(env){
   const latest=await fetchLatestEmsc(env);

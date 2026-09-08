@@ -10,6 +10,7 @@
 export interface Env {
   TSUNAMI_WEBHOOK_URL: string;
   WEBHOOK_KV: KVNamespace;
+  BOT_TOKEN?: string;
   CRON_SECRET?: string;
   TSUNAMI_MIN_SEVERITY?: string; // default: send all (Warning/Advisory/Watch)
 }
@@ -157,15 +158,14 @@ ${alert.description?.slice(0, 900) || ""}
   const res = await fetch(waitUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   if (!res.ok) { const t = await res.text().catch(()=> ""); throw new Error(`Tsunami webhook ${res.status}: ${t.slice(0,500)}`); }
   try {
-    const msg = await res.json() as { id: string };
+    const msg = await res.json() as { id: string; channel_id: string };
     if (msg?.id) {
-      const m = /\/webhooks\/(\d+)\/([^/?]+)/.exec(webhook);
-      if (m) {
-        const whId = m[1], whToken = m[2];
-        for (const emojiEnc of ["%F0%9F%8C%8A", "%E2%9A%A0%EF%B8%8F"]) { // 🌊, ⚠️
-          await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${emojiEnc}/@me`, { method: "PUT" }).catch(()=>{});
-          await new Promise(r=> setTimeout(r, 300));
-        }
+      const emojis = ["%F0%9F%8C%8A", "%E2%9A%A0%EF%B8%8F"]; // 🌊, ⚠️
+      if (env.BOT_TOKEN && (msg as any).channel_id) {
+        for (const e of emojis) { await fetch(`https://discord.com/api/v10/channels/${(msg as any).channel_id}/messages/${msg.id}/reactions/${e}/@me`, { method:"PUT", headers:{ Authorization:`Bot ${env.BOT_TOKEN}` } }).catch(()=>{}); await new Promise(r=> setTimeout(r,300)); }
+      } else {
+        const m = /\/webhooks\/(\d+)\/([^/?]+)/.exec(webhook);
+        if (m) { const whId=m[1], whToken=m[2]; for(const e of emojis){ await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${e}/@me`,{method:"PUT"}).catch(()=>{}); await new Promise(r=>setTimeout(r,300)); } }
       }
     }
   } catch {}

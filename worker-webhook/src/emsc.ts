@@ -8,6 +8,8 @@
 export interface Env {
   EMSC_WEBHOOK_URL: string;
   WEBHOOK_KV: KVNamespace;
+  BOT_TOKEN?: string;
+  FELT_REPORTS_WEBHOOK_URL?: string;
   CRON_SECRET?: string;
   EMSC_MIN_MAG?: string; // default 1.0 global
   EMSC_MIN_LAT?: string; // default -90 global, set 4.5 for PH-only
@@ -95,8 +97,48 @@ async function sendEmscWebhook(eq: NonNullable<Awaited<ReturnType<typeof fetchLa
   const res = await fetch(waitUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
   if(!res.ok){ const t=await res.text().catch(()=> ""); throw new Error(`EMSC webhook ${res.status}: ${t.slice(0,500)}`);}
   try{
-    const msg = await res.json() as {id:string};
-    if(msg?.id){ const m=/\/webhooks\/(\d+)\/([^/?]+)/.exec(wh); if(m){ const whId=m[1], whToken=m[2]; for(const e of ["%E2%9C%85","%E2%9D%8E"]){ await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${e}/@me`,{method:"PUT"}).catch(()=>{}); await new Promise(r=>setTimeout(r,300)); } } }
+    const msg = await res.json() as {id:string; channel_id:string};
+    if(msg?.id){
+      const emojis = ["%E2%9C%85","%E2%9D%8E"];
+      if(env.BOT_TOKEN && (msg as any).channel_id){
+        for(const e of emojis){ await fetch(`https://discord.com/api/v10/channels/${(msg as any).channel_id}/messages/${msg.id}/reactions/${e}/@me`,{method:"PUT", headers:{Authorization:`Bot ${env.BOT_TOKEN}`}}).catch(()=>{}); await new Promise(r=>setTimeout(r,300)); }
+      } else {
+        const m=/\/webhooks\/(\d+)\/([^/?]+)/.exec(wh); if(m){ const whId=m[1], whToken=m[2]; for(const e of emojis){ await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${e}/@me`,{method:"PUT"}).catch(()=>{}); await new Promise(r=>setTimeout(r,300)); } }
+      }
+    }
+    if(env.FELT_REPORTS_WEBHOOK_URL){
+      const poll = {
+        question: { text: `Did you feel M${eq.magnitude} near ${eq.location.slice(0,80)}?` },
+        answers: [{ poll_media: { text: "Yes ✅" } }, { poll_media: { text: "No ❎" } }],
+        duration: 24, allow_multiselect: false, layout_type: 1,
+      };
+      const pollWait = env.FELT_REPORTS_WEBHOOK_URL.includes("?") ? `${env.FELT_REPORTS_WEBHOOK_URL}&wait=true` : `${env.FELT_REPORTS_WEBHOOK_URL}?wait=true`;
+      const pollRes = await fetch(pollWait, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ content:`📝 **Felt Report Poll** for M${eq.magnitude} — ${eq.location}`, poll }) }).catch(()=> null as any);
+      // Create a thread on the poll so people can share experience
+      try {
+        if (pollRes && pollRes.ok) {
+          const pollMsg = await pollRes.json() as { id: string; channel_id: string };
+          if (pollMsg?.id && pollMsg?.channel_id && env.BOT_TOKEN) {
+            const threadName = `💬 Experiences — M${eq.magnitude} ${eq.location.slice(0, 60)}`;
+            const threadRes = await fetch(`https://discord.com/api/v10/channels/${pollMsg.channel_id}/messages/${pollMsg.id}/threads`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bot ${env.BOT_TOKEN}` },
+              body: JSON.stringify({ name: threadName, auto_archive_duration: 1440 }),
+            });
+            if (threadRes.ok) {
+              const thread = await threadRes.json() as { id: string };
+              if (thread?.id) {
+                await fetch(`https://discord.com/api/v10/channels/${thread.id}/messages`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bot ${env.BOT_TOKEN}` },
+                  body: JSON.stringify({ content: `Share your experience for **M${eq.magnitude} near ${eq.location}** — where were you, what did you feel? (photos/videos welcome)` }),
+                }).catch(()=>{});
+              }
+            }
+          }
+        }
+      } catch {}
+    }
   }catch{}
 }
 

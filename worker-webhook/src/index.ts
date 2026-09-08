@@ -10,6 +10,7 @@
 export interface Env {
   DISCORD_WEBHOOK_URL: string;
   WEBHOOK_KV: KVNamespace;
+  BOT_TOKEN?: string; // for auto-reactions via Bot
   MIN_MAGNITUDE?: string; // default "4.5"
   CRON_SECRET?: string; // manual fetch needs Authorization: Bearer <secret>
   USGS_MIN_LAT?: string; // optional Philippines filter, default "4.5"
@@ -199,23 +200,28 @@ async function sendDiscordWebhook(eq: Earthquake, env: Env): Promise<void> {
     const t = await res.text().catch(() => "");
     throw new Error(`Discord webhook ${res.status}: ${t.slice(0, 500)}`);
   }
-  // Auto-add Yes/No reactions so users just click (works with webhook token; Carl will respect it)
+  // Auto-add Yes/No via Bot token if set (more reliable), fallback to webhook token
   try {
     const msg = (await res.json()) as { id: string; channel_id: string };
-    if (msg?.id && msg?.channel_id) {
-      const m = /\/webhooks\/(\d+)\/([^/?]+)/.exec(webhook);
-      if (m) {
-        const whId = m[1], whToken = m[2];
-        for (const emoji of ["%E2%9C%85", "%E2%9D%8E"]) { // ✅, ❎ url-encoded
-          await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${emoji}/@me`, { method: "PUT" }).catch(()=>{});
-          // small delay to respect rate limit
+    if (msg?.id) {
+      const emojis = ["%E2%9C%85", "%E2%9D%8E"]; // ✅, ❎
+      if (env.BOT_TOKEN && msg.channel_id) {
+        for (const emoji of emojis) {
+          await fetch(`https://discord.com/api/v10/channels/${msg.channel_id}/messages/${msg.id}/reactions/${emoji}/@me`, { method: "PUT", headers: { Authorization: `Bot ${env.BOT_TOKEN}` } }).catch(()=>{});
           await new Promise(r=> setTimeout(r, 300));
+        }
+      } else {
+        const m = /\/webhooks\/(\d+)\/([^/?]+)/.exec(webhook);
+        if (m) {
+          const whId = m[1], whToken = m[2];
+          for (const emoji of emojis) {
+            await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${emoji}/@me`, { method: "PUT" }).catch(()=>{});
+            await new Promise(r=> setTimeout(r, 300));
+          }
         }
       }
     }
-  } catch (_) {
-    // reactions are best-effort; message already sent
-  }
+  } catch (_) {}
 }
 
 async function handleCron(env: Env): Promise<string> {
