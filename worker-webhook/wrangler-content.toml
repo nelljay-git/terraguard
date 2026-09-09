@@ -1,0 +1,21 @@
+name = "terraguard-content-otd"
+main = "src/content-otd.ts"
+compatibility_date = "2026-09-07"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["0 8 * * *"] # Daily 08:00 UTC
+
+[[kv_namespaces]]
+binding = "WEBHOOK_KV"
+id = "REPLACE_WITH_SAME_KV_ID"
+preview_id = "REPLACE_WITH_PREVIEW_ID"
+
+[vars]
+OTD_MIN_MAG = "5.0" # historical significance
+OTD_YEARS_BACK = "25"
+
+# Secrets (set via `wrangler secret put` on this worker):
+# CONTENT_WEBHOOK_URL = "https://discord.com/api/webhooks/...  # #📜-on-this-day channel
+# CRON_SECRET = "same secret"
+# BOT_TOKEN = "for reactions"
