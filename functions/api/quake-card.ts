@@ -102,9 +102,9 @@ export async function onRequest(context: { request: Request }) {
       h(
         'div',
         { style: { display: 'flex', position: 'absolute', left: 0, top: 0, width: CARD_W, height: MAP_H, flexDirection: 'column', alignItems: 'center' } },
-        h('div', { style: { display: 'flex', marginTop: 56, backgroundColor: color, padding: '10px 26px', fontSize: 34, fontWeight: 700, letterSpacing: 1 } }, bannerText),
-        h('div', { style: { display: 'flex', marginTop: 10, backgroundColor: 'rgba(0,0,0,0.55)', padding: '6px 16px', fontSize: 25, fontWeight: 700 } }, place.toUpperCase()),
-        h('div', { style: { display: 'flex', marginTop: 6, backgroundColor: 'rgba(0,0,0,0.55)', padding: '4px 14px', fontSize: 19, fontFamily: "'Inter',sans-serif" } }, coords),
+        h('div', { style: { display: 'flex', marginTop: 56, backgroundColor: color, padding: '10px 26px', fontSize: 32, fontWeight: 700, letterSpacing: 1 } }, bannerText),
+        h('div', { style: { display: 'flex', marginTop: 10, backgroundColor: 'rgba(0,0,0,0.55)', padding: '6px 16px', fontSize: 24, fontWeight: 700 } }, place.toUpperCase()),
+        h('div', { style: { display: 'flex', marginTop: 6, backgroundColor: 'rgba(0,0,0,0.55)', padding: '4px 14px', fontSize: 18, fontFamily: "'Inter',sans-serif" } }, coords),
       ),
       pinBlock,
     ),
