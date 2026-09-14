@@ -800,7 +800,7 @@ function detectChanges(prev, curr, prevRisk, currRisk) {
         const up = order.indexOf(currRisk.status) > order.indexOf(prevRisk.status);
         changes.push({
             kind: up ? "risk-increased" : "risk-decreased",
-            detail: `TerraGuard Risk Status: ${prevRisk.status} → ${currRisk.status}`,
+            detail: `Terra Guard PH Risk Status: ${prevRisk.status} → ${currRisk.status}`,
             material: true,
         });
     }
@@ -2077,9 +2077,9 @@ async function sendDiscord(webhookUrl, title, text, risk, sourceUrl, sat) {
         throw new Error("DISCORD_WEBHOOK_URL not set");
     // sat === null disables the image; undefined auto-resolves Himawari.
     const image = sat === null ? null : (sat || await getSatImage());
-    const credit = !image ? "TerraGuard Volcano Watch • DOST-PHIVOLCS (authoritative source)"
-        : /phivolcs/i.test(image) ? "TerraGuard Volcano Watch • DOST-PHIVOLCS (source) • 🗺️ PHIVOLCS bulletin map"
-            : "TerraGuard Volcano Watch • DOST-PHIVOLCS (source) • 🛰️ JMA Himawari imagery";
+    const credit = !image ? "Terra Guard PH Volcano Watch • DOST-PHIVOLCS (authoritative source)"
+        : /phivolcs/i.test(image) ? "Terra Guard PH Volcano Watch • DOST-PHIVOLCS (source) • 🗺️ PHIVOLCS bulletin map"
+            : "Terra Guard PH Volcano Watch • DOST-PHIVOLCS (source) • 🛰️ JMA Himawari imagery";
     const chunks = text.length <= 1900 ? [text] : (() => {
         const lines = text.split("\n");
         const out = [];

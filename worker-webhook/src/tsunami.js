@@ -245,6 +245,15 @@ function buildTsunamiMessage(alert) {
       : q.latLon
     : q.location || alert.areaDesc || "See details";
   const link = alert.tsunamiGovLink || alert.link;
+  // "Issued Wed Aug 05 04:24:02 UTC 2026" style (message issue time, UTC).
+  const issuedDate = new Date(alert.sent || alert.effective);
+  const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const issuedUtc = isNaN(issuedDate.getTime())
+    ? ""
+    : `${DAYS[issuedDate.getUTCDay()]} ${MONTHS[issuedDate.getUTCMonth()]} ${pad2(issuedDate.getUTCDate())} ` +
+      `${pad2(issuedDate.getUTCHours())}:${pad2(issuedDate.getUTCMinutes())}:${pad2(issuedDate.getUTCSeconds())} UTC ${issuedDate.getUTCFullYear()}`;
   return [
     `${emoji}${label}: ${String(alert.event).toUpperCase()} ${emoji}`,
     ``,
@@ -255,6 +264,9 @@ function buildTsunamiMessage(alert) {
     ``,
     `Details: ${link}`,
     `A visual representation of the tsunami threat based on available advisory data.`,
+    ``,
+    `Message: ${alert.headline || alert.event}`,
+    ...(issuedUtc ? [`Issued ${issuedUtc}`] : []),
     ``,
     `Source: tsunami.gov / NWS`,
     ``,
