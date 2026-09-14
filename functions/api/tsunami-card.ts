@@ -74,12 +74,6 @@ export function tsunamiTiles(): TsunamiTile[] {
   return tiles;
 }
 
-function lngLabel(v: number): string {
-  const norm = ((v % 360) + 360) % 360; // 0..360 (E)
-  if (norm > 180) return `${Math.round(360 - norm)}°W`;
-  return `${Math.round(norm)}°E`;
-}
-
 let fontCache: { oswald: ArrayBuffer | null; inter: ArrayBuffer | null } | null = null;
 
 async function loadFonts(origin: string) {
@@ -126,51 +120,19 @@ export async function onRequest(context: { request: Request }) {
   const ex = OFF_X + ((elng - LON_MIN) / LON_SPAN) * VIEW_W * DD;
   const ey = OFF_Y + ((mercY01(lat) * WORLD_PX - Y_TOP) / VIEW_H) * VIEW_H * DD;
 
-  // Graticule: meridians every 50° starting at 50E (last one dropped so it
-  // never collides with the credit in the axis bar), parallels at 50N/0/50S.
-  const meridians: Array<{ x: number; label: string }> = [];
-  for (let v = 50; v < 240; v += 50) {
-    meridians.push({ x: OFF_X + ((v - LON_MIN) / LON_SPAN) * VIEW_W * DD, label: lngLabel(v) });
-  }
-  const parallels = [50, 0, -50].map((p) => ({
-    y: OFF_Y + ((mercY01(p) * WORLD_PX - Y_TOP) / VIEW_H) * VIEW_H * DD,
-    label: p === 0 ? '0°' : `${Math.abs(p)}°${p > 0 ? 'N' : 'S'}`,
-  }));
-
+  // Bottom axis bar: dark strip holding the credit; also covers the
+  // bottom row's baked-in tile watermarks.
   const mapImgs = tiles.map((t) =>
     h('img', { src: t.url, width: 650, height: 450, style: { display: 'flex', position: 'absolute', left: t.left, top: t.top, width: t.w, height: t.h, backgroundColor: '#0e1420' } }),
   );
-
-  const gridLines = [
-    ...meridians.map((m) =>
-      h('div', { style: { display: 'flex', position: 'absolute', left: m.x - 1, top: 0, width: 2, height: CARD_H, backgroundColor: 'rgba(255,255,255,0.35)' } }),
-    ),
-    ...parallels.map((p) =>
-      h('div', { style: { display: 'flex', position: 'absolute', left: 0, top: p.y - 1, width: CARD_W, height: 2, backgroundColor: 'rgba(255,255,255,0.35)' } }),
-    ),
-  ];
-
-  const gridLabels = [
-    ...parallels.map((p) =>
-      h('div', { style: { display: 'flex', position: 'absolute', left: 6, top: p.y - 11, width: 52, height: 22, alignItems: 'center', justifyContent: 'center', fontSize: 15, fontFamily: "'Inter',sans-serif", color: '#ffffff', backgroundColor: 'rgba(0,0,0,0.55)' } }, p.label),
-    ),
-  ];
-
-  // Bottom axis bar: holds meridian labels + credit, and covers the bottom
-  // row's baked-in tile watermarks.
-  const axisBar = h('div', { style: { display: 'flex', position: 'absolute', left: 0, bottom: 0, width: CARD_W, height: 32, backgroundColor: '#0e1420', alignItems: 'center' } },
-    ...meridians.map((m) =>
-      h('div', { style: { display: 'flex', position: 'absolute', left: m.x - 30, top: 5, width: 60, height: 22, alignItems: 'center', justifyContent: 'center', fontSize: 15, fontFamily: "'Inter',sans-serif", color: '#ffffff' } }, m.label),
-    ),
-    h('div', { style: { display: 'flex', position: 'absolute', right: 10, top: 7, fontSize: 13, fontFamily: "'Inter',sans-serif", color: '#9ca3af' } }, '© Yandex · NASA · SCANEX'),
+  const axisBar = h('div', { style: { display: 'flex', position: 'absolute', left: 0, bottom: 0, width: CARD_W, height: 32, backgroundColor: '#0e1420', alignItems: 'center', justifyContent: 'flex-end' } },
+    h('div', { style: { display: 'flex', fontSize: 13, fontFamily: "'Inter',sans-serif", color: '#9ca3af', marginRight: 10 } }, '© Yandex · NASA · SCANEX'),
   );
 
   const card = h(
     'div',
     { style: { display: 'flex', position: 'relative', width: CARD_W, height: CARD_H, overflow: 'hidden', backgroundColor: '#0e1420', color: '#ffffff', fontFamily: "'Oswald','Inter',sans-serif" } },
     ...mapImgs,
-    ...gridLines,
-    ...gridLabels,
     axisBar,
     // Epicenter star.
     h('div', { style: { display: 'flex', position: 'absolute', left: ex - 24, top: ey - 24, width: 48, height: 48, alignItems: 'center', justifyContent: 'center', fontSize: 44, color: '#e11d48' } }, '★'),
