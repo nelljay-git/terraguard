@@ -1,4 +1,4 @@
-// 3:4 earthquake visual-report card (600x800 PNG) for Facebook auto-posts.
+// 3:4 earthquake visual-report card (720x900 PNG) for Facebook auto-posts.
 // Self-hosted: satori + resvg via cf-workers-og, Yandex satellite base map,
 // magnitude-scaled banner. Called by worker-webhook/src/earthquake.js with
 // ?lat=&lng=&mag=&place=&date=&time=&depth= — no feed lookup here.
@@ -7,9 +7,9 @@
 import { createElement as h } from 'react';
 import { ImageResponse } from 'cf-workers-og';
 
-const CARD_W = 600;
-const CARD_H = 800;
-const MAP_H = 600;
+const CARD_W = 720;
+const CARD_H = 900;
+const MAP_H = 730;
 
 function bannerColor(mag: number): string {
   if (mag >= 7) return '#dc2626';
@@ -74,6 +74,7 @@ export async function onRequest(context: { request: Request }) {
   const bannerText = mag >= 7 ? `MAJOR MAGNITUDE ${magRaw}` : `MAGNITUDE ${magRaw}`;
   const coords = `${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`;
   const fontStack = "'Oswald','Inter',sans-serif";
+  const cx = CARD_W / 2; // horizontal center of map
 
   const [fonts] = await Promise.all([loadFonts(url.origin)]);
   const tileUrl = mapTileUrl(lat, lng, zoom);
@@ -87,14 +88,14 @@ export async function onRequest(context: { request: Request }) {
   // Epicenter renders at ~70% of map height (see tile center shift above):
   // dot marker + two expanding rings, all centered exactly on it.
   const epiY = Math.round(0.7 * MAP_H);
-  const pinTop = epiY - 26;
-  const ring1 = 48; // half of 90px + 2x3px border
-  const ring2 = 73; // half of 140px + 2x3px border
+  const pinHalf = 31; // half of 52px dot + 2x5px border
+  const ring1 = 58; // half of 108px + 2x4px border
+  const ring2 = 88; // half of 168px + 2x4px border
   const pinBlock = h('div', { style: { display: 'flex', position: 'absolute', left: 0, top: 0, width: CARD_W, height: MAP_H } },
-    h('div', { style: { display: 'flex', position: 'absolute', left: 300 - ring2, top: epiY - ring2, width: 140, height: 140, borderRadius: 73, backgroundColor: 'transparent', border: '3px solid rgba(239,68,68,0.35)' } }),
-    h('div', { style: { display: 'flex', position: 'absolute', left: 300 - ring1, top: epiY - ring1, width: 90, height: 90, borderRadius: 48, backgroundColor: 'transparent', border: '3px solid rgba(239,68,68,0.65)' } }),
-    h('div', { style: { display: 'flex', position: 'absolute', left: 274, top: pinTop, width: 44, height: 44, borderRadius: 22, backgroundColor: '#ef4444', border: '4px solid #ffffff', alignItems: 'center', justifyContent: 'center' } },
-      h('div', { style: { display: 'flex', width: 14, height: 14, borderRadius: 7, backgroundColor: '#ffffff' } }),
+    h('div', { style: { display: 'flex', position: 'absolute', left: cx - ring2, top: epiY - ring2, width: 168, height: 168, borderRadius: 88, backgroundColor: 'transparent', border: '4px solid rgba(239,68,68,0.35)' } }),
+    h('div', { style: { display: 'flex', position: 'absolute', left: cx - ring1, top: epiY - ring1, width: 108, height: 108, borderRadius: 58, backgroundColor: 'transparent', border: '4px solid rgba(239,68,68,0.65)' } }),
+    h('div', { style: { display: 'flex', position: 'absolute', left: cx - pinHalf, top: epiY - pinHalf, width: 52, height: 52, borderRadius: 26, backgroundColor: '#ef4444', border: '5px solid #ffffff', alignItems: 'center', justifyContent: 'center' } },
+      h('div', { style: { display: 'flex', width: 17, height: 17, borderRadius: 8, backgroundColor: '#ffffff' } }),
     ),
   );
 
@@ -108,18 +109,18 @@ export async function onRequest(context: { request: Request }) {
       h(
         'div',
         { style: { display: 'flex', position: 'absolute', left: 0, top: 0, width: CARD_W, height: MAP_H, flexDirection: 'column', alignItems: 'center' } },
-        h('div', { style: { display: 'flex', marginTop: 56, backgroundColor: color, padding: '10px 26px', fontSize: 32, fontWeight: 700, letterSpacing: 1 } }, bannerText),
-        h('div', { style: { display: 'flex', marginTop: 10, backgroundColor: 'rgba(0,0,0,0.55)', padding: '6px 16px', fontSize: 24, fontWeight: 700 } }, place.toUpperCase()),
-        h('div', { style: { display: 'flex', marginTop: 6, backgroundColor: 'rgba(0,0,0,0.55)', padding: '4px 14px', fontSize: 18, fontFamily: "'Inter',sans-serif" } }, coords),
+        h('div', { style: { display: 'flex', marginTop: 67, backgroundColor: color, padding: '12px 31px', fontSize: 38, fontWeight: 700, letterSpacing: 1 } }, bannerText),
+        h('div', { style: { display: 'flex', marginTop: 12, backgroundColor: 'rgba(0,0,0,0.55)', padding: '7px 19px', fontSize: 29, fontWeight: 700 } }, place.toUpperCase()),
+        h('div', { style: { display: 'flex', marginTop: 7, backgroundColor: 'rgba(0,0,0,0.55)', padding: '5px 17px', fontSize: 22, fontFamily: "'Inter',sans-serif" } }, coords),
       ),
       pinBlock,
     ),
     h(
       'div',
       { style: { display: 'flex', flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0a0d12' } },
-      h('div', { style: { display: 'flex', fontSize: 25, fontWeight: 700, letterSpacing: 1 } }, `${date.toUpperCase()}${time ? ' - ' + time.toUpperCase() : ''}`),
-      h('div', { style: { display: 'flex', marginTop: 8, fontSize: 23, fontWeight: 700, color: '#e5e7eb' } }, `DEPTH: ${depth} KM`),
-      h('div', { style: { display: 'flex', marginTop: 14, fontSize: 15, fontFamily: "'Inter',sans-serif", color: '#9ca3af' } }, 'TerraGuard • EMSC Visual Report'),
+      h('div', { style: { display: 'flex', fontSize: 30, fontWeight: 700, letterSpacing: 1 } }, `${date.toUpperCase()}${time ? ' - ' + time.toUpperCase() : ''}`),
+      h('div', { style: { display: 'flex', marginTop: 10, fontSize: 28, fontWeight: 700, color: '#e5e7eb' } }, `DEPTH: ${depth} KM`),
+      h('div', { style: { display: 'flex', marginTop: 17, fontSize: 18, fontFamily: "'Inter',sans-serif", color: '#9ca3af' } }, 'Terra Guard PH • EMSC Visual Report'),
     ),
   );
 
