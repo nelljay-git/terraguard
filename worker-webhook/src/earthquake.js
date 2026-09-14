@@ -601,7 +601,7 @@ async function postEmscToFacebook(eq, env) {
     const cardUrl = hasCoords && cardParams
         ? `https://terraguard-ph.pages.dev/api/quake-card?${cardParams}`
         : null;
-    const satZoom = isNaN(magNum) ? 7 : magNum >= 6 ? 5 : magNum >= 5 ? 6 : magNum >= 4 ? 7 : 8;
+    const satZoom = isNaN(magNum) ? 7 : magNum >= 7 ? 6 : magNum >= 6 ? 7 : 8;
     const yandexUrl = hasCoords
         ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=${satZoom}&size=600,400&l=sat,skl&pt=${lng},${lat},pm2rdm`
         : null;

@@ -9,7 +9,7 @@ import { ImageResponse } from 'cf-workers-og';
 
 const CARD_W = 600;
 const CARD_H = 800;
-const MAP_H = 470;
+const MAP_H = 540;
 
 function bannerColor(mag: number): string {
   if (mag >= 7) return '#dc2626';
@@ -69,7 +69,7 @@ export async function onRequest(context: { request: Request }) {
   const time = (q.get('time') || '').slice(0, 20);
   const depth = (q.get('depth') || '').slice(0, 12);
 
-  const zoom = mag >= 6 ? 5 : mag >= 5 ? 6 : mag >= 4 ? 7 : 8;
+  const zoom = mag >= 7 ? 6 : mag >= 6 ? 7 : 8;
   const color = bannerColor(mag);
   const bannerText = mag >= 7 ? `MAJOR MAGNITUDE ${magRaw}` : `MAGNITUDE ${magRaw}`;
   const coords = `${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`;
@@ -84,6 +84,13 @@ export async function onRequest(context: { request: Request }) {
 
   // Dark container doubles as the fallback if the tile can't be fetched.
   const mapImg = h('img', { src: tileUrl, width: 650, height: 450, style: { display: 'flex', width: CARD_W, height: MAP_H, objectFit: 'cover', backgroundColor: '#10151c' } });
+  // Epicenter renders at ~70% of map height (see tile center shift above):
+  // single dot marker centered exactly on it — no stem, no clutter.
+  const epiY = Math.round(0.7 * MAP_H);
+  const pinTop = epiY - 26;
+  const pinBlock = h('div', { style: { display: 'flex', position: 'absolute', left: 274, top: pinTop, width: 44, height: 44, borderRadius: 22, backgroundColor: '#ef4444', border: '4px solid #ffffff', alignItems: 'center', justifyContent: 'center' } },
+    h('div', { style: { display: 'flex', width: 14, height: 14, borderRadius: 7, backgroundColor: '#ffffff' } }),
+  );
 
   const card = h(
     'div',
@@ -99,10 +106,7 @@ export async function onRequest(context: { request: Request }) {
         h('div', { style: { display: 'flex', marginTop: 10, backgroundColor: 'rgba(0,0,0,0.55)', padding: '6px 16px', fontSize: 25, fontWeight: 700 } }, place.toUpperCase()),
         h('div', { style: { display: 'flex', marginTop: 6, backgroundColor: 'rgba(0,0,0,0.55)', padding: '4px 14px', fontSize: 19, fontFamily: "'Inter',sans-serif" } }, coords),
       ),
-      h('div', { style: { display: 'flex', position: 'absolute', left: 274, top: 257, width: 44, height: 44, borderRadius: 22, backgroundColor: '#ef4444', border: '4px solid #ffffff', alignItems: 'center', justifyContent: 'center' } },
-        h('div', { style: { display: 'flex', width: 14, height: 14, borderRadius: 7, backgroundColor: '#ffffff' } }),
-      ),
-      h('div', { style: { display: 'flex', position: 'absolute', left: 292, top: 309, width: 16, height: 20, backgroundColor: '#ef4444', borderRadius: 4 } }),
+      pinBlock,
     ),
     h(
       'div',
