@@ -551,6 +551,7 @@ function buildFacebookMessage(eq) {
         `Source: EMSC-CSEM (${eq.unid})`,
         ``,
         `Join our discord for discussions: https://discord.gg/tdGrvnvehP`,
+        ``,
         fbHashtags(eq.location),
     ].join("\n");
 }
