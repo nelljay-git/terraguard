@@ -586,21 +586,35 @@ async function postEmscToFacebook(eq, env) {
     const message = buildFacebookMessage(eq);
     const lat = parseFloat(eq.latitude), lng = parseFloat(eq.longitude);
     const magNum = parseFloat(eq.magnitude);
-    // Satellite + labels: same Yandex provider (proven to work with FB fetch),
-    // but sat,skl instead of boring flat map. Zoom out for bigger quakes.
+    const hasCoords = !isNaN(lat) && !isNaN(lng);
+    // 3:4 designed card (self-hosted PNG) first, raw Yandex satellite as
+    // backup. FB tries each in order; /feed text post is the last resort.
+    const { date: fbDate, time: fbTime } = formatUstFromMs(eq.timeMs);
+    const cardParams = hasCoords
+        ? new URLSearchParams({
+            lat: eq.latitude, lng: eq.longitude, mag: eq.magnitude,
+            place: String(eq.location ?? "").slice(0, 90),
+            date: fbDate, time: String(fbTime).replace(/\s*UST\s*$/i, ""),
+            depth: eq.depth,
+        }).toString()
+        : "";
+    const cardUrl = hasCoords && cardParams
+        ? `https://terraguard-ph.pages.dev/api/quake-card?${cardParams}`
+        : null;
     const satZoom = isNaN(magNum) ? 7 : magNum >= 6 ? 5 : magNum >= 5 ? 6 : magNum >= 4 ? 7 : 8;
-    const mapUrl = !isNaN(lat) && !isNaN(lng)
+    const yandexUrl = hasCoords
         ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=${satZoom}&size=600,400&l=sat,skl&pt=${lng},${lat},pm2rdm`
         : null;
+    const photoUrls = [cardUrl, yandexUrl].filter(Boolean);
     const withProof = (params) => {
         if (proof)
             params.appsecret_proof = proof;
         return params;
     };
-    // 1) Preferred: photo post so the epicenter map shows inline.
-    if (mapUrl) {
+    // 1) Preferred: photo post so the designed card shows inline.
+    for (const photoUrl of photoUrls) {
         try {
-            const body = withProof({ access_token: pageToken, caption: message, url: mapUrl });
+            const body = withProof({ access_token: pageToken, caption: message, url: photoUrl });
             const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -610,8 +624,8 @@ async function postEmscToFacebook(eq, env) {
             if (res.ok && (data.post_id || data.id))
                 return `posted photo ${data.post_id ?? data.id}`;
             const fbErr = data?.error?.message ?? `HTTP ${res.status}`;
-            console.error(`[fb][emsc] photo post failed: ${String(fbErr).slice(0, 300)}`);
-            // fall through to /feed fallback
+            console.error(`[fb][emsc] photo post failed (${String(photoUrl).slice(0, 80)}): ${String(fbErr).slice(0, 300)}`);
+            // try next image, then fall through to /feed fallback
         }
         catch (e) {
             console.error("[fb][emsc] photo post exception", e instanceof Error ? e.message : String(e));
