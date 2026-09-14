@@ -49,36 +49,46 @@ interface MapTile {
 }
 
 // Yandex caps static images at 650x450px — upscaling that to 720px looks
-// soft. Instead stitch 2x2 tiles at zoom+1 covering the exact same view:
-// ~1.8x pixel density. Geometry: the single-tile cover view of the 650x450
-// tile into CARD_W x MAP_H fixes the visible tile-pixel window (vw x vh);
-// each quadrant is covered by one zoom+1 tile centered on it.
+// soft. Instead stitch zoom+1 tiles covering the exact same view (~1.8x
+// pixel density). Watermark handling: every tile stamps attribution along
+// its bottom edge, so rows are overlapped top-to-bottom — each tile covers
+// the previous row's watermark strip. Only the bottom row's strip survives
+// at the map's bottom edge (same as a plain single-tile map).
+// Layout math is done in zoom+1 tile pixels: the cover view is VW1 x VH1,
+// rows are spaced ROW_STEP apart with 450px-tall tiles (ROW_STEP < 450
+// gives the overlap), 2 columns centered on the view's quadrant centers.
 function mapTiles(lat: number, lng: number, zoom: number): MapTile[] {
   // View center shifted north so the epicenter renders at ~70% height.
   const span = (360 * MAP_H) / (256 * 2 ** zoom);
   const clat = Math.max(-85, Math.min(85, lat + 0.2 * span));
   const P = 360 / (256 * 2 ** zoom); // lng degrees per px at zoom
-  const s = Math.max(CARD_W / 650, MAP_H / 450); // cover scale
-  const vw = CARD_W / s; // visible tile px, width
-  const vh = MAP_H / s; // visible tile px, height
-  const d = CARD_W / 2 / vw; // display scale for zoom+1 tiles
+  const s = Math.max(CARD_W / 650, MAP_H / 450); // single-tile cover scale
+  const vw = CARD_W / s; // visible tile px, width (at zoom)
+  const vh = MAP_H / s; // visible tile px, height (at zoom)
+  const P1 = P / 2; // lng degrees per px at zoom+1
+  const VW1 = vw * 2; // view width in zoom+1 px
+  const VH1 = vh * 2; // view height in zoom+1 px
+  const d = CARD_W / VW1; // display scale for zoom+1 tiles
   const tw = 650 * d; // displayed tile width
   const th = 450 * d; // displayed tile height
-  const lngSpan = (vw * P) / 2; // quadrant width, degrees lng (at zoom; z+1 tiles are 2x denser)
-  const latSpan = ((vh * P) / 2) * Math.cos((clat * Math.PI) / 180); // quadrant height, degrees lat
+  const cosLat = Math.cos((clat * Math.PI) / 180);
+  const topLat = clat + (VH1 / 2) * P1 * cosLat; // north edge of view
+  const ROW_STEP = 225; // < 450 → rows overlap, hiding watermark strips
+  const rows = Math.ceil((VH1 - 450) / ROW_STEP) + 1;
   const qx = [CARD_W / 4, (3 * CARD_W) / 4];
-  const qy = [MAP_H / 4, (3 * MAP_H) / 4];
   const tiles: MapTile[] = [];
-  for (let r = 0; r < 2; r++) {
+  for (let r = 0; r < rows; r++) {
+    const rowTop = Math.min(r * ROW_STEP, VH1 - 450); // last row flush with view bottom
+    const rowCenter = rowTop + 225;
+    const tLat = Math.max(-85, Math.min(85, topLat - rowCenter * P1 * cosLat));
     for (let c = 0; c < 2; c++) {
-      const tLng = lng + (c === 0 ? -lngSpan / 2 : lngSpan / 2);
-      const tLat = Math.max(-85, Math.min(85, clat + (r === 0 ? latSpan / 2 : -latSpan / 2)));
+      const tLng = lng + (c === 0 ? -1 : 1) * ((VW1 / 4) * P1);
       tiles.push({
         url:
           `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${tLng},${tLat}` +
           `&z=${zoom + 1}&size=650,450&l=sat,skl`,
         left: qx[c] - tw / 2,
-        top: qy[r] - th / 2,
+        top: (rowTop / VH1) * MAP_H,
         w: tw,
         h: th,
       });
