@@ -85,11 +85,17 @@ export async function onRequest(context: { request: Request }) {
   // Dark container doubles as the fallback if the tile can't be fetched.
   const mapImg = h('img', { src: tileUrl, width: 650, height: 450, style: { display: 'flex', width: CARD_W, height: MAP_H, objectFit: 'cover', backgroundColor: '#10151c' } });
   // Epicenter renders at ~70% of map height (see tile center shift above):
-  // single dot marker centered exactly on it — no stem, no clutter.
+  // dot marker + two expanding rings, all centered exactly on it.
   const epiY = Math.round(0.7 * MAP_H);
   const pinTop = epiY - 26;
-  const pinBlock = h('div', { style: { display: 'flex', position: 'absolute', left: 274, top: pinTop, width: 44, height: 44, borderRadius: 22, backgroundColor: '#ef4444', border: '4px solid #ffffff', alignItems: 'center', justifyContent: 'center' } },
-    h('div', { style: { display: 'flex', width: 14, height: 14, borderRadius: 7, backgroundColor: '#ffffff' } }),
+  const ring1 = 48; // half of 90px + 2x3px border
+  const ring2 = 73; // half of 140px + 2x3px border
+  const pinBlock = h('div', { style: { display: 'flex', position: 'absolute', left: 0, top: 0, width: CARD_W, height: MAP_H } },
+    h('div', { style: { display: 'flex', position: 'absolute', left: 300 - ring2, top: epiY - ring2, width: 140, height: 140, borderRadius: 73, backgroundColor: 'transparent', border: '3px solid rgba(239,68,68,0.35)' } }),
+    h('div', { style: { display: 'flex', position: 'absolute', left: 300 - ring1, top: epiY - ring1, width: 90, height: 90, borderRadius: 48, backgroundColor: 'transparent', border: '3px solid rgba(239,68,68,0.65)' } }),
+    h('div', { style: { display: 'flex', position: 'absolute', left: 274, top: pinTop, width: 44, height: 44, borderRadius: 22, backgroundColor: '#ef4444', border: '4px solid #ffffff', alignItems: 'center', justifyContent: 'center' } },
+      h('div', { style: { display: 'flex', width: 14, height: 14, borderRadius: 7, backgroundColor: '#ffffff' } }),
+    ),
   );
 
   const card = h(
