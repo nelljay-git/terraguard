@@ -9,7 +9,7 @@ import { ImageResponse } from 'cf-workers-og';
 
 const CARD_W = 600;
 const CARD_H = 800;
-const MAP_H = 540;
+const MAP_H = 600;
 
 function bannerColor(mag: number): string {
   if (mag >= 7) return '#dc2626';
