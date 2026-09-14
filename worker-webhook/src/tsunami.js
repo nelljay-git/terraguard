@@ -347,7 +347,7 @@ async function postTsunamiToFacebook(alert, env) {
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           const ctrl = new AbortController();
-          const t = setTimeout(() => ctrl.abort(), 13000);
+          const t = setTimeout(() => ctrl.abort(), 12000);
           const warm = await fetch(cardUrl, { method: "GET", signal: ctrl.signal, headers: { "User-Agent": "TerraGuard-FB-Warmup/1.0" } });
           clearTimeout(t);
           if (warm.ok) {
