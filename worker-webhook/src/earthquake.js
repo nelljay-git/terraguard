@@ -534,8 +534,10 @@ function buildFacebookMessage(eq) {
     const terraLink = `https://terraguard-ph.pages.dev/details/${emscEqId(eq.datetime, eq.latitude, eq.longitude)}`;
     const place = String(eq.location ?? "").trim() || `${eq.latitude}, ${eq.longitude}`;
     const timeShort = String(time).replace(/\s*UST\s*$/i, "").trim();
+    const mag = parseFloat(eq.magnitude);
+    const magPrefix = isNaN(mag) ? "" : mag >= 7 ? "‼️MAJOR‼️ " : mag >= 6 ? "🟥 " : mag >= 5 ? "🟧 " : mag >= 4 ? "🟨 " : "🟩 ";
     return [
-        `${date} - ${timeShort} | Magnitude: ${eq.magnitude} - ${place} | Earthquake Visual Report`,
+        `${magPrefix}${date} - ${timeShort} | Magnitude: ${eq.magnitude} - ${place} | Earthquake Visual Report`,
         ``,
         `Magnitude: ${eq.magnitude}`,
         `Location: ${place}`,
@@ -548,6 +550,7 @@ function buildFacebookMessage(eq) {
         ``,
         `Source: EMSC-CSEM (${eq.unid})`,
         ``,
+        `Join our discord for discussions: https://discord.gg/tdGrvnvehP`,
         fbHashtags(eq.location),
     ].join("\n");
 }
