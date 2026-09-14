@@ -2232,7 +2232,32 @@ async function postVolcanoToFacebook(event, imageUrl, env) {
     const photoUrls = [cardUrl];
     if (imageUrl)
         photoUrls.push(imageUrl); // bulletin map / Himawari as backup
+    // Warm the designed card first (cold WASM/tiles/fonts make FB's image
+    // scraper time out, silently downgrading to the backup image).
+    const isCard = (u) => String(u).includes("/api/volcano-card");
+    async function warmCard(url) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                const ctrl = new AbortController();
+                const t = setTimeout(() => ctrl.abort(), 18000);
+                const r = await fetch(url, { method: "GET", signal: ctrl.signal, headers: { "User-Agent": "TerraGuard-FB-Warmup/1.0" } });
+                clearTimeout(t);
+                if (r.ok)
+                    return true;
+                console.error(`[fb][volcano] card warmup ${r.status} (attempt ${attempt}): ${url.slice(0, 120)}`);
+            }
+            catch (e) {
+                console.error(`[fb][volcano] card warmup failed (attempt ${attempt}): ${e instanceof Error ? e.message : String(e)}`);
+            }
+            await new Promise((r) => setTimeout(r, 1000));
+        }
+        return false;
+    }
     for (const photoUrl of photoUrls) {
+        if (isCard(photoUrl) && !(await warmCard(photoUrl))) {
+            console.error("[fb][volcano] card not renderable, using backup image");
+            continue;
+        }
         try {
             const body = withProof({ access_token: pageToken, caption: message, url: photoUrl });
             const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`, {

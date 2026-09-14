@@ -105,6 +105,22 @@ async function recordSent(kv, entry) {
     await kv.put(SENT_INDEX_KEY, JSON.stringify(index.slice(0, 50)), { expirationTtl: 60 * 60 * 24 * 30 });
 }
 
+// PUT a ✅/❎ reaction, logging Discord's real error instead of swallowing
+// it (a silent .catch hid 403-permission / 401-token failures).
+async function putReaction(url, headers, tag) {
+    try {
+        const r = await fetch(url, { method: "PUT", headers });
+        if (!r.ok) {
+            const t = await r.text().catch(() => "");
+            console.error(`[reactions][${tag}] ${r.status}: ${t.slice(0, 200)}`);
+        }
+    }
+    catch (e) {
+        console.error(`[reactions][${tag}] exception`, e instanceof Error ? e.message : String(e));
+    }
+    await new Promise((r) => setTimeout(r, 300));
+}
+
 // ===== USGS =====
 function usgsTsunamiLabel(tsunami) {
     if (tsunami === 1)
@@ -217,17 +233,16 @@ async function sendUsgsWebhook(eq, env) {
             const emojis = ["%E2%9C%85", "%E2%9D%8E"];
             if (env.BOT_TOKEN && msg.channel_id) {
                 for (const emoji of emojis) {
-                    await fetch(`https://discord.com/api/v10/channels/${msg.channel_id}/messages/${msg.id}/reactions/${emoji}/@me`, { method: "PUT", headers: { Authorization: `Bot ${env.BOT_TOKEN}` } }).catch(() => { });
-                    await new Promise((r) => setTimeout(r, 300));
+                    await putReaction(`https://discord.com/api/v10/channels/${msg.channel_id}/messages/${msg.id}/reactions/${emoji}/@me`, { Authorization: `Bot ${env.BOT_TOKEN}` }, "usgs");
                 }
             }
             else {
+                console.error("[reactions][usgs] no BOT_TOKEN, trying webhook-token fallback (usually rejected by Discord)");
                 const m = /\/webhooks\/(\d+)\/([^/?]+)/.exec(webhook);
                 if (m) {
                     const whId = m[1], whToken = m[2];
                     for (const emoji of emojis) {
-                        await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${emoji}/@me`, { method: "PUT" }).catch(() => { });
-                        await new Promise((r) => setTimeout(r, 300));
+                        await putReaction(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${emoji}/@me`, {}, "usgs-fallback");
                     }
                 }
             }
@@ -360,17 +375,16 @@ async function sendEmscWebhook(eq, env) {
             const emojis = ["%E2%9C%85", "%E2%9D%8E"];
             if (env.BOT_TOKEN && msg.channel_id) {
                 for (const e of emojis) {
-                    await fetch(`https://discord.com/api/v10/channels/${msg.channel_id}/messages/${msg.id}/reactions/${e}/@me`, { method: "PUT", headers: { Authorization: `Bot ${env.BOT_TOKEN}` } }).catch(() => { });
-                    await new Promise((r) => setTimeout(r, 300));
+                    await putReaction(`https://discord.com/api/v10/channels/${msg.channel_id}/messages/${msg.id}/reactions/${e}/@me`, { Authorization: `Bot ${env.BOT_TOKEN}` }, "emsc");
                 }
             }
             else {
+                console.error("[reactions][emsc] no BOT_TOKEN, trying webhook-token fallback (usually rejected by Discord)");
                 const m = /\/webhooks\/(\d+)\/([^/?]+)/.exec(wh);
                 if (m) {
                     const whId = m[1], whToken = m[2];
                     for (const e of emojis) {
-                        await fetch(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${e}/@me`, { method: "PUT" }).catch(() => { });
-                        await new Promise((r) => setTimeout(r, 300));
+                        await putReaction(`https://discord.com/api/webhooks/${whId}/${whToken}/messages/${msg.id}/reactions/${e}/@me`, {}, "emsc-fallback");
                     }
                 }
             }
@@ -612,8 +626,36 @@ async function postEmscToFacebook(eq, env) {
             params.appsecret_proof = proof;
         return params;
     };
+    // Warm the designed card before handing its URL to Facebook: the first
+    // hit compiles WASM + fetches tiles/fonts (slow cold start), and FB's
+    // image scraper times out on slow responses — which used to silently
+    // downgrade posts to the raw Yandex backup. Warming also primes the
+    // CDN cache so FB's fetch is fast. Skip the card if it won't render.
+    const isCard = (u) => String(u).includes("/api/quake-card");
+    async function warmCard(url) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                const ctrl = new AbortController();
+                const t = setTimeout(() => ctrl.abort(), 9000);
+                const r = await fetch(url, { method: "GET", signal: ctrl.signal, headers: { "User-Agent": "TerraGuard-FB-Warmup/1.0" } });
+                clearTimeout(t);
+                if (r.ok)
+                    return true;
+                console.error(`[fb][emsc] card warmup ${r.status} (attempt ${attempt}): ${url.slice(0, 120)}`);
+            }
+            catch (e) {
+                console.error(`[fb][emsc] card warmup failed (attempt ${attempt}): ${e instanceof Error ? e.message : String(e)}`);
+            }
+            await new Promise((r) => setTimeout(r, 1000));
+        }
+        return false;
+    }
     // 1) Preferred: photo post so the designed card shows inline.
     for (const photoUrl of photoUrls) {
+        if (isCard(photoUrl) && !(await warmCard(photoUrl))) {
+            console.error("[fb][emsc] card not renderable, using Yandex backup");
+            continue;
+        }
         try {
             const body = withProof({ access_token: pageToken, caption: message, url: photoUrl });
             const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`, {

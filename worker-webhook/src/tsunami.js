@@ -335,13 +335,36 @@ async function postTsunamiToFacebook(alert, env) {
     return params;
   };
   // 1) Preferred: world-view card photo when the epicenter is known.
+  // Warmed first: first hit compiles WASM + fetches tiles/fonts, and FB's
+  // scraper times out on slow responses (then we'd silently downgrade).
   const coords = quakeCoords(alert);
   if (coords) {
     try {
       const cardUrl =
         `https://terraguard-ph.pages.dev/api/tsunami-card` +
         `?lat=${coords.lat}&lng=${coords.lng}`;
-      const body = withProof({ access_token: pageToken, caption: message, url: cardUrl });
+      let cardOk = false;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 13000);
+          const warm = await fetch(cardUrl, { method: "GET", signal: ctrl.signal, headers: { "User-Agent": "TerraGuard-FB-Warmup/1.0" } });
+          clearTimeout(t);
+          if (warm.ok) {
+            cardOk = true;
+            break;
+          }
+          console.error(`[fb][tsunami] card warmup ${warm.status} (attempt ${attempt})`);
+        }
+        catch (e) {
+          console.error(`[fb][tsunami] card warmup failed (attempt ${attempt}): ${e instanceof Error ? e.message : String(e)}`);
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      if (!cardOk) {
+        console.error("[fb][tsunami] card not renderable, using /feed fallback");
+      } else {
+        const body = withProof({ access_token: pageToken, caption: message, url: cardUrl });
       const res = await fetch(
         `https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`,
         {
@@ -357,6 +380,7 @@ async function postTsunamiToFacebook(alert, env) {
         `[fb][tsunami] photo post failed: ${String(data?.error?.message ?? `HTTP ${res.status}`).slice(0, 300)}`,
       );
       // fall through to /feed fallback
+      }
     } catch (e) {
       console.error("[fb][tsunami] photo post exception", e instanceof Error ? e.message : String(e));
     }
