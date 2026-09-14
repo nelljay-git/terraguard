@@ -109,7 +109,7 @@ export async function onRequest(context: { request: Request }) {
       h(
         'div',
         { style: { display: 'flex', position: 'absolute', left: 0, top: 0, width: CARD_W, height: MAP_H, flexDirection: 'column', alignItems: 'center' } },
-        h('div', { style: { display: 'flex', marginTop: 67, backgroundColor: color, padding: '12px 31px', fontSize: 38, fontWeight: 700, letterSpacing: 1 } }, bannerText),
+        h('div', { style: { display: 'flex', marginTop: 36, backgroundColor: color, padding: '12px 31px', fontSize: 38, fontWeight: 700, letterSpacing: 1 } }, bannerText),
         h('div', { style: { display: 'flex', marginTop: 12, backgroundColor: 'rgba(0,0,0,0.55)', padding: '7px 19px', fontSize: 29, fontWeight: 700 } }, place.toUpperCase()),
         h('div', { style: { display: 'flex', marginTop: 7, backgroundColor: 'rgba(0,0,0,0.55)', padding: '5px 17px', fontSize: 22, fontFamily: "'Inter',sans-serif" } }, coords),
       ),
