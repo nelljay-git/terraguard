@@ -178,22 +178,9 @@ export async function onRequest(context: { request: Request }) {
     h('img', { src: t.url, width: 650, height: 450, style: { display: 'flex', position: 'absolute', left: t.left, top: t.top, width: t.w, height: t.h, backgroundColor: '#10151c' } }),
   );
 
-  // Epicenter pin at ~70% height (matches the tile center shift); hidden
-  // for unknown volcanoes (PH-wide fallback has no meaningful pin point).
-  const epiY = Math.round(0.7 * MAP_H);
-  const pinHalf = 31;
-  const ring1 = 58;
-  const ring2 = 88;
-  const cx = CARD_W / 2;
-  const pinBlock = geo.known
-    ? h('div', { style: { display: 'flex', position: 'absolute', left: 0, top: 0, width: CARD_W, height: MAP_H } },
-      h('div', { style: { display: 'flex', position: 'absolute', left: cx - ring2, top: epiY - ring2, width: 168, height: 168, borderRadius: 88, backgroundColor: 'transparent', border: '4px solid rgba(239,68,68,0.35)' } }),
-      h('div', { style: { display: 'flex', position: 'absolute', left: cx - ring1, top: epiY - ring1, width: 108, height: 108, borderRadius: 58, backgroundColor: 'transparent', border: '4px solid rgba(239,68,68,0.65)' } }),
-      h('div', { style: { display: 'flex', position: 'absolute', left: cx - pinHalf, top: epiY - pinHalf, width: 52, height: 52, borderRadius: 26, backgroundColor: '#ef4444', border: '5px solid #ffffff', alignItems: 'center', justifyContent: 'center' } },
-        h('div', { style: { display: 'flex', width: 17, height: 17, borderRadius: 8, backgroundColor: '#ffffff' } }),
-      ),
-    )
-    : null;
+  // No summit pin: the volcano fills the close-up frame, a marker would
+  // just cover it.
+  const pinBlock = null;
 
   const pills = [
     quakes ? `${quakes} volcanic quakes` : '',
