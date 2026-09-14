@@ -2122,6 +2122,152 @@ async function sendDiscord(webhookUrl, title, text, risk, sourceUrl, sat) {
     }
 }
 
+// ===== facebook (alerts + news, same notify gate as Discord) =====
+// Env (same Cloudflare secrets as earthquake.js):
+//   FB_PAGE_ID, FB_USER_ACCESS_TOKEN, FB_APP_ID, FB_APP_SECRET (proof).
+// Photo post with the bulletin/Himawari image, /feed fallback.
+// Best-effort: never throws, never blocks Discord.
+const FB_GRAPH_VERSION = "v21.0";
+
+async function fbAppSecretProof(accessToken, appSecret) {
+    try {
+        if (!accessToken || !appSecret || !crypto?.subtle)
+            return null;
+        const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(appSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+        const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(accessToken));
+        return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+    catch {
+        return null;
+    }
+}
+
+async function fbPageToken(env) {
+    const userToken = (env.FB_USER_ACCESS_TOKEN ?? "").trim();
+    const pageId = (env.FB_PAGE_ID ?? "").trim();
+    if (!userToken || !pageId)
+        return null;
+    try {
+        const proof = await fbAppSecretProof(userToken, (env.FB_APP_SECRET ?? "").trim());
+        const url = new URL(`https://graph.facebook.com/${FB_GRAPH_VERSION}/me/accounts`);
+        url.searchParams.set("access_token", userToken);
+        url.searchParams.set("fields", "id,name,access_token");
+        url.searchParams.set("limit", "50");
+        if (proof)
+            url.searchParams.set("appsecret_proof", proof);
+        const res = await fetch(url.toString());
+        if (!res.ok)
+            return null;
+        const data = await res.json();
+        const match = (data?.data ?? []).find((p) => String(p.id) === String(pageId));
+        return match?.access_token ? String(match.access_token) : null;
+    }
+    catch {
+        return null;
+    }
+}
+
+function volcanoTag(name) {
+    const clean = String(name ?? "").replace(/[^A-Za-z ]/g, " ").split(" ").map((w) => w.trim()).filter(Boolean);
+    if (clean.length === 0)
+        return "";
+    return clean.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join("") + "Volcano";
+}
+
+function buildVolcanoFbMessage(event) {
+    const { parsed, risk, changes, reportKind } = event;
+    const emoji = RISK_EMOJI[risk.status] ?? "ℹ️";
+    const name = titleCase(parsed.volcano.toLowerCase());
+    const kind = reportKind === "VOLCANO ALERT" ? "ALERT" : "NEWS";
+    const tag = volcanoTag(parsed.volcano);
+    return sanitizeReport([
+        `${emoji} VOLCANO ${kind} | ${name.toUpperCase()} — Alert Level ${parsed.alertLevel ?? "unknown"}`,
+        "",
+        buildNarrative(parsed),
+        "",
+        "Changes detected:",
+        changeLines(changes),
+        "",
+        "Possible hazards:",
+        parsed.hazards.length > 0 ? parsed.hazards.map((h) => `• ${titleCase(h)}`).join("\n") : "• No specific hazards listed in the source",
+        "",
+        `Issued: ${parsed.issuedAt || "As published by PHIVOLCS"}`,
+        `Details: ${event.sourceUrl || ""}`,
+        "",
+        `Source: ${SOURCE_ATTRIBUTION}`,
+        "",
+        "Join our discord for more informations: https://discord.gg/tdGrvnvehP",
+        ["#Volcano", tag ? `#${tag}` : "", "#PHIVOLCS", "#TerraGuard", "#TerraGuardPH", "#Philippines", "#StaySafe", "#DisasterPreparedness"].filter(Boolean).join(" "),
+    ].join("\n"));
+}
+
+async function postVolcanoToFacebook(event, imageUrl, env) {
+    const pageId = (env.FB_PAGE_ID ?? "").trim();
+    const userToken = (env.FB_USER_ACCESS_TOKEN ?? "").trim();
+    const appSecret = (env.FB_APP_SECRET ?? "").trim();
+    if (!pageId || !userToken)
+        return "skipped (FB_PAGE_ID / FB_USER_ACCESS_TOKEN not set)";
+    let pageToken = await fbPageToken(env);
+    if (!pageToken)
+        pageToken = userToken; // stored token may already be a Page token
+    const proof = await fbAppSecretProof(pageToken, appSecret);
+    const withProof = (params) => {
+        if (proof)
+            params.appsecret_proof = proof;
+        return params;
+    };
+    const message = buildVolcanoFbMessage(event);
+    // 1) Preferred: designed volcano card.
+    const { parsed, risk } = event;
+    const cardParams = new URLSearchParams({
+        volcano: titleCase(parsed.volcano.toLowerCase()),
+        level: String(parsed.alertLevel ?? "?"),
+        risk: risk.status,
+        issued: parsed.issuedAt || "",
+        quakes: parsed.quakes != null ? String(parsed.quakes) : "",
+        so2: parsed.so2 ? String(parsed.so2) : "",
+        pdz: parsed.pdzKm ? String(parsed.pdzKm) : "",
+    }).toString();
+    const cardUrl = `https://terraguard-ph.pages.dev/api/volcano-card?${cardParams}`;
+    const photoUrls = [cardUrl];
+    if (imageUrl)
+        photoUrls.push(imageUrl); // bulletin map / Himawari as backup
+    for (const photoUrl of photoUrls) {
+        try {
+            const body = withProof({ access_token: pageToken, caption: message, url: photoUrl });
+            const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && (data.post_id || data.id))
+                return `posted photo ${data.post_id ?? data.id}`;
+            console.error(`[fb][volcano] photo post failed (${String(photoUrl).slice(0, 80)}): ${String(data?.error?.message ?? `HTTP ${res.status}`).slice(0, 300)}`);
+            // try next image, then fall through to /feed fallback
+        }
+        catch (e) {
+            console.error("[fb][volcano] photo post exception", e instanceof Error ? e.message : String(e));
+        }
+    }
+    // 2) Fallback: plain feed post with link.
+    try {
+        const body = withProof({ access_token: pageToken, message, link: event.sourceUrl || undefined });
+        const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/feed`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.id)
+            return `error ${data?.error?.message ?? `HTTP ${res.status}`}`.slice(0, 200);
+        return `posted ${data.id}`;
+    }
+    catch (e) {
+        return `error ${e instanceof Error ? e.message : String(e)}`.slice(0, 200);
+    }
+}
+
 // ===== store (KV keys are volcano:-prefixed; safe to share a namespace) =====
 const SNAPSHOT_KEY = "volcano:snapshot";
 const INDEX_KEY = "volcano:index";
@@ -2202,6 +2348,22 @@ async function processBulletin(env, kv, snapshot, volcano, bulletin, sourceKey, 
             sat = bulletin.mapImg;
         await sendDiscord(env.DISCORD_WEBHOOK_URL, `TerraGuard ${event.reportKind} — ${titleCase(volcano.toLowerCase())} (Alert Level ${bulletin.alertLevel ?? "?"})`, event.reportText, risk.status, sourceUrl, sat);
         outcomes.push(`${volcano}: sent ${event.reportKind} (L${bulletin.alertLevel ?? "?"} ${risk.status})`);
+        // Facebook auto-post — same notify gate. Best-effort, never throws.
+        // Resolve the same image Discord used (bulletin map, else Himawari).
+        let fbStatus = "skipped";
+        try {
+            let fbImage = typeof sat === "string" && sat ? sat : null;
+            if (!fbImage && env.VOLCANO_SATELLITE !== "0")
+                fbImage = await getSatImage().catch(() => null);
+            fbStatus = await postVolcanoToFacebook(event, fbImage, env);
+        }
+        catch (e) {
+            fbStatus = `error ${e instanceof Error ? e.message : String(e)}`.slice(0, 200);
+        }
+        console.log(`[fb][volcano] ${id}: ${fbStatus}`);
+        event.fbStatus = fbStatus;
+        await kv.put(`volcano:event:${id}`, JSON.stringify(event), { expirationTtl: EVENT_TTL_SECONDS });
+        outcomes.push(`${volcano}: fb ${fbStatus}`);
     }
     else {
         outcomes.push(`${volcano}: stored, no notify (L${bulletin.alertLevel ?? "?"} ${risk.status})`);
