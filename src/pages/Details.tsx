@@ -145,8 +145,10 @@ function RevisionToast({ info, sourceName }: { info: RevisionInfo; sourceName: s
 
 function decodeEqId(id: string): { datetime?: string; latitude?: string; longitude?: string } {
   try {
-    const pad = id.length % 4;
-    const paddedId = pad ? id + '='.repeat(4 - pad) : id;
+    // Accept both legacy base64 and base64url slugs.
+    const std = id.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = std.length % 4;
+    const paddedId = pad ? std + '='.repeat(4 - pad) : std;
     const decoded = atob(paddedId).trim();
     // Slug format is "DATETIME-LAT-LNG". Latitude/longitude are always the last
     // two tokens, but longitudes can be negative, which turns the separator
@@ -269,6 +271,76 @@ async function resolveUsgsById(id: string): Promise<PhivolcsEarthquake | null> {
       const flat = geom.coordinates[1];
       const flng = geom.coordinates[0];
       const coordDist = !isNaN(lat) && !isNaN(lng) && !isNaN(flat) && !isNaN(flng)
+        ? Math.hypot(flat - lat, flng - lng)
+        : 0;
+      const score = timeDiffH * 2 + coordDist;
+      if (score < bestScore) {
+        bestScore = score;
+        best = f;
+      }
+    }
+    return best ? normalizeEarthquake(best as unknown as PhivolcsEarthquake) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Resolve a shared link against EMSC SeismicPortal (CORS enabled). This is what
+// saves Facebook auto-post links: EMSC posts M1.0+ worldwide events that exist
+// in neither the PHIVOLCS feed (PH-only) nor the USGS feed (M4.5+). EMSC slugs
+// encode a UTC datetime ("... - HH:mm:ss UTC"); PHIVOLCS slugs encode PHT, so
+// only shift -8h when the slug has no UTC marker.
+async function resolveEmscById(id: string): Promise<PhivolcsEarthquake | null> {
+  const decoded = decodeEqId(id);
+  if (!decoded.datetime) return null;
+  const parsed = parseDateTime(decoded.datetime);
+  if (!parsed) return null;
+  const utc = /UTC/i.test(decoded.datetime)
+    ? parsed
+    : new Date(parsed.getTime() - 8 * 3600 * 1000);
+  const lat = parseFloat(decoded.latitude || '');
+  const lng = parseFloat(decoded.longitude || '');
+
+  const params = new URLSearchParams({
+    format: 'json',
+    starttime: new Date(utc.getTime() - 36 * 3600 * 1000).toISOString(),
+    endtime: new Date(utc.getTime() + 36 * 3600 * 1000).toISOString(),
+    orderby: 'time',
+    limit: '500',
+  });
+  if (!isNaN(lat) && !isNaN(lng)) {
+    params.set('minlatitude', String(lat - 2));
+    params.set('maxlatitude', String(lat + 2));
+    params.set('minlongitude', String(lng - 2));
+    params.set('maxlongitude', String(lng + 2));
+  }
+
+  try {
+    const res = await fetch(`https://www.seismicportal.eu/fdsnws/event/1/query?${params}`);
+    if (res.status === 204) return null;
+    if (!res.ok) return null;
+    const data = (await res.json()) as { features?: Array<Record<string, unknown>> };
+    const features = data.features ?? [];
+    // Exact slug match first: worker + normalizeEarthquake use identical
+    // UTC-second formatting and 2-decimal rounding, so a live EMSC event
+    // reproduces the posted slug byte-for-byte.
+    for (const f of features) {
+      const norm = normalizeEarthquake(f as unknown as PhivolcsEarthquake);
+      if (btoa(`${norm.datetime}-${norm.latitude}-${norm.longitude}`).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_') === id) return norm;
+    }
+    let best: Record<string, unknown> | null = null;
+    let bestScore = Infinity;
+    for (const f of features) {
+      const props = f.properties as { time?: string } | undefined;
+      if (!props?.time) continue;
+      const t = new Date(props.time).getTime();
+      if (isNaN(t)) continue;
+      const timeDiffH = Math.abs(t - utc.getTime()) / 3600000;
+      if (timeDiffH > 24) continue;
+      const geom = f.geometry as { coordinates?: [number, number, number] } | undefined;
+      const flat = geom?.coordinates?.[1];
+      const flng = geom?.coordinates?.[0];
+      const coordDist = !isNaN(lat) && !isNaN(lng) && typeof flat === 'number' && typeof flng === 'number'
         ? Math.hypot(flat - lat, flng - lng)
         : 0;
       const score = timeDiffH * 2 + coordDist;
@@ -436,7 +508,8 @@ export function Details() {
       const matchId = (data: PhivolcsEarthquake[]) => {
         // 1. Exact match (data unchanged since the link was created)
         const exact = data.find(eq =>
-          btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '') === id
+          btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_') === id
+          || btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '') === id
         );
         if (exact) return exact;
 
@@ -462,8 +535,9 @@ export function Details() {
         let targetMonthIndex = new Date().getMonth();
 
         try {
-          const pad = id.length % 4;
-          const paddedId = pad ? id + '='.repeat(4 - pad) : id;
+          const std = id.replace(/-/g, '+').replace(/_/g, '/');
+          const pad = std.length % 4;
+          const paddedId = pad ? std + '='.repeat(4 - pad) : std;
           const decodedStr = atob(paddedId);
           const datePart = decodedStr.split('-')[0].trim();
           const m = datePart.match(/(\d+)\s+([A-Za-z]+)\s+(\d{4})/);
@@ -539,6 +613,16 @@ export function Details() {
             if (usgsMatch) {
               if (!display) display = usgsMatch;
               if (!resolvedLink) resolvedLink = usgsMatch.link;
+            }
+          }
+
+          // EMSC fallback (Facebook auto-posts): EMSC lists M1.0+ worldwide
+          // events that exist in neither PHIVOLCS nor USGS. Query it directly.
+          if (!matched && !display) {
+            const emscMatch = await resolveEmscById(id!);
+            if (emscMatch) {
+              display = emscMatch;
+              if (!resolvedLink) resolvedLink = emscMatch.link;
             }
           }
         }

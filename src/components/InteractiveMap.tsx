@@ -10,6 +10,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import { ActiveFaultsLayer } from './ActiveFaultsLayer';
+import { earthquakeToEqId } from '../lib/supabase';
 import './InteractiveMap.css';
 
 
@@ -218,7 +219,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
             </div>
           </div>
           <Link
-            to={`/details/${btoa(`${selectedEarthquake.datetime}-${selectedEarthquake.latitude}-${selectedEarthquake.longitude}`).replace(/=/g, '')}`}
+            to={`/details/${earthquakeToEqId(selectedEarthquake)}`}
             state={{ earthquake: selectedEarthquake }}
             className="eq-modal-link"
           >

@@ -34,7 +34,7 @@ function formatUstFromMs(timeMs) {
 }
 
 function earthquakeToEqId(eq) {
-  return btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, "");
+  return btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
 function severityColor(mag) {

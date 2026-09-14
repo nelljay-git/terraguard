@@ -25,7 +25,7 @@ function formatUtc(date: Date): string {
   return `${date.getUTCDate()} ${UTC_MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()} - ${String(date.getUTCHours()).padStart(2,"0")}:${String(date.getUTCMinutes()).padStart(2,"0")}:${String(date.getUTCSeconds()).padStart(2,"0")} UTC`;
 }
 function formatUstFromMs(ms: number){ const d=new Date(ms); const dateStr=`${String(d.getUTCDate()).padStart(2,"0")} ${UTC_MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`; let h=d.getUTCHours(); const m=String(d.getUTCMinutes()).padStart(2,"0"); const ampm=h>=12?"PM":"AM"; h=h%12||12; return {date:dateStr,time:`${String(h).padStart(2,"0")}:${m} ${ampm} UST`};}
-function eqId(datetime:string, lat:string, lng:string){ return btoa(`${datetime}-${lat}-${lng}`).replace(/=/g,""); }
+function eqId(datetime:string, lat:string, lng:string){ return btoa(`${datetime}-${lat}-${lng}`).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_"); }
 function color(m:number){ if(m<3) return "#10b981"; if(m<4) return "#3b82f6"; if(m<5) return "#f59e0b"; if(m<6) return "#ef4444"; return "#7f1d1d"; }
 
 async function fetchLatestEmsc(env: Env){

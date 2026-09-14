@@ -1,0 +1,25 @@
+name = "terraguard-haze-monitor"
+main = "src/haze.js"
+compatibility_date = "2026-09-07"
+compatibility_flags = ["nodejs_compat"]
+
+# ASMC updates the situation ~daily; every 30 min is plenty.
+[triggers]
+crons = ["*/30 * * * *"]
+
+[[kv_namespaces]]
+binding = "HAZE_KV"
+id = "REPLACE_WITH_HAZE_KV_ID" # wrangler kv namespace create HAZE_KV
+preview_id = "REPLACE_WITH_PREVIEW_ID"
+
+[vars]
+# "0" disables the JMA Himawari satellite image on Discord posts (on by default).
+# HAZE_SATELLITE = "0"
+# Optional JSON overrides (no code change):
+# HAZE_SOURCES_JSON = '[{"key":"asmc-home","type":"asmc-home","label":"...","url":"https://...","notifyEnabled":true}]'
+# HAZE_RISK_JSON = '{"0":"LOW","1":"ELEVATED","2":"MODERATE","3":"HIGH"}'
+
+# Secrets (set via `wrangler secret put --config wrangler-haze.toml` — never commit):
+# DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/..." (same or different channel)
+# CRON_SECRET = "random-long-string-for-manual-trigger"
+# HAZE_API_SECRET = "separate-secret-for-private-api-reads (falls back to CRON_SECRET)"

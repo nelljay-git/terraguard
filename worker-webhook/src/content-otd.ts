@@ -72,8 +72,7 @@ async function handleOtd(env: Env): Promise<string>{
   const age = now.getUTCFullYear() - pickDate.getUTCFullYear();
   const mapUrl = `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${pick.lon},${pick.lat}&z=5&size=600,400&l=map&pt=${pick.lon},${pick.lat},pm2rdm`;
   const color = pick.mag >= 7 ? 0xef4444 : pick.mag >= 6 ? 0xf59e0b : 0x3b82f6;
-  const mention = pick.mag >= 7 ? "@everyone " : "";
-  const content = `${mention}📜 **On This Day — ${String(now.getUTCMonth()+1).padStart(2,"0")}/${String(now.getUTCDate()).padStart(2,"0")}**
+  const content = `📜 **On This Day — ${String(now.getUTCMonth()+1).padStart(2,"0")}/${String(now.getUTCDate()).padStart(2,"0")}**
 
 ${pick.mag >= 7 ? "🚨" : "🌍"} **M${pick.mag.toFixed(1)}** struck **${pick.place}** — **${fmtDate(pickDate)}** (${age} year${age===1?"":"s"} ago)
 
@@ -85,7 +84,6 @@ ${pick.mag >= 7 ? "🚨" : "🌍"} **M${pick.mag.toFixed(1)}** struck **${pick.p
 
   const payload = {
     content,
-    allowed_mentions: pick.mag >=7 ? { parse: ["everyone"] } : undefined,
     embeds: [{
       title: `📜 On This Day — M${pick.mag.toFixed(1)} — ${pick.place}`,
       description: `Historical quake from **${pickDate.getUTCFullYear()}** on this calendar day.\n[View on USGS](${pick.url}) • [View on TerraGuard](https://terraguard.pages.dev/archive)`,

@@ -1,5 +1,6 @@
 import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
+import { earthquakeToEqId } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import { Activity, ArrowRight, MapPin, Clock } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -52,7 +53,7 @@ export function ActivityFeed({ earthquakes }: { earthquakes: PhivolcsEarthquake[
           const mag = parseFloat(eq.magnitude);
           const color = getSeverityColor(mag);
           const label = getSeverityLabel(mag);
-          const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
+          const eqId = earthquakeToEqId(eq);
 
           return (
             <motion.div key={i} variants={itemVariants}>

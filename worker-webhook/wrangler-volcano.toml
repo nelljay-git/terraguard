@@ -1,0 +1,29 @@
+name = "terraguard-volcano-monitor"
+main = "src/volcano.js"
+compatibility_date = "2026-09-07"
+compatibility_flags = ["nodejs_compat"]
+
+# PHIVOLCS bulletins update ~daily; every 10 min is plenty (eruption
+# escalations still surface within minutes of publishing).
+[triggers]
+crons = ["*/10 * * * *"]
+
+[[kv_namespaces]]
+binding = "VOLCANO_KV"
+id = "REPLACE_WITH_VOLCANO_KV_ID" # wrangler kv namespace create VOLCANO_KV
+preview_id = "REPLACE_WITH_PREVIEW_ID"
+
+[vars]
+# "0" disables the JMA Himawari satellite image on Discord posts (on by default).
+# VOLCANO_SATELLITE = "0"
+# "1" = also send a VOLCANO NEWS message for routine same-level daily
+# bulletins. Default (unset) = only level changes, escalations, first sightings.
+# VOLCANO_DAILY_BRIEF = "1"
+# Optional JSON overrides (no code change):
+# VOLCANO_SOURCES_JSON = '[{"key":"lava-hub","type":"lava-hub","label":"...","url":"https://...","notifyEnabled":true}]'
+# VOLCANO_RISK_JSON = '{"0":"LOW","1":"ELEVATED","2":"MODERATE","3":"HIGH","4":"CRITICAL","5":"CRITICAL"}'
+
+# Secrets (set via `wrangler secret put --config wrangler-volcano.toml` — never commit):
+# DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/..." (same or different channel)
+# CRON_SECRET = "random-long-string-for-manual-trigger"
+# VOLCANO_API_SECRET = "separate-secret-for-private-api-reads (falls back to CRON_SECRET)"

@@ -5,6 +5,7 @@ import { Link as LinkIcon, MapPin, Clock, Activity } from 'lucide-react';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { fetchPhivolcsData } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
+import { earthquakeToEqId } from '../lib/supabase';
 import { haversineDistance } from '../lib/alertSystem';
 import './AftershockTracker.css';
 
@@ -152,7 +153,7 @@ export function AftershockTracker({ currentEarthquake }: AftershockTrackerProps)
           const mag = parseFloat(eq.magnitude);
           const color = getSeverityColor(mag);
           const label = getSeverityLabel(mag);
-          const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
+          const eqId = earthquakeToEqId(eq);
 
           return (
             <Link

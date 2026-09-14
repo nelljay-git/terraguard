@@ -38,7 +38,9 @@ export interface EngagementState {
 }
 
 export function earthquakeToEqId(eq: PhivolcsEarthquake): string {
-  return btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
+  // base64url: '-'/'_' instead of '+'/'/' so the slug never breaks the
+  // /details/:id route. Decoders accept legacy base64 slugs too.
+  return btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
 // Re-point stars/likes/comments recorded under an outdated slug (from a

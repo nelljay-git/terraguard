@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { fetchEarthquakeData, fetchArchiveData, getCachedData, normalizeEarthquakes, type NormalizedEarthquake } from '../api/phivolcs';
 import { getPreferredApi } from '../lib/apiPreference';
 import { getSeverityColor } from '../lib/utils';
+import { earthquakeToEqId } from '../lib/supabase';
 import { Search, Filter, Clock, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { StarButton } from '../components/StarButton';
@@ -197,7 +198,7 @@ export function Archive() {
           const mag = parseFloat(eq.magnitude);
           const color = getSeverityColor(mag);
           // Generate a simple deterministic ID for the details page
-          const eqId = btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, '');
+          const eqId = earthquakeToEqId(eq);
 
           return (
             <div key={i} className="archive-card glass-card">

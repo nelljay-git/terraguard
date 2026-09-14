@@ -64,7 +64,7 @@ function formatUstFromMs(timeMs: number): { date: string; time: string } {
 }
 
 function earthquakeToEqId(eq: Earthquake): string {
-  return btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, "");
+  return btoa(`${eq.datetime}-${eq.latitude}-${eq.longitude}`).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
 function severityColor(mag: number): string {

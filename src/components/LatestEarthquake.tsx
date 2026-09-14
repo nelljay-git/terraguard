@@ -4,13 +4,14 @@ import { getSeverityColor, getSeverityLabel } from '../lib/utils';
 import { MapPin, Clock, Activity, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getPreferredApi } from '../lib/apiPreference';
+import { earthquakeToEqId } from '../lib/supabase';
 import './LatestEarthquake.css';
 
 export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquake }) {
   const mag = parseFloat(earthquake.magnitude);
   const color = getSeverityColor(mag);
   const label = getSeverityLabel(mag);
-  const eqId = btoa(`${earthquake.datetime}-${earthquake.latitude}-${earthquake.longitude}`).replace(/=/g, '');
+  const eqId = earthquakeToEqId(earthquake);
   const prefLE = getPreferredApi();
   const isUsgs = prefLE === 'usgs';
   const isEmsc = prefLE === 'emsc';

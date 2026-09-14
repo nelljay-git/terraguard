@@ -1,0 +1,29 @@
+name = "terraguard-pagasa-monitor"
+main = "src/pagasa.js"
+compatibility_date = "2026-09-07"
+compatibility_flags = ["nodejs_compat"]
+
+# Monitor tick every 5 min + daily summaries 07:00 / 18:00 PHT
+# (PHT = UTC+8, no TZ support in cron: 07:00 PHT = 23:00 UTC, 18:00 PHT = 10:00 UTC)
+[triggers]
+crons = ["*/5 * * * *", "0 23 * * *", "0 10 * * *"]
+
+[[kv_namespaces]]
+binding = "PAGASA_KV"
+id = "REPLACE_WITH_PAGASA_KV_ID" # wrangler kv namespace create PAGASA_KV
+preview_id = "REPLACE_WITH_PREVIEW_ID"
+
+[vars]
+# "0" disables the JMA Himawari satellite image on Discord posts (on by default).
+# PAGASA_SATELLITE = "0"
+# Minimum added+removed areas for an area-only change to count as significant.
+SIGNIFICANT_AREA_DELTA = "1"
+MAX_EVENTS_INDEX = "100"
+# Optional JSON overrides (no redeploy of logic needed):
+# PAGASA_SOURCES_JSON = '[{"key":"tc-bulletin","type":"tropical-cyclone-bulletin","label":"...","url":"https://...","notifyEnabled":true}]'
+# RISK_CONFIG_JSON = '{"weights":{...},"caps":{...},"thresholds":{...},"force":{...}}'
+
+# Secrets (set via `wrangler secret put --config wrangler-pagasa.toml` — never commit):
+# DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/..."
+# CRON_SECRET = "random-long-string-for-manual-trigger"
+# PAGASA_API_SECRET = "separate-secret-for-private-api-reads (falls back to CRON_SECRET)"

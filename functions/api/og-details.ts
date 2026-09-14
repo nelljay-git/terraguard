@@ -16,8 +16,10 @@ function getSeverityLabel(magnitude: number) {
 }
 
 function decodeBase64(str: string): string {
-  const pad = str.length % 4;
-  const padded = pad ? str + '='.repeat(4 - pad) : str;
+  // Accept both legacy base64 and base64url slugs.
+  const std = str.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = std.length % 4;
+  const padded = pad ? std + '='.repeat(4 - pad) : std;
   const binary = atob(padded);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -28,7 +30,7 @@ function encodeBase64(str: string): string {
   const bytes = new TextEncoder().encode(str);
   let binary = '';
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary).replace(/=/g, '');
+  return btoa(binary).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
 // PHIVOLCS scraping is offloaded to the PHP endpoint (unlimited shared hosting)
@@ -217,7 +219,7 @@ export async function onRequest(context: { request: Request; env?: Record<string
         for (const r of rows) {
           allRows.push(r);
           const rowId = encodeBase64(`${r.datetime}-${r.latitude}-${r.longitude}`);
-          if (rowId === id) {
+          if (rowId === id || rowId.replace(/-/g, '+').replace(/_/g, '/') === id) {
             earthquake = r;
             break;
           }

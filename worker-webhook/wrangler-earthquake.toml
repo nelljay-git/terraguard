@@ -1,0 +1,41 @@
+name = "terraguard-earthquake"
+main = "src/earthquake.js"
+compatibility_date = "2026-09-07"
+compatibility_flags = ["nodejs_compat"]
+
+# Both feeds are fast-moving; every 2 min (same as the old workers).
+[triggers]
+crons = ["*/2 * * * *"]
+
+# Reuse the SAME namespace the old workers used (terraguard-push) —
+# KV keys are unchanged, so dedup history carries over, no resend burst.
+[[kv_namespaces]]
+binding = "WEBHOOK_KV"
+id = "REPLACE_WITH_EXISTING_KV_ID"
+preview_id = "REPLACE_WITH_PREVIEW_ID"
+
+[vars]
+MIN_MAGNITUDE = "4.5"
+USGS_MIN_LAT = "-90"
+USGS_MAX_LAT = "90"
+USGS_MIN_LNG = "-180"
+USGS_MAX_LNG = "180"
+USGS_FEED = "all_day.geojson"
+EMSC_MIN_MAG = "1.0"
+EMSC_MIN_LAT = "-90"
+EMSC_MAX_LAT = "90"
+EMSC_MIN_LNG = "-180"
+EMSC_MAX_LNG = "180"
+
+# Secrets:
+# DISCORD_WEBHOOK_URL = USGS channel (existing)
+# EMSC_WEBHOOK_URL = EMSC's OWN channel (existing; falls back to DISCORD_WEBHOOK_URL)
+# BOT_TOKEN = optional (auto-reactions), FELT_REPORTS_WEBHOOK_URL = optional (EMSC poll)
+# CRON_SECRET = manual trigger secret
+# Facebook auto-post (EMSC ONLY — USGS never posts to FB):
+# FB_PAGE_ID, FB_USER_ACCESS_TOKEN (long-lived user token, or Page token),
+# FB_APP_ID, FB_APP_SECRET (used for appsecret_proof). If FB_PAGE_ID or
+# FB_USER_ACCESS_TOKEN is missing, FB is skipped silently.
+# FB_MAG_MIN = min magnitude to post to FB (Discord unaffected).
+# FB_COUNTRY_FOCUS = comma-separated substring match on EMSC location
+#   (e.g. "PHILIPPINES"). Empty or "ALL" = post worldwide.
