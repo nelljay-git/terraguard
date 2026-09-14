@@ -40,15 +40,51 @@ async function loadFonts(origin: string) {
   return fontCache;
 }
 
-function mapTileUrl(lat: number, lng: number, zoom: number): string {
-  // Shift the tile center north so the epicenter renders below the title
-  // overlays (~64% height) instead of dead-center behind them.
+interface MapTile {
+  url: string;
+  left: number;
+  top: number;
+  w: number;
+  h: number;
+}
+
+// Yandex caps static images at 650x450px — upscaling that to 720px looks
+// soft. Instead stitch 2x2 tiles at zoom+1 covering the exact same view:
+// ~1.8x pixel density. Geometry: the single-tile cover view of the 650x450
+// tile into CARD_W x MAP_H fixes the visible tile-pixel window (vw x vh);
+// each quadrant is covered by one zoom+1 tile centered on it.
+function mapTiles(lat: number, lng: number, zoom: number): MapTile[] {
+  // View center shifted north so the epicenter renders at ~70% height.
   const span = (360 * MAP_H) / (256 * 2 ** zoom);
-  const centerLat = Math.max(-85, Math.min(85, lat + 0.2 * span));
-  return (
-    `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${centerLat}` +
-    `&z=${zoom}&size=650,450&l=sat,skl`
-  );
+  const clat = Math.max(-85, Math.min(85, lat + 0.2 * span));
+  const P = 360 / (256 * 2 ** zoom); // lng degrees per px at zoom
+  const s = Math.max(CARD_W / 650, MAP_H / 450); // cover scale
+  const vw = CARD_W / s; // visible tile px, width
+  const vh = MAP_H / s; // visible tile px, height
+  const d = CARD_W / 2 / vw; // display scale for zoom+1 tiles
+  const tw = 650 * d; // displayed tile width
+  const th = 450 * d; // displayed tile height
+  const lngSpan = (vw * P) / 2; // quadrant width, degrees lng (at zoom; z+1 tiles are 2x denser)
+  const latSpan = ((vh * P) / 2) * Math.cos((clat * Math.PI) / 180); // quadrant height, degrees lat
+  const qx = [CARD_W / 4, (3 * CARD_W) / 4];
+  const qy = [MAP_H / 4, (3 * MAP_H) / 4];
+  const tiles: MapTile[] = [];
+  for (let r = 0; r < 2; r++) {
+    for (let c = 0; c < 2; c++) {
+      const tLng = lng + (c === 0 ? -lngSpan / 2 : lngSpan / 2);
+      const tLat = Math.max(-85, Math.min(85, clat + (r === 0 ? latSpan / 2 : -latSpan / 2)));
+      tiles.push({
+        url:
+          `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${tLng},${tLat}` +
+          `&z=${zoom + 1}&size=650,450&l=sat,skl`,
+        left: qx[c] - tw / 2,
+        top: qy[r] - th / 2,
+        w: tw,
+        h: th,
+      });
+    }
+  }
+  return tiles;
 }
 
 export async function onRequest(context: { request: Request }) {
@@ -77,14 +113,17 @@ export async function onRequest(context: { request: Request }) {
   const cx = CARD_W / 2; // horizontal center of map
 
   const [fonts] = await Promise.all([loadFonts(url.origin)]);
-  const tileUrl = mapTileUrl(lat, lng, zoom);
+  const tiles = mapTiles(lat, lng, zoom);
 
   const fontList: Array<{ name: string; data: ArrayBuffer; weight: 400 | 700; style: 'normal' }> = [];
   if (fonts.oswald) fontList.push({ name: 'Oswald', data: fonts.oswald, weight: 700, style: 'normal' });
   if (fonts.inter) fontList.push({ name: 'Inter', data: fonts.inter, weight: 400, style: 'normal' });
 
-  // Dark container doubles as the fallback if the tile can't be fetched.
-  const mapImg = h('img', { src: tileUrl, width: 650, height: 450, style: { display: 'flex', width: CARD_W, height: MAP_H, objectFit: 'cover', backgroundColor: '#10151c' } });
+  // Dark container doubles as the fallback if tiles can't be fetched.
+  // 2x2 zoom+1 tiles stitched for ~1.8x pixel density (Yandex caps at 650x450).
+  const mapImgs = tiles.map((t) =>
+    h('img', { src: t.url, width: 650, height: 450, style: { display: 'flex', position: 'absolute', left: t.left, top: t.top, width: t.w, height: t.h, backgroundColor: '#10151c' } }),
+  );
   // Epicenter renders at ~70% of map height (see tile center shift above):
   // dot marker + two expanding rings, all centered exactly on it.
   const epiY = Math.round(0.7 * MAP_H);
@@ -104,8 +143,8 @@ export async function onRequest(context: { request: Request }) {
     { style: { display: 'flex', flexDirection: 'column', width: CARD_W, height: CARD_H, backgroundColor: '#0a0d12', color: '#ffffff', fontFamily: fontStack } },
     h(
       'div',
-      { style: { display: 'flex', position: 'relative', width: CARD_W, height: MAP_H, overflow: 'hidden' } },
-      mapImg,
+      { style: { display: 'flex', position: 'relative', width: CARD_W, height: MAP_H, overflow: 'hidden', backgroundColor: '#10151c' } },
+      ...mapImgs,
       h(
         'div',
         { style: { display: 'flex', position: 'absolute', left: 0, top: 0, width: CARD_W, height: MAP_H, flexDirection: 'column', alignItems: 'center' } },
