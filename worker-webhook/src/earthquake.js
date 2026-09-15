@@ -684,7 +684,7 @@ async function postEmscToFacebook(eq, env) {
             lat: eq.latitude, lng: eq.longitude, mag: eq.magnitude,
             place: String(eq.location ?? "").slice(0, 90),
             date: fbDate, time: String(fbTime).replace(/\s*UST\s*$/i, ""),
-            depth: eq.depth,
+            depth: eq.depth, source: "EMSC",
         }).toString()
         : "";
     const cardUrl = hasCoords && cardParams
@@ -877,7 +877,7 @@ async function postPhivolcsToFacebook(eq, env) {
             lat: eq.latitude, lng: eq.longitude, mag: eq.magnitude,
             place: String(eq.location ?? "").slice(0, 90),
             date: fbDate, time: String(fbTime).replace(/\s*UST\s*$/i, ""),
-            depth: eq.depth,
+            depth: eq.depth, source: "PHIVOLCS",
         }).toString()
         : "";
     const cardUrl = hasCoords && cardParams
