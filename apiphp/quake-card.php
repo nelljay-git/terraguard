@@ -517,7 +517,7 @@ fillPoly($im, [$arrowCx - 13, $depthMidY - 2, $arrowCx + 13, $depthMidY - 2, $ar
 drawLeft($im, $fontOswald, $depthSize, $depthTextX, $depthMidY + 9, $depthText, $white);
 // Site URL, letter-tracked, low-opacity, with a 4px bottom margin so the
 // descenders clear the bar edge.
-$footUrl = imagecolorallocatealpha($im, 156, 163, 175, 90);
+$footUrl = imagecolorallocatealpha($im, 156, 163, 175, 44);
 drawTracked($im, $fontInter, 12, (int)round(CARD_W / 2), $infoTop + 96, 'https://terraguard-ph.pages.dev/', $footUrl, 2);
 
 // --- Output + cache ---

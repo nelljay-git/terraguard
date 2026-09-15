@@ -48,6 +48,29 @@ function formatUstFromMs(timeMs) {
     return { date: dateStr, time: timeStr };
 }
 
+// UTC instant -> display parts with an explicit UTC label. Used by the
+// EMSC Facebook path (EMSC times ARE UTC) — never for PHIVOLCS wall times.
+function formatUtcDisplayMs(timeMs) {
+    const d = new Date(timeMs);
+    const date = `${String(d.getUTCDate()).padStart(2, "0")} ${UTC_MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+    let h = d.getUTCHours();
+    const m = String(d.getUTCMinutes()).padStart(2, "0");
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return { date, time: `${String(h).padStart(2, "0")}:${m} ${ampm} UTC` };
+}
+
+// PHIVOLCS bulletin wall time (PHT) split for display — the real published
+// time, no conversion. "14 September 2026 - 05:22 PM" ->
+// { date: "14 September 2026", time: "05:22 PM PHT" }.
+function phivolcsDisplayParts(datetimeStr) {
+    const m = /(\d{1,2}\s+[A-Za-z]+\s+\d{4})\s*-\s*(\d{1,2}:\d{2})(?::\d{2})?\s*(AM|PM)?/i.exec(String(datetimeStr ?? "").trim());
+    if (!m)
+        return { date: String(datetimeStr ?? "").trim(), time: "" };
+    const ap = (m[3] || "").toUpperCase();
+    return { date: m[1].trim(), time: `${m[2]}${ap ? ` ${ap}` : ""} PHT`.trim() };
+}
+
 function severityColor(mag) {
     if (mag < 3)
         return "#10b981";
@@ -623,18 +646,18 @@ function fbHashtags(location, source = "EMSC") {
 }
 
 function buildFacebookMessage(eq) {
-    const { date, time } = formatUstFromMs(eq.timeMs);
+    const { date, time } = formatUtcDisplayMs(eq.timeMs);
     const terraLink = `https://terraguard-ph.pages.dev/details/${emscEqId(eq.datetime, eq.latitude, eq.longitude)}`;
     const place = String(eq.location ?? "").trim() || `${eq.latitude}, ${eq.longitude}`;
-    const timeShort = String(time).replace(/\s*UST\s*$/i, "").trim();
+    const timeBare = String(time).replace(/\s*(UTC|PHT|UST)\s*$/i, "").trim();
     const mag = parseFloat(eq.magnitude);
     const magPrefix = isNaN(mag) ? "" : mag >= 7 ? "‼️MAJOR‼️ " : mag >= 6 ? "🟥 " : mag >= 5 ? "🟧 " : mag >= 4 ? "🟨 " : mag >= 3 ? "🟦 " : "🟩 ";
     return [
-        `${magPrefix}JUST IN: ${date} - ${timeShort} | Magnitude: ${eq.magnitude} - ${place} | Earthquake Visual Report`,
+        `${magPrefix}JUST IN: A Magnitude: ${eq.magnitude} struck near ${place} on ${date} - ${timeBare}`,
         ``,
         `Magnitude: ${eq.magnitude}`,
         `Location: ${place}`,
-        `Date & Time: ${date} - ${timeShort}`,
+        `Date & Time: ${date} - ${timeBare}`,
         `Depth: ${eq.depth} km`,
         `Coordinates: ${eq.latitude}°N, ${eq.longitude}°E`,
         ``,
@@ -678,12 +701,12 @@ async function postEmscToFacebook(eq, env) {
     const hasCoords = !isNaN(lat) && !isNaN(lng);
     // 3:4 designed card (self-hosted PNG) first, raw Yandex satellite as
     // backup. FB tries each in order; /feed text post is the last resort.
-    const { date: fbDate, time: fbTime } = formatUstFromMs(eq.timeMs);
+    const { date: fbDate, time: fbTime } = formatUtcDisplayMs(eq.timeMs);
     const cardParams = hasCoords
         ? new URLSearchParams({
             lat: eq.latitude, lng: eq.longitude, mag: eq.magnitude,
             place: String(eq.location ?? "").slice(0, 90),
-            date: fbDate, time: String(fbTime).replace(/\s*UST\s*$/i, ""),
+            date: fbDate, time: fbTime,
             depth: eq.depth, source: "EMSC",
         }).toString()
         : "";
@@ -821,10 +844,10 @@ async function fetchLatestPhivolcs(env) {
 }
 
 function buildPhivolcsFbMessage(eq) {
-    const { date, time } = formatUstFromMs(eq.timeMs);
+    const { date, time } = phivolcsDisplayParts(eq.datetime);
     const terraLink = `https://terraguard-ph.pages.dev/details/${phivolcsEqId(eq.datetime, eq.latitude, eq.longitude)}`;
     const place = String(eq.location ?? "").trim() || `${eq.latitude}, ${eq.longitude}`;
-    const timeShort = String(time).replace(/\s*UST\s*$/i, "").trim();
+    const timeShort = String(time).trim();
     const mag = parseFloat(eq.magnitude);
     const magPrefix = isNaN(mag) ? "" : mag >= 7 ? "‼️MAJOR‼️ " : mag >= 6 ? "🟥 " : mag >= 5 ? "🟧 " : mag >= 4 ? "🟨 " : "🟩 ";
     return [
@@ -871,12 +894,12 @@ async function postPhivolcsToFacebook(eq, env) {
     const lat = parseFloat(eq.latitude), lng = parseFloat(eq.longitude);
     const hasCoords = !isNaN(lat) && !isNaN(lng);
     // Designed card (same x10 renderer) first, raw Yandex satellite backup.
-    const { date: fbDate, time: fbTime } = formatUstFromMs(eq.timeMs);
+    const { date: fbDate, time: fbTime } = phivolcsDisplayParts(eq.datetime);
     const cardParams = hasCoords
         ? new URLSearchParams({
             lat: eq.latitude, lng: eq.longitude, mag: eq.magnitude,
             place: String(eq.location ?? "").slice(0, 90),
-            date: fbDate, time: String(fbTime).replace(/\s*UST\s*$/i, ""),
+            date: fbDate, time: fbTime,
             depth: eq.depth, source: "PHIVOLCS",
         }).toString()
         : "";
@@ -990,7 +1013,7 @@ function json(body, status = 200) {
 }
 
 // Named exports for unit testing (harmless in the worker runtime).
-export { parsePhivolcsTimeMs, buildPhivolcsFbMessage, fetchLatestPhivolcs, fbPassesFilters, postEmscToFacebook, postPhivolcsToFacebook };
+export { parsePhivolcsTimeMs, buildPhivolcsFbMessage, fetchLatestPhivolcs, fbPassesFilters, postEmscToFacebook, postPhivolcsToFacebook, buildFacebookMessage, formatUtcDisplayMs, phivolcsDisplayParts };
 
 export default {
     async fetch(request, env) {
