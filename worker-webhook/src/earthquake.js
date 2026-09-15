@@ -628,7 +628,7 @@ function buildFacebookMessage(eq) {
     const place = String(eq.location ?? "").trim() || `${eq.latitude}, ${eq.longitude}`;
     const timeShort = String(time).replace(/\s*UST\s*$/i, "").trim();
     const mag = parseFloat(eq.magnitude);
-    const magPrefix = isNaN(mag) ? "" : mag >= 7 ? "‼️MAJOR‼️ " : mag >= 6 ? "🟥 " : mag >= 5 ? "🟧 " : mag >= 4 ? "🟨 " : "🟩 ";
+    const magPrefix = isNaN(mag) ? "" : mag >= 7 ? "‼️MAJOR‼️ " : mag >= 6 ? "🟥 " : mag >= 5 ? "🟧 " : mag >= 4 ? "🟨 " : mag >= 3 ? "🟦 " : "🟩 ";
     return [
         `${magPrefix}JUST IN: ${date} - ${timeShort} | Magnitude: ${eq.magnitude} - ${place} | Earthquake Visual Report`,
         ``,
