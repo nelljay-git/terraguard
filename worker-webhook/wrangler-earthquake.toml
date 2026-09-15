@@ -39,3 +39,7 @@ EMSC_MAX_LNG = "180"
 # FB_MAG_MIN = min magnitude to post to FB (Discord unaffected).
 # FB_COUNTRY_FOCUS = comma-separated substring match on EMSC location
 #   (e.g. "PHILIPPINES"). Empty or "ALL" = post worldwide.
+# PHIVOLCS → Facebook only (never Discord):
+# PHIVOLCS_API_URL (default https://trikefare.x10.mx/terraguard/phivolcs.php),
+# PHIVOLCS_MIN_MAG (default "3.0"). Same FB_MAG_MIN / FB_COUNTRY_FOCUS gates
+# apply. FB cross-dedup via fb:posted-index (shared with EMSC).

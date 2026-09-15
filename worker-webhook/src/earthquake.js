@@ -551,7 +551,7 @@ function buildFacebookMessage(eq) {
     const mag = parseFloat(eq.magnitude);
     const magPrefix = isNaN(mag) ? "" : mag >= 7 ? "‼️MAJOR‼️ " : mag >= 6 ? "🟥 " : mag >= 5 ? "🟧 " : mag >= 4 ? "🟨 " : "🟩 ";
     return [
-        `${magPrefix}${date} - ${timeShort} | Magnitude: ${eq.magnitude} - ${place} | Earthquake Visual Report`,
+        `${magPrefix}JUST IN: ${date} - ${timeShort} | Magnitude: ${eq.magnitude} - ${place} | Earthquake Visual Report`,
         ``,
         `Magnitude: ${eq.magnitude}`,
         `Location: ${place}`,
@@ -560,7 +560,7 @@ function buildFacebookMessage(eq) {
         `Coordinates: ${eq.latitude}°N, ${eq.longitude}°E`,
         ``,
         `Earthquake Info: ${terraLink}`,
-        `A visual representation of the seismic event based on available earthquake data.`,
+        `Please take note that this is not the final report. pleminary information`,
         ``,
         `Source: EMSC-CSEM (${eq.unid})`,
         ``,
@@ -614,7 +614,7 @@ async function postEmscToFacebook(eq, env) {
         }).toString()
         : "";
     const cardUrl = hasCoords && cardParams
-        ? `https://terraguard-ph.pages.dev/api/quake-card?${cardParams}`
+        ? `https://trikefare.x10.mx/terraguard/api/quake-card.php?${cardParams}`
         : null;
     const satZoom = isNaN(magNum) ? 7 : magNum >= 7 ? 6 : magNum >= 6 ? 7 : 8;
     const yandexUrl = hasCoords
