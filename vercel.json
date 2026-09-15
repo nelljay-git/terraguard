@@ -14,6 +14,10 @@
       "destination": "/ads.txt"
     },
     {
+      "source": "/tiktokT7PrgPUIqDApYTdhUbUJ4BRTnfpQ1xPF.txt",
+      "destination": "/tiktokT7PrgPUIqDApYTdhUbUJ4BRTnfpQ1xPF.txt"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
