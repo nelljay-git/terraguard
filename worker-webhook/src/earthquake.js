@@ -121,6 +121,82 @@ async function putReaction(url, headers, tag) {
     await new Promise((r) => setTimeout(r, 300));
 }
 
+// ===== Facebook cross-post dedup (EMSC + PHIVOLCS both post to FB) =====
+// Records every successful FB post so the other source never double-posts
+// the same physical quake. Separate from SENT_INDEX (which also tracks
+// USGS/Discord-only announcements that must NOT suppress FB posts).
+const FB_POSTED_KEY = "fb:posted-index";
+
+async function getFbPostedIndex(kv) {
+    try {
+        const raw = await kv.get(FB_POSTED_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    }
+    catch {
+        return [];
+    }
+}
+
+async function recordFbPosted(kv, entry) {
+    const index = await getFbPostedIndex(kv);
+    index.unshift({ ...entry, postedAt: new Date().toISOString() });
+    await kv.put(FB_POSTED_KEY, JSON.stringify(index.slice(0, 50)), { expirationTtl: 60 * 60 * 24 * 30 });
+}
+
+// Same physical quake already posted to Facebook (any FB source)?
+function findFbPostMatch(index, timeMs, lat, lng, mag) {
+    for (const e of index) {
+        if (Math.abs(e.timeMs - timeMs) > CROSS_WINDOW_MS)
+            continue;
+        if (Math.abs(e.mag - mag) > CROSS_MAX_MAG_DIFF)
+            continue;
+        if (haversineKm(e.lat, e.lng, lat, lng) > CROSS_MAX_KM)
+            continue;
+        return e;
+    }
+    return null;
+}
+
+// Shared FB gates (FB_MAG_MIN + FB_COUNTRY_FOCUS). Returns a skip-reason
+// string or null when the quake passes. Used by EMSC + PHIVOLCS paths.
+function fbPassesFilters(eq, env) {
+    const magMin = parseFloat(env.FB_MAG_MIN ?? "");
+    const mag = parseFloat(eq.magnitude);
+    if (!isNaN(magMin) && !isNaN(mag) && mag < magMin)
+        return `skipped (M${eq.magnitude} < FB_MAG_MIN ${magMin})`;
+    const focusRaw = (env.FB_COUNTRY_FOCUS ?? "").trim();
+    const focusUpper = focusRaw.toUpperCase();
+    if (focusRaw && focusUpper !== "ALL" && focusUpper !== "*") {
+        const locUpper = String(eq.location ?? "").toUpperCase();
+        const focuses = focusRaw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+        if (!focuses.includes("ALL") && !focuses.includes("*") && !focuses.some((f) => locUpper.includes(f)))
+            return `skipped (outside FB_COUNTRY_FOCUS ${focusRaw})`;
+    }
+    return null;
+}
+
+// Warm a designed card URL before handing it to Facebook (cold WASM +
+// tiles/fonts make FB's scraper time out). Returns true when renderable.
+async function warmCardUrl(url, tag, timeoutMs = 6000) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), timeoutMs);
+            const r = await fetch(url, { method: "GET", signal: ctrl.signal, headers: { "User-Agent": "TerraGuard-FB-Warmup/1.0" } });
+            clearTimeout(t);
+            if (r.ok)
+                return true;
+            console.error(`[fb][${tag}] card warmup ${r.status} (attempt ${attempt}): ${url.slice(0, 120)}`);
+        }
+        catch (e) {
+            console.error(`[fb][${tag}] card warmup failed (attempt ${attempt}): ${e instanceof Error ? e.message : String(e)}`);
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+    }
+    return false;
+}
+
 // ===== USGS =====
 function usgsTsunamiLabel(tsunami) {
     if (tsunami === 1)
@@ -454,16 +530,19 @@ async function handleEmsc(env) {
     console.log(`[fb][emsc] ${dedupKey}: ${fbStatus}`);
     await kv.put("last_emsc_id", dedupKey);
     await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, fbStatus, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
+    if (fbStatus.startsWith("posted"))
+        await recordFbPosted(kv, { source: "emsc", id: latest.unid, timeMs: latest.timeMs, lat, lng, mag });
     await recordSent(kv, { source: "emsc", id: latest.unid, timeMs: latest.timeMs, lat, lng, mag });
     return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | fb: ${fbStatus}`;
 }
 
-// ===== Facebook auto-post (EMSC ONLY — USGS never calls this) =====
+// ===== Facebook auto-post (EMSC + PHIVOLCS — USGS never calls this) =====
 // Env (Cloudflare secrets, already set):
 //   FB_APP_ID, FB_APP_SECRET, FB_PAGE_ID, FB_USER_ACCESS_TOKEN
 //   FB_MAG_MIN (e.g. "1.0"), FB_COUNTRY_FOCUS (e.g. "PHILIPPINES")
-// Flow: filter by FB_MAG_MIN + FB_COUNTRY_FOCUS -> FB_USER_ACCESS_TOKEN
-// (long-lived user token) -> me/accounts -> page access_token for FB_PAGE_ID
+// Flow: filter by FB_MAG_MIN + FB_COUNTRY_FOCUS -> skip PH events
+// (PHIVOLCS owns them) -> FB_USER_ACCESS_TOKEN (long-lived user token)
+// -> me/accounts -> page access_token for FB_PAGE_ID
 // -> POST /{page-id}/photos (fallback /feed).
 // All failures are swallowed by the caller so Discord is never blocked.
 
@@ -519,8 +598,8 @@ function fbTagWord(s) {
     return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join("");
 }
 
-function fbHashtags(location) {
-    const base = ["#Earthquake", "#EMSC", "#TerraGuard", "#EarthquakeReport", "#SeismicActivity", "#StaySafe"];
+function fbHashtags(location, source = "EMSC") {
+    const base = ["#Earthquake", `#${source}`, "#TerraGuard", "#EarthquakeReport", "#SeismicActivity", "#StaySafe"];
     const loc = String(location ?? "");
     const parts = loc.split(",");
     let countryRaw;
@@ -582,18 +661,13 @@ async function postEmscToFacebook(eq, env) {
     if (!pageId || !userToken)
         return "skipped (FB_PAGE_ID / FB_USER_ACCESS_TOKEN not set)";
     // FB filters (env): FB_MAG_MIN + FB_COUNTRY_FOCUS. Discord is unaffected.
-    const magMin = parseFloat(env.FB_MAG_MIN ?? "");
-    const mag = parseFloat(eq.magnitude);
-    if (!isNaN(magMin) && !isNaN(mag) && mag < magMin)
-        return `skipped (M${eq.magnitude} < FB_MAG_MIN ${magMin})`;
-    const focusRaw = (env.FB_COUNTRY_FOCUS ?? "").trim();
-    const focusUpper = focusRaw.toUpperCase();
-    if (focusRaw && focusUpper !== "ALL" && focusUpper !== "*") {
-        const locUpper = String(eq.location ?? "").toUpperCase();
-        const focuses = focusRaw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
-        if (!focuses.includes("ALL") && !focuses.includes("*") && !focuses.some((f) => locUpper.includes(f)))
-            return `skipped (outside FB_COUNTRY_FOCUS ${focusRaw})`;
-    }
+    const filterSkip = fbPassesFilters(eq, env);
+    if (filterSkip)
+        return filterSkip;
+    // PH exception: PHIVOLCS owns Philippines FB posts now — EMSC stays
+    // silent on FB for PH events (Discord posting is unaffected).
+    if (String(eq.location ?? "").toUpperCase().includes("PHILIPP"))
+        return "skipped (PH event: PHIVOLCS posts it)";
     let pageToken = await getFacebookPageToken(env);
     if (!pageToken)
         pageToken = userToken; // stored token may already be a Page token
@@ -632,27 +706,9 @@ async function postEmscToFacebook(eq, env) {
     // downgrade posts to the raw Yandex backup. Warming also primes the
     // CDN cache so FB's fetch is fast. Skip the card if it won't render.
     const isCard = (u) => String(u).includes("/api/quake-card");
-    async function warmCard(url) {
-        for (let attempt = 1; attempt <= 2; attempt++) {
-            try {
-                const ctrl = new AbortController();
-                const t = setTimeout(() => ctrl.abort(), 6000);
-                const r = await fetch(url, { method: "GET", signal: ctrl.signal, headers: { "User-Agent": "TerraGuard-FB-Warmup/1.0" } });
-                clearTimeout(t);
-                if (r.ok)
-                    return true;
-                console.error(`[fb][emsc] card warmup ${r.status} (attempt ${attempt}): ${url.slice(0, 120)}`);
-            }
-            catch (e) {
-                console.error(`[fb][emsc] card warmup failed (attempt ${attempt}): ${e instanceof Error ? e.message : String(e)}`);
-            }
-            await new Promise((r) => setTimeout(r, 1000));
-        }
-        return false;
-    }
     // 1) Preferred: photo post so the designed card shows inline.
     for (const photoUrl of photoUrls) {
-        if (isCard(photoUrl) && !(await warmCard(photoUrl))) {
+        if (isCard(photoUrl) && !(await warmCardUrl(photoUrl, "emsc"))) {
             console.error("[fb][emsc] card not renderable, using Yandex backup");
             continue;
         }
@@ -693,6 +749,224 @@ async function postEmscToFacebook(eq, env) {
     }
 }
 
+// ===== PHIVOLCS → Facebook ONLY (never Discord) =====
+// Source: the existing PHP API (same feed the app uses). PHIVOLCS wall
+// times are PHT (UTC+8); converted to UTC ms for matching/display.
+// FB dedup is separate from Discord dedup: a quake USGS announced to
+// Discord (never FB-posted) still gets its FB post here, while anything
+// EMSC already FB-posted is skipped via the shared fb:posted-index
+// (which also swallows PHIVOLCS revisions of posted events).
+
+const PHIVOLCS_MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+// "14 September 2026 - 05:22 PM" (PHT, seconds optional) -> UTC ms.
+function parsePhivolcsTimeMs(s) {
+    const m = /(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\s*-\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i.exec(String(s ?? "").trim());
+    if (!m)
+        return NaN;
+    const monthIdx = PHIVOLCS_MONTHS.indexOf(m[2].slice(0, 3).toLowerCase());
+    if (monthIdx === -1)
+        return NaN;
+    let hour = parseInt(m[4], 10);
+    const ap = (m[7] || "").toUpperCase();
+    if (ap === "PM" && hour < 12)
+        hour += 12;
+    if (ap === "AM" && hour === 12)
+        hour = 0;
+    const asUtc = Date.UTC(parseInt(m[3], 10), monthIdx, parseInt(m[1], 10), hour, parseInt(m[5], 10), m[6] ? parseInt(m[6], 10) : 0);
+    return asUtc - 8 * 3600 * 1000; // PHT -> UTC
+}
+
+function phivolcsEqId(datetime, lat, lng) {
+    return btoa(`${datetime}-${lat}-${lng}`).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+async function fetchLatestPhivolcs(env) {
+    const apiUrl = (env.PHIVOLCS_API_URL ?? "https://trikefare.x10.mx/terraguard/phivolcs.php").trim();
+    const minMag = parseFloat(env.PHIVOLCS_MIN_MAG ?? "3.0");
+    const res = await fetch(apiUrl, { headers: { "User-Agent": "TerraGuard-Cron-PHIVOLCS/1.0" } });
+    if (!res.ok)
+        throw new Error(`PHIVOLCS ${res.status}`);
+    const j = await res.json();
+    const rows = j.data ?? [];
+    if (!Array.isArray(rows) || rows.length === 0)
+        return null;
+    let best = null;
+    for (const r of rows) {
+        const mag = parseFloat(r.magnitude);
+        if (!isNaN(minMag) && (isNaN(mag) || mag < minMag))
+            continue;
+        const timeMs = parsePhivolcsTimeMs(r.datetime);
+        if (isNaN(timeMs))
+            continue;
+        if (!best || timeMs > best.timeMs)
+            best = { row: r, mag, timeMs };
+    }
+    if (!best)
+        return null;
+    const { row: r, timeMs } = best;
+    const lat = parseFloat(r.latitude), lng = parseFloat(r.longitude);
+    const latStr = isNaN(lat) ? String(r.latitude ?? "") : (Math.round(lat * 100) / 100).toFixed(2);
+    const lngStr = isNaN(lng) ? String(r.longitude ?? "") : (Math.round(lng * 100) / 100).toFixed(2);
+    return {
+        datetime: String(r.datetime).trim(),
+        latitude: latStr,
+        longitude: lngStr,
+        depth: String(Math.round(parseFloat(r.depth) || 0)),
+        magnitude: (Math.round(best.mag * 10) / 10).toFixed(1),
+        location: String(r.location ?? `${latStr}, ${lngStr}`),
+        link: r.link,
+        timeMs,
+    };
+}
+
+function buildPhivolcsFbMessage(eq) {
+    const { date, time } = formatUstFromMs(eq.timeMs);
+    const terraLink = `https://terraguard-ph.pages.dev/details/${phivolcsEqId(eq.datetime, eq.latitude, eq.longitude)}`;
+    const place = String(eq.location ?? "").trim() || `${eq.latitude}, ${eq.longitude}`;
+    const timeShort = String(time).replace(/\s*UST\s*$/i, "").trim();
+    const mag = parseFloat(eq.magnitude);
+    const magPrefix = isNaN(mag) ? "" : mag >= 7 ? "‼️MAJOR‼️ " : mag >= 6 ? "🟥 " : mag >= 5 ? "🟧 " : mag >= 4 ? "🟨 " : "🟩 ";
+    return [
+        `${magPrefix}JUST IN: ${date} - ${timeShort} | Magnitude: ${eq.magnitude} - ${place} | Earthquake Visual Report`,
+        ``,
+        `Magnitude: ${eq.magnitude}`,
+        `Location: ${place}`,
+        `Date & Time: ${date} - ${timeShort}`,
+        `Depth: ${eq.depth} km`,
+        `Coordinates: ${eq.latitude}°N, ${eq.longitude}°E`,
+        ``,
+        `Earthquake Info: ${terraLink}`,
+        `A visual representation of the seismic event based on available earthquake data.`,
+        `Please take note that this is not the final report. pleminary information`,
+        ``,
+        `Source: PHIVOLCS`,
+        ...(eq.link ? [`Bulletin: ${eq.link}`] : []),
+        ``,
+        `Join our discord for discussions: https://discord.gg/tdGrvnvehP`,
+        ``,
+        fbHashtags(eq.location, "PHIVOLCS"),
+    ].join("\n");
+}
+
+/**
+ * Post a PHIVOLCS quake to the Facebook Page. Returns a short status string.
+ * NEVER throws. Called ONLY from handlePhivolcsFb().
+ */
+async function postPhivolcsToFacebook(eq, env) {
+    const pageId = (env.FB_PAGE_ID ?? "").trim();
+    const userToken = (env.FB_USER_ACCESS_TOKEN ?? "").trim();
+    const appSecret = (env.FB_APP_SECRET ?? "").trim();
+    if (!pageId || !userToken)
+        return "skipped (FB_PAGE_ID / FB_USER_ACCESS_TOKEN not set)";
+    // Same FB gates as EMSC.
+    const filterSkip = fbPassesFilters(eq, env);
+    if (filterSkip)
+        return filterSkip;
+    let pageToken = await getFacebookPageToken(env);
+    if (!pageToken)
+        pageToken = userToken; // stored token may already be a Page token
+    const proof = await fbAppSecretProof(pageToken, appSecret);
+    const message = buildPhivolcsFbMessage(eq);
+    const lat = parseFloat(eq.latitude), lng = parseFloat(eq.longitude);
+    const hasCoords = !isNaN(lat) && !isNaN(lng);
+    // Designed card (same x10 renderer) first, raw Yandex satellite backup.
+    const { date: fbDate, time: fbTime } = formatUstFromMs(eq.timeMs);
+    const cardParams = hasCoords
+        ? new URLSearchParams({
+            lat: eq.latitude, lng: eq.longitude, mag: eq.magnitude,
+            place: String(eq.location ?? "").slice(0, 90),
+            date: fbDate, time: String(fbTime).replace(/\s*UST\s*$/i, ""),
+            depth: eq.depth,
+        }).toString()
+        : "";
+    const cardUrl = hasCoords && cardParams
+        ? `https://trikefare.x10.mx/terraguard/api/quake-card.php?${cardParams}`
+        : null;
+    const magNum = parseFloat(eq.magnitude);
+    const satZoom = isNaN(magNum) ? 7 : magNum >= 7 ? 6 : magNum >= 6 ? 7 : 8;
+    const yandexUrl = hasCoords
+        ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=${satZoom}&size=600,400&l=sat,skl&pt=${lng},${lat},pm2rdm`
+        : null;
+    const photoUrls = [cardUrl, yandexUrl].filter(Boolean);
+    const withProof = (params) => {
+        if (proof)
+            params.appsecret_proof = proof;
+        return params;
+    };
+    for (const photoUrl of photoUrls) {
+        if (String(photoUrl).includes("/api/quake-card") && !(await warmCardUrl(photoUrl, "phivolcs"))) {
+            console.error("[fb][phivolcs] card not renderable, using Yandex backup");
+            continue;
+        }
+        try {
+            const body = withProof({ access_token: pageToken, caption: message, url: photoUrl });
+            const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && (data.post_id || data.id))
+                return `posted photo ${data.post_id ?? data.id}`;
+            const fbErr = data?.error?.message ?? `HTTP ${res.status}`;
+            console.error(`[fb][phivolcs] photo post failed (${String(photoUrl).slice(0, 80)}): ${String(fbErr).slice(0, 300)}`);
+        }
+        catch (e) {
+            console.error("[fb][phivolcs] photo post exception", e instanceof Error ? e.message : String(e));
+        }
+    }
+    // Fallback: plain feed post with link.
+    try {
+        const terraLink = `https://terraguard-ph.pages.dev/details/${phivolcsEqId(eq.datetime, eq.latitude, eq.longitude)}`;
+        const body = withProof({ access_token: pageToken, message, link: terraLink });
+        const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/feed`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.id)
+            return `error ${data?.error?.message ?? `HTTP ${res.status}`}`.slice(0, 200);
+        return `posted ${data.id}`;
+    }
+    catch (e) {
+        return `error ${e instanceof Error ? e.message : String(e)}`.slice(0, 200);
+    }
+}
+
+async function handlePhivolcsFb(env) {
+    const kv = env.WEBHOOK_KV;
+    const latest = await fetchLatestPhivolcs(env);
+    if (!latest)
+        return "no PHIVOLCS data (no quake >= threshold)";
+    const dedupKey = `phivolcs:${phivolcsEqId(latest.datetime, latest.latitude, latest.longitude)}`;
+    const last = await kv.get("last_phivolcs_id");
+    const already = await kv.get(`sent:${dedupKey}`);
+    if (already || last === dedupKey)
+        return `duplicate ${dedupKey}`;
+    const lat = parseFloat(latest.latitude), lng = parseFloat(latest.longitude), mag = parseFloat(latest.magnitude);
+    // Skip anything already FB-posted (EMSC cross-posts AND PHIVOLCS revisions).
+    const fbMatch = findFbPostMatch(await getFbPostedIndex(kv), latest.timeMs, lat, lng, mag);
+    if (fbMatch) {
+        await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, fbOf: `${fbMatch.source}:${fbMatch.id}`, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
+        return `fb-duplicate ${dedupKey} (already posted by ${fbMatch.source})`;
+    }
+    let fbStatus = "skipped";
+    try {
+        fbStatus = await postPhivolcsToFacebook(latest, env);
+    }
+    catch (e) {
+        fbStatus = `error ${e instanceof Error ? e.message : String(e)}`.slice(0, 200);
+    }
+    console.log(`[fb][phivolcs] ${dedupKey}: ${fbStatus}`);
+    await kv.put("last_phivolcs_id", dedupKey);
+    await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, fbStatus, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
+    if (fbStatus.startsWith("posted"))
+        await recordFbPosted(kv, { source: "phivolcs", id: dedupKey, timeMs: latest.timeMs, lat, lng, mag });
+    return `fb ${dedupKey} M${latest.magnitude} ${latest.location} | ${fbStatus}`;
+}
+
 // ===== unified entry: ONE worker, ONE cron set (*/2 * * * * — see wrangler) =====
 
 function secretsOk(request, secrets) {
@@ -715,13 +989,16 @@ function json(body, status = 200) {
     });
 }
 
+// Named exports for unit testing (harmless in the worker runtime).
+export { parsePhivolcsTimeMs, buildPhivolcsFbMessage, fetchLatestPhivolcs, fbPassesFilters, postEmscToFacebook, postPhivolcsToFacebook };
+
 export default {
     async fetch(request, env) {
         if (request.method === "OPTIONS")
             return new Response(null, { headers: CORS });
         const url = new URL(request.url);
         if (url.pathname === "/health")
-            return new Response("ok USGS+EMSC", { headers: CORS });
+            return new Response("ok USGS+EMSC+PHIVOLCSfb", { headers: CORS });
         const secrets = [env.CRON_SECRET];
         const authed = secretsOk(request, secrets);
         const runBoth = async () => {
@@ -737,6 +1014,12 @@ export default {
             }
             catch (e) {
                 out.push("emsc: error " + (e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200)));
+            }
+            try {
+                out.push("phivolcs: " + await handlePhivolcsFb(env));
+            }
+            catch (e) {
+                out.push("phivolcs: error " + (e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200)));
             }
             return out.join(" | ");
         };
@@ -758,6 +1041,14 @@ export default {
                 return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
             }
         }
+        if (authed && (url.pathname === "/trigger-phivolcs" || url.pathname === "/cron-phivolcs")) {
+            try {
+                return json({ success: true, source: "PHIVOLCS", message: await handlePhivolcsFb(env) });
+            }
+            catch (e) {
+                return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
+            }
+        }
         return new Response("Not Found", { status: 404, headers: CORS });
     },
 
@@ -774,6 +1065,12 @@ export default {
             }
             catch (e) {
                 console.error("[cron][emsc] failed", e);
+            }
+            try {
+                console.log(`[cron][phivolcs] ${await handlePhivolcsFb(env)}`);
+            }
+            catch (e) {
+                console.error("[cron][phivolcs] failed", e);
             }
         })());
     },
