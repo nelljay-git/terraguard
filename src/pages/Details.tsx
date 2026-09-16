@@ -2,12 +2,12 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { fetchEarthquakeData, fetchArchiveData, fetchEarthquakeDetails, fetchBulletins, normalizeEarthquakes, normalizeEarthquake, type PhivolcsEarthquake, type NormalizedEarthquake, type EarthquakeDetails, type BulletinRef } from '../api/phivolcs';
 import { getPreferredApi } from '../lib/apiPreference';
-import { earthquakeToEqId, migrateEventEngagement } from '../lib/supabase';
+import { earthquakeToEqId, migrateEventEngagement, supabase } from '../lib/supabase';
 import { getSeverityColor, getSeverityLabel, haversineKm, timeAgo } from '../lib/utils';
 import { PH_PROVINCES, PH_CITIES } from '../data/phLocations';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation, Menu, Download, Send, Loader2 } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation, Menu, Download, Send, Loader2, Megaphone } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
 import { useAuth } from '../context/AuthContext';
@@ -387,6 +387,7 @@ export function Details() {
   const { user } = useAuth();
   const isWebhookAuthorized = user?.email?.toLowerCase() === 'gianganwneljae@gmail.com';
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [fbPostStatus, setFbPostStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
 
   // For USGS events, pull the raw event "products" so the overlay panel can show
   // ShakeMap / DYFI / ground-failure / aftershock layers on the interactive map.
@@ -968,6 +969,43 @@ export function Details() {
     }
   };
 
+  // Facebook Page post — same gating as the Discord button. The Page token
+  // never touches the browser: this calls /api/fb-post, which verifies the
+  // Supabase login server-side before posting.
+  const handlePostToFacebook = async () => {
+    if (!earthquake || !isWebhookAuthorized) return;
+    if (fbPostStatus === 'sending') return;
+    setFbPostStatus('sending');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error('Not signed in (no session token)');
+      const res = await fetch('/api/fb-post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          datetime: earthquake.datetime,
+          latitude: earthquake.latitude,
+          longitude: earthquake.longitude,
+          depth: earthquake.depth,
+          magnitude: earthquake.magnitude,
+          location: earthquake.location,
+          pageUrl: window.location.href,
+          sourceLink: activeLink || earthquake.link,
+          source: dataSource,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.success) throw new Error(j.error || `HTTP ${res.status}`);
+      setFbPostStatus('success');
+      setTimeout(() => setFbPostStatus('idle'), 3000);
+    } catch (e) {
+      console.error('Facebook post failed:', e);
+      setFbPostStatus('error');
+      setTimeout(() => setFbPostStatus('idle'), 4000);
+    }
+  };
+
   const renderIntensities = (text: string) => {
     if (!text) return null;
     const lines = text.split(/Intensity\s+/i).filter(line => line.trim().length > 0);
@@ -1060,6 +1098,21 @@ export function Details() {
             >
               {webhookStatus === 'sending' ? <Loader2 size={16} className="spinner-icon" /> : webhookStatus === 'success' ? <Check size={16} color="#10b981" /> : webhookStatus === 'error' ? <AlertTriangle size={16} color="#ef4444" /> : <Send size={16} />}
               <span>{webhookStatus === 'sending' ? 'Sending...' : webhookStatus === 'success' ? 'Sent!' : webhookStatus === 'error' ? 'Failed' : 'Send to Webhooks'}</span>
+            </button>
+          )}
+          {isWebhookAuthorized && (
+            <button
+              className="action-btn glass flex-center"
+              onClick={handlePostToFacebook}
+              disabled={fbPostStatus === 'sending'}
+              title="Post to Facebook Page"
+              style={{
+                background: fbPostStatus === 'success' ? 'rgba(16,185,129,0.15)' : fbPostStatus === 'error' ? 'rgba(239,68,68,0.15)' : undefined,
+                borderColor: fbPostStatus === 'success' ? 'rgba(16,185,129,0.4)' : fbPostStatus === 'error' ? 'rgba(239,68,68,0.4)' : undefined,
+              }}
+            >
+              {fbPostStatus === 'sending' ? <Loader2 size={16} className="spinner-icon" /> : fbPostStatus === 'success' ? <Check size={16} color="#10b981" /> : fbPostStatus === 'error' ? <AlertTriangle size={16} color="#ef4444" /> : <Megaphone size={16} />}
+              <span>{fbPostStatus === 'sending' ? 'Posting...' : fbPostStatus === 'success' ? 'Posted!' : fbPostStatus === 'error' ? 'Failed' : 'Post to Facebook'}</span>
             </button>
           )}
         </div>
