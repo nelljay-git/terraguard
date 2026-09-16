@@ -7,9 +7,11 @@ import { getSeverityColor, getSeverityLabel, haversineKm, timeAgo } from '../lib
 import { PH_PROVINCES, PH_CITIES } from '../data/phLocations';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation, Menu, Download, Send, Loader2, Megaphone } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation, Menu, Download, Send, Loader2, Megaphone, Clapperboard } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
+import { VideoReportModal } from '../components/VideoReport';
+import { extractMaxIntensity, extractShakeRows } from '../lib/videoMeta';
 import { useAuth } from '../context/AuthContext';
 import { FunFactLoader } from '../components/FunFactLoader';
 import { ActiveFaultsLayer } from '../components/ActiveFaultsLayer';
@@ -388,6 +390,7 @@ export function Details() {
   const isWebhookAuthorized = user?.email?.toLowerCase() === 'gianganwneljae@gmail.com';
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [fbPostStatus, setFbPostStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [showVideoReport, setShowVideoReport] = useState(false);
 
   // For USGS events, pull the raw event "products" so the overlay panel can show
   // ShakeMap / DYFI / ground-failure / aftershock layers on the interactive map.
@@ -1085,6 +1088,16 @@ export function Details() {
               <span>Share</span>
             </button>
           )}
+          {isUsgs && (
+            <button
+              className="action-btn glass flex-center"
+              onClick={() => setShowVideoReport(true)}
+              title="Generate video report"
+            >
+              <Clapperboard size={16} />
+              <span>Video Report</span>
+            </button>
+          )}
           {isWebhookAuthorized && (
             <button
               className="action-btn glass flex-center"
@@ -1679,6 +1692,15 @@ export function Details() {
         imageUrl={details?.mapUrl}
         altText={`Official map for earthquake in ${earthquake.location}`}
       />
+      {showVideoReport && earthquake && (
+        <VideoReportModal
+          earthquake={earthquake}
+          intensity={extractMaxIntensity(details?.reportedIntensities, details?.instrumentalIntensities)}
+          tsunamiThreat={tsunamiInfo?.label ?? ''}
+          shakes={extractShakeRows(details?.reportedIntensities)}
+          onClose={() => setShowVideoReport(false)}
+        />
+      )}
       </motion.div>
 
       {/* Revision toast: old link -> the reporting agency revised the event.
