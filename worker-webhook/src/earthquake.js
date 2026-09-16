@@ -361,17 +361,162 @@ async function handleUsgs(env) {
     if (already || lastId === dedupKey || lastId === earthquakeToEqId(latest))
         return `duplicate ${dedupKey}`;
     const lat = parseFloat(latest.latitude), lng = parseFloat(latest.longitude), mag = parseFloat(latest.magnitude);
+    // FB final report helper (never throws by itself; caller wraps anyway).
+    const tryFbFinal = async () => {
+        try {
+            return await postUsgsToFacebook(latest, env);
+        }
+        catch (e) {
+            return `error ${e instanceof Error ? e.message : String(e)}`.slice(0, 200);
+        }
+    };
+    const recordFb = async (fbStatus) => {
+        console.log(`[fb][usgs] ${dedupKey}: ${fbStatus}`);
+        if (fbStatus.startsWith("posted"))
+            await recordFbPosted(kv, { source: "usgs", id: latest.usgsId, timeMs: latest.timeMs, lat, lng, mag });
+    };
     const match = findCrossMatch(await getSentIndex(kv), "usgs", latest.timeMs, lat, lng, mag);
     if (match) {
         await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, crossOf: `${match.source}:${match.id}`, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
-        return `cross-duplicate ${dedupKey} (already announced by ${match.source})`;
+        // Still post the FB final report: USGS numbers confirm the earlier call.
+        const fbStatus = await tryFbFinal();
+        await recordFb(fbStatus);
+        return `cross-duplicate ${dedupKey} (already announced by ${match.source}) | fb: ${fbStatus}`;
     }
     await sendUsgsWebhook(latest, env);
+    const fbStatus = await tryFbFinal();
+    await recordFb(fbStatus);
     await kv.put("last_eq_id", dedupKey);
-    await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
+    await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, fbStatus, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
     await kv.put(`sent:${earthquakeToEqId(latest)}`, dedupKey, { expirationTtl: 60 * 60 * 24 * 30 });
     await recordSent(kv, { source: "usgs", id: latest.usgsId, timeMs: latest.timeMs, lat, lng, mag });
-    return `sent ${dedupKey} M${latest.magnitude} ${latest.location}`;
+    return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | fb: ${fbStatus}`;
+}
+
+// ===== USGS → Facebook FINAL REPORT (confirmation of earlier calls) =====
+// Same FB_MAG_MIN + FB_COUNTRY_FOCUS gates as the other sources (no PH
+// exception — a USGS final is wanted even for PH quakes). Posts
+// independently of fb:posted-index: the final report confirms, it does
+// not duplicate.
+
+function buildUsgsFbMessage(eq) {
+    const { date, time } = formatUtcDisplayMs(eq.timeMs);
+    const terraLink = `https://terraguard-ph.pages.dev/details/${earthquakeToEqId(eq)}`;
+    const place = String(eq.location ?? "").trim() || `${eq.latitude}, ${eq.longitude}`;
+    const timeBare = String(time).replace(/\s*(UTC|PHT|UST)\s*$/i, "").trim();
+    const mag = parseFloat(eq.magnitude);
+    const prefix = isNaN(mag) ? "🌍 " : mag >= 7 ? "🟥 " : mag >= 6 ? "🟥 " : mag >= 5 ? "🟧 " : mag >= 4 ? "🟨 " : mag >= 3 ? "🟦 " : "🟩 ";
+    return [
+        `${prefix}USGS FINAL REPORT`,
+        ``,
+        `A magnitude ${eq.magnitude} earthquake was recorded near ${place} on ${date} at ${timeBare}.`,
+        ``,
+        `EARTHQUAKE INFORMATION`,
+        ``,
+        `Magnitude: ${eq.magnitude}`,
+        `Location: ${place}`,
+        `Date & Time: ${date} - ${timeBare}`,
+        `Depth: ${eq.depth} km`,
+        `Coordinates: ${eq.latitude}°N, ${eq.longitude}°E`,
+        ``,
+        `Earthquake Details:`,
+        `${terraLink}`,
+        ``,
+        `This is the final report issued by the United States Geological Survey (USGS).`,
+        ``,
+        `Source: USGS`,
+        ``,
+        `Join the Terra Guard Discord community for earthquake discussions:`,
+        `https://discord.gg/tdGrvnvehP`,
+        ``,
+        `#Earthquake #USGS #TerraGuard #EarthquakeReport #SeismicActivity #Philippines #EarthquakePH #Lindol #TerraGuardPH`,
+    ].join("\n");
+}
+
+/**
+ * Post a USGS final report to the Facebook Page. Returns a short status
+ * string. NEVER throws. Called ONLY from handleUsgs().
+ */
+async function postUsgsToFacebook(eq, env) {
+    const pageId = (env.FB_PAGE_ID ?? "").trim();
+    const userToken = (env.FB_USER_ACCESS_TOKEN ?? "").trim();
+    const appSecret = (env.FB_APP_SECRET ?? "").trim();
+    if (!pageId || !userToken)
+        return "skipped (FB_PAGE_ID / FB_USER_ACCESS_TOKEN not set)";
+    // Same FB gates as the other sources (no PH exception for finals).
+    const filterSkip = fbPassesFilters(eq, env);
+    if (filterSkip)
+        return filterSkip;
+    let pageToken = await getFacebookPageToken(env);
+    if (!pageToken)
+        pageToken = userToken; // stored token may already be a Page token
+    const proof = await fbAppSecretProof(pageToken, appSecret);
+    const message = buildUsgsFbMessage(eq);
+    const lat = parseFloat(eq.latitude), lng = parseFloat(eq.longitude);
+    const hasCoords = !isNaN(lat) && !isNaN(lng);
+    // Designed card (same x10 renderer) first, raw Yandex satellite backup.
+    const { date: fbDate, time: fbTime } = formatUtcDisplayMs(eq.timeMs);
+    const cardParams = hasCoords
+        ? new URLSearchParams({
+            lat: eq.latitude, lng: eq.longitude, mag: eq.magnitude,
+            place: String(eq.location ?? "").slice(0, 90),
+            date: fbDate, time: fbTime,
+            depth: eq.depth, source: "USGS",
+        }).toString()
+        : "";
+    const cardUrl = hasCoords && cardParams
+        ? `https://trikefare.x10.mx/terraguard/api/quake-card.php?${cardParams}`
+        : null;
+    const magNum = parseFloat(eq.magnitude);
+    const satZoom = isNaN(magNum) ? 7 : magNum >= 7 ? 6 : magNum >= 6 ? 7 : 8;
+    const yandexUrl = hasCoords
+        ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=${satZoom}&size=600,400&l=sat,skl&pt=${lng},${lat},pm2rdm`
+        : null;
+    const photoUrls = [cardUrl, yandexUrl].filter(Boolean);
+    const withProof = (params) => {
+        if (proof)
+            params.appsecret_proof = proof;
+        return params;
+    };
+    for (const photoUrl of photoUrls) {
+        if (String(photoUrl).includes("/api/quake-card") && !(await warmCardUrl(photoUrl, "usgs"))) {
+            console.error("[fb][usgs] card not renderable, using Yandex backup");
+            continue;
+        }
+        try {
+            const body = withProof({ access_token: pageToken, caption: message, url: photoUrl });
+            const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && (data.post_id || data.id))
+                return `posted photo ${data.post_id ?? data.id}`;
+            const fbErr = data?.error?.message ?? `HTTP ${res.status}`;
+            console.error(`[fb][usgs] photo post failed (${String(photoUrl).slice(0, 80)}): ${String(fbErr).slice(0, 300)}`);
+        }
+        catch (e) {
+            console.error("[fb][usgs] photo post exception", e instanceof Error ? e.message : String(e));
+        }
+    }
+    // Fallback: plain feed post with link.
+    try {
+        const terraLink = `https://terraguard-ph.pages.dev/details/${earthquakeToEqId(eq)}`;
+        const body = withProof({ access_token: pageToken, message, link: terraLink });
+        const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/feed`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.id)
+            return `error ${data?.error?.message ?? `HTTP ${res.status}`}`.slice(0, 200);
+        return `posted ${data.id}`;
+    }
+    catch (e) {
+        return `error ${e instanceof Error ? e.message : String(e)}`.slice(0, 200);
+    }
 }
 
 // ===== EMSC =====
@@ -525,6 +670,27 @@ async function sendEmscWebhook(eq, env) {
     catch { /* reactions/polls best-effort */ }
 }
 
+// Same-source EMSC revision window (tighter than cross-source so real
+// aftershock sequences still post): ±120s, 50km, ΔM≤0.4.
+const EMSC_REV_WINDOW_MS = 120 * 1000;
+const EMSC_REV_MAX_KM = 50;
+const EMSC_REV_MAX_MAG_DIFF = 0.4;
+
+function findEmscRevision(index, timeMs, lat, lng, mag) {
+    for (const e of index) {
+        if (e.source !== "emsc")
+            continue;
+        if (Math.abs(e.timeMs - timeMs) > EMSC_REV_WINDOW_MS)
+            continue;
+        if (Math.abs(e.mag - mag) > EMSC_REV_MAX_MAG_DIFF)
+            continue;
+        if (haversineKm(e.lat, e.lng, lat, lng) > EMSC_REV_MAX_KM)
+            continue;
+        return e;
+    }
+    return null;
+}
+
 async function handleEmsc(env) {
     const kv = env.WEBHOOK_KV;
     const latest = await fetchLatestEmsc(env);
@@ -536,10 +702,20 @@ async function handleEmsc(env) {
     if (already || last === dedupKey)
         return `duplicate ${dedupKey}`;
     const lat = parseFloat(latest.latitude), lng = parseFloat(latest.longitude), mag = parseFloat(latest.magnitude);
-    const match = findCrossMatch(await getSentIndex(kv), "emsc", latest.timeMs, lat, lng, mag);
+    const sentIndex = await getSentIndex(kv);
+    const match = findCrossMatch(sentIndex, "emsc", latest.timeMs, lat, lng, mag);
     if (match) {
         await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, crossOf: `${match.source}:${match.id}`, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
         return `cross-duplicate ${dedupKey} (already announced by ${match.source})`;
+    }
+    // Same-source revision guard: EMSC re-detections arrive under a NEW unid
+    // for the same physical quake. Tighter than cross-source matching so
+    // real aftershock sequences still post.
+    const rev = findEmscRevision(sentIndex, latest.timeMs, lat, lng, mag);
+    if (rev) {
+        await kv.put("last_emsc_id", dedupKey);
+        await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, revisionOf: `emsc:${rev.id}`, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
+        return `emsc-revision ${dedupKey} (already sent as emsc:${rev.id})`;
     }
     await sendEmscWebhook(latest, env);
     // Facebook auto-post — EMSC ONLY. Best-effort: never blocks or throws.
@@ -559,7 +735,7 @@ async function handleEmsc(env) {
     return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | fb: ${fbStatus}`;
 }
 
-// ===== Facebook auto-post (EMSC + PHIVOLCS — USGS never calls this) =====
+// ===== Facebook auto-post (EMSC + PHIVOLCS + USGS — see per-source rules) =====
 // Env (Cloudflare secrets, already set):
 //   FB_APP_ID, FB_APP_SECRET, FB_PAGE_ID, FB_USER_ACCESS_TOKEN
 //   FB_MAG_MIN (e.g. "1.0"), FB_COUNTRY_FOCUS (e.g. "PHILIPPINES")
@@ -969,9 +1145,11 @@ async function handlePhivolcsFb(env) {
     if (already || last === dedupKey)
         return `duplicate ${dedupKey}`;
     const lat = parseFloat(latest.latitude), lng = parseFloat(latest.longitude), mag = parseFloat(latest.magnitude);
-    // Skip anything already FB-posted (EMSC cross-posts AND PHIVOLCS revisions).
+    // Skip anything already FB-posted by EMSC/PHIVOLCS (revisions included).
+    // USGS finals are ignored here on purpose: the final report confirms,
+    // it does not replace the visual report.
     const fbMatch = findFbPostMatch(await getFbPostedIndex(kv), latest.timeMs, lat, lng, mag);
-    if (fbMatch) {
+    if (fbMatch && fbMatch.source !== "usgs") {
         await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, fbOf: `${fbMatch.source}:${fbMatch.id}`, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
         return `fb-duplicate ${dedupKey} (already posted by ${fbMatch.source})`;
     }
@@ -1013,7 +1191,7 @@ function json(body, status = 200) {
 }
 
 // Named exports for unit testing (harmless in the worker runtime).
-export { parsePhivolcsTimeMs, buildPhivolcsFbMessage, fetchLatestPhivolcs, fbPassesFilters, postEmscToFacebook, postPhivolcsToFacebook, buildFacebookMessage, formatUtcDisplayMs, phivolcsDisplayParts };
+export { parsePhivolcsTimeMs, buildPhivolcsFbMessage, fetchLatestPhivolcs, fbPassesFilters, postEmscToFacebook, postPhivolcsToFacebook, buildFacebookMessage, formatUtcDisplayMs, phivolcsDisplayParts, findEmscRevision, buildUsgsFbMessage, postUsgsToFacebook };
 
 export default {
     async fetch(request, env) {

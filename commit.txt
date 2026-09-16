@@ -1,12 +1,8 @@
-Display earthquake times in UTC for USGS; keep PHIVOLCS local
+fix(fb): EMSC retitle + correct event timezones, footer URL opacity
 
-- Normalize USGS event times to UTC as "d MMMM yyyy - HH:mm:ss UTC"
-  (24-hour, with seconds) so they match the source event time
-- Make PHIVOLCS the exception: keep its original Philippine local time
-  string unchanged instead of converting to UTC
-- Append " UTC" to displayed times so users aren't confused about zone
-- Update internal parsers (SummaryCards, AftershockTracker, Details)
-  to strip the trailing " UTC" and tolerate both 12h/24h and optional
-  seconds formats
-- Change Details label to "Date & Time" (value now carries the zone)
-- Drop now-unused date-fns parse/isValid usage in phivolcs.ts
+- earthquake.js: EMSC caption title is now "JUST IN: A Magnitude X
+  struck near {place} on {date} - {time}" with bare times
+- earthquake.js: PHIVOLCS posts show the real PHT bulletin time
+  (was UTC clock, e.g. 2:02 AM rendered as 6:02 PM); EMSC shows
+  explicit UTC label instead of bare/UST time
+- quake-card.php: footer site URL opacity to ~65%

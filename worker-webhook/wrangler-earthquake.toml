@@ -32,7 +32,7 @@ EMSC_MAX_LNG = "180"
 # EMSC_WEBHOOK_URL = EMSC's OWN channel (existing; falls back to DISCORD_WEBHOOK_URL)
 # BOT_TOKEN = optional (auto-reactions), FELT_REPORTS_WEBHOOK_URL = optional (EMSC poll)
 # CRON_SECRET = manual trigger secret
-# Facebook auto-post (EMSC ONLY — USGS never posts to FB):
+# Facebook auto-post (EMSC + PHIVOLCS + USGS final — see per-source rules):
 # FB_PAGE_ID, FB_USER_ACCESS_TOKEN (long-lived user token, or Page token),
 # FB_APP_ID, FB_APP_SECRET (used for appsecret_proof). If FB_PAGE_ID or
 # FB_USER_ACCESS_TOKEN is missing, FB is skipped silently.
@@ -44,8 +44,8 @@ EMSC_MAX_LNG = "180"
 # PHIVOLCS → Facebook only (never Discord):
 # PHIVOLCS_API_URL (default https://trikefare.x10.mx/terraguard/phivolcs.php),
 # PHIVOLCS_MIN_MAG (default "3.0"). Same FB_MAG_MIN / FB_COUNTRY_FOCUS gates
-# apply. FB cross-dedup via fb:posted-index (shared with EMSC).
-# PHIVOLCS → Facebook only (never Discord):
-# PHIVOLCS_API_URL (default https://trikefare.x10.mx/terraguard/phivolcs.php),
-# PHIVOLCS_MIN_MAG (default "3.0"). Same FB_MAG_MIN / FB_COUNTRY_FOCUS gates
-# apply. FB cross-dedup via fb:posted-index (shared with EMSC).
+# apply. Skips quakes EMSC/PHIVOLCS already FB-posted (USGS finals don't
+# suppress it — confirmation pattern).
+# USGS → Facebook FINAL REPORT (confirmation of earlier calls):
+# same FB_MAG_MIN / FB_COUNTRY_FOCUS gates, no PH exception. Posts even
+# when EMSC/PHIVOLCS already covered the quake; own exact-dedup only.
