@@ -443,6 +443,11 @@ async function postUsgsToFacebook(eq, env) {
     const appSecret = (env.FB_APP_SECRET ?? "").trim();
     if (!pageId || !userToken)
         return "skipped (FB_PAGE_ID / FB_USER_ACCESS_TOKEN not set)";
+    // Kill-switch: USGS_POST_FB=false (also 0/no/off) disables USGS FB
+    // posts. Defaults to posting when unset or any other value.
+    const postFlag = String(env.USGS_POST_FB ?? "true").trim().toLowerCase();
+    if (["false", "0", "no", "off", "disabled"].includes(postFlag))
+        return "skipped (USGS_POST_FB disabled)";
     // Same FB gates as the other sources (no PH exception for finals).
     const filterSkip = fbPassesFilters(eq, env);
     if (filterSkip)

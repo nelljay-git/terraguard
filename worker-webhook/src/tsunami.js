@@ -33,6 +33,8 @@ async function fetchTsunamiAlerts() {
           sent: f.properties.sent,
           effective: f.properties.effective,
           expires: f.properties.expires,
+          status: f.properties.status || "",
+          messageType: f.properties.messageType || "",
           link: `https://api.weather.gov/alerts/${encodeURIComponent(f.properties.id)}`,
           tsunamiGovLink: "https://www.tsunami.gov/",
           quake: parseQuakeFromText(
@@ -164,6 +166,31 @@ function isTsunamiThreat(alert) {
   );
 }
 
+// NWS drills must never reach Discord or Facebook. Primary signal is the
+// CAP `status` field (Actual vs Test/Exercise/System/Draft); headline and
+// event text are the backup (tsunami.gov fallback carries no status).
+function isTestAlert(alert) {
+  const status = String(alert?.status || "").trim().toLowerCase();
+  if (status && status !== "actual") return true;
+  const text = `${alert?.event || ""} ${alert?.headline || ""}`;
+  return /\b(TEST|EXERCISE|DEMO|DRILL)\b/i.test(text);
+}
+
+// NWS areaDesc can list hundreds of zones (entire coastlines). Summarize
+// to a readable prefix instead of dumping it into the FB Location line.
+function summarizeAreas(areaDesc, maxLen = 300) {
+  const raw = String(areaDesc || "").trim();
+  if (!raw) return "";
+  const zones = raw
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (zones.length <= 3 && raw.length <= maxLen) return raw;
+  const head = zones.slice(0, 3).join("; ");
+  const shown = head.length > maxLen ? head.slice(0, maxLen - 1) + "…" : head;
+  return `${shown} … (+${Math.max(0, zones.length - 3)} more zones)`;
+}
+
 // ===== Facebook auto-post (THREATS ONLY — statements never post) =====
 // Env (same Cloudflare secrets as earthquake.js):
 //   FB_PAGE_ID, FB_USER_ACCESS_TOKEN, FB_APP_ID, FB_APP_SECRET (proof),
@@ -243,7 +270,7 @@ function buildTsunamiMessage(alert) {
     ? q.location
       ? `${q.latLon} - ${q.location}`
       : q.latLon
-    : q.location || alert.areaDesc || "See details";
+    : q.location || summarizeAreas(alert.areaDesc) || "See details";
   const link = alert.tsunamiGovLink || alert.link;
   // "Issued Wed Aug 05 04:24:02 UTC 2026" style (message issue time, UTC).
   const issuedDate = new Date(alert.sent || alert.effective);
@@ -311,6 +338,8 @@ async function postTsunamiToFacebook(alert, env) {
     return "skipped (FB_PAGE_ID / FB_USER_ACCESS_TOKEN not set)";
   if (!isTsunamiThreat(alert))
     return `skipped (not a threat: ${alert.event})`;
+  if (isTestAlert(alert))
+    return "skipped (test/exercise alert)";
   const focusRaw = (env.FB_TSUNAMI_AREA_FOCUS ?? "").trim();
   const focusUpper = focusRaw.toUpperCase();
   if (focusRaw && focusUpper !== "ALL" && focusUpper !== "*") {
@@ -490,10 +519,18 @@ async function handleCron(env) {
   if (alerts.length === 0)
     return "no active tsunami alert (tsunami.gov: No Warning/Advisory/Watch)";
   let sent = 0;
+  let skippedTests = 0;
   for (const a of alerts) {
     const key = `tsunami:${a.id}`;
     const already = await env.WEBHOOK_KV.get(key);
     if (already) continue;
+    // NWS drills go nowhere — not Discord, not Facebook. Deliberately NOT
+    // marked sent: if the same ID flips to a real alert, it must still fire.
+    if (isTestAlert(a)) {
+      skippedTests++;
+      console.log(`[tsunami] test/exercise skipped (not sent): ${a.id}`);
+      continue;
+    }
     const min = (env.TSUNAMI_MIN_SEVERITY || "").toLowerCase();
     if (min) {
       const e = a.event.toLowerCase();
@@ -521,14 +558,17 @@ async function handleCron(env) {
     sent++;
     if (sent >= 3) break;
   }
-  if (sent === 0) return `all ${alerts.length} tsunami alerts already sent`;
+  if (sent === 0)
+    return skippedTests > 0
+      ? `no real alerts (${skippedTests} test/exercise skipped)`
+      : `all ${alerts.length} tsunami alerts already sent`;
   return `sent ${sent} tsunami alert(s): ${alerts
     .slice(0, sent)
     .map((a) => a.event)
     .join(", ")}`;
 }
 // Named exports for unit testing (harmless in the worker runtime).
-export { parseQuakeFromText, buildTsunamiMessage, tsunamiSeverityLabel, isTsunamiThreat, quakeCoords };
+export { parseQuakeFromText, buildTsunamiMessage, tsunamiSeverityLabel, isTsunamiThreat, quakeCoords, isTestAlert, summarizeAreas };
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS")
