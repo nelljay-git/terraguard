@@ -32,6 +32,7 @@ import {
   TILE,
   MOSAIC_D,
 } from '../src/components/VideoReport.js';
+import { estimateAffectedRadiusKm, estimateDamage } from '../src/lib/videoMeta.js';
 
 // Re-exported so tests/tools can import the shared render pieces from the
 // bundled output (esbuild tree-shakes otherwise-unreferenced exports).
@@ -47,7 +48,7 @@ export {
   ROWS,
   TILE,
   MOSAIC_D,
-};
+}; // note: buildVideoCaption is defined locally below (already exported)
 
 const execFileAsync = promisify(execFile);
 
@@ -58,17 +59,89 @@ interface QuakeInput {
   depth: string;
   magnitude: string;
   location: string;
+  place?: string; // alias used by the worker dispatch + manual workflow inputs
   link?: string;
   intensity?: string;
   threat?: string;
   shakes?: Array<{ area: string; intensity: string }>;
   description?: string;
+  faultType?: string;
+  infoNo?: string;
+  tsunamiThreat?: string;
+}
+
+// b64url slug for the /details link (same scheme the workers use:
+// base64 of "datetime-lat-lng", also resolvable for any source).
+function detailsSlug(datetime: string, lat: string, lng: string): string {
+  return Buffer.from(`${datetime}-${lat}-${lng}`)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+function splitDateTime(raw: string): { date: string; time: string } {
+  const m = /^(.*?)\s*-\s*(.+)$/.exec(String(raw ?? '').trim());
+  if (!m) return { date: String(raw ?? '').trim(), time: '' };
+  return { date: m[1].trim(), time: m[2].trim() };
+}
+
+function prettifyRange(s: string): string {
+  return s.replace(/^~\s*/, '~ ').replace('–', ' - ');
+}
+
+// FLASH REPORT caption for the Facebook video post (see sample format).
+export function buildVideoCaption(quake: QuakeInput): string {
+  const mag = String(quake.magnitude ?? '?');
+  const place = quake.location || quake.place || '';
+  const { date, time } = splitDateTime(quake.datetime ?? '');
+  const agency = { emsc: 'EMSC', usgs: 'USGS', phivolcs: 'PHIVOLCS' }[(quake as { source?: string }).source as string] || 'USGS';
+  const lat = String(quake.latitude ?? '');
+  const lng = String(quake.longitude ?? '');
+  const coords = lat && lng ? `${lat}°N, ${lng}°E` : '';
+  const country = (() => {
+    const parts = place.split(',').map((s) => s.trim()).filter(Boolean);
+    const raw = (parts.length > 1 ? parts[parts.length - 1] : parts[0] || '').replace(/\(.*?\)/g, ' ').trim();
+    if (!raw || raw.length > 30 || raw.split(/\s+/).length > 3) return '';
+    return raw
+      .split(/\s+/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+  })();
+  const dmg = estimateDamage(quake.magnitude, quake.intensity);
+  const detailsUrl = `https://terraguard-ph.pages.dev/details/${detailsSlug(quake.datetime ?? '', lat, lng)}`;
+  return [
+    `${date}${time ? ` - ${time}` : ''} | Mag ${mag} - ${place} | FLASH REPORT`,
+    ``,
+    `M${mag} Earthquake`,
+    `Location: ${place}`,
+    `Country: ${country || 'N/A'}`,
+    `Date: ${date}${time ? ` - ${time}` : ''}`,
+    `Depth: ${quake.depth ? `${quake.depth} km` : 'N/A'}`,
+    `Fault Type: ${quake.faultType || 'N/A'}`,
+    `Agency: ${agency}`,
+    `Information No.: ${quake.infoNo || 'N/A'}`,
+    `Max Intensity: ${quake.intensity || 'N/A'}`,
+    `Affected Radius: ${estimateAffectedRadiusKm(quake.magnitude) || 'N/A'}`,
+    `Tsunami Threat: ${quake.tsunamiThreat || 'N/A'}`,
+    `Event Type: Earthquake`,
+    `Economic Losses: ${dmg ? prettifyRange(dmg.losses) : 'N/A'}`,
+    `Damage & Fatalities: ${dmg ? '~ ' + dmg.fatalities.replace('–', '-') : 'N/A'}`,
+    ...(coords ? [`Coordinates: ${coords}`, ``] : []),
+    `Earthquake Visual Report:`,
+    detailsUrl,
+    ``,
+    `Source: ${agency}`,
+    ``,
+    `#Earthquake #${agency} #TerraGuardPH`,
+  ].join('\n');
 }
 
 async function main(): Promise<void> {
   const outDir = process.env.OUT_DIR || '/tmp/terraguard-video';
   fs.mkdirSync(outDir, { recursive: true });
   const quake = JSON.parse(process.env.QUAKE_JSON || '{}') as QuakeInput;
+  if (!quake.location && quake.place) quake.location = quake.place;
   if (!quake.latitude || !quake.longitude) throw new Error('QUAKE_JSON missing latitude/longitude');
 
   registerFont('public/fonts/oswald-700.ttf', { family: 'Oswald', weight: '700' });
@@ -168,7 +241,7 @@ async function main(): Promise<void> {
   if (pageId && token) {
     const form = new FormData();
     form.append('access_token', token);
-    form.append('description', quake.description || `TerraGuard earthquake report M${quake.magnitude} ${quake.location}`);
+    form.append('description', quake.description || buildVideoCaption(quake));
     form.append('source', new Blob([fs.readFileSync(mp4)], { type: 'video/mp4' }), 'report.mp4');
     const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/videos`, { method: 'POST', body: form });
     const data = (await res.json().catch(() => ({}))) as { id?: string; error?: { message?: string } };

@@ -86,6 +86,28 @@ jobs:
           fi
           mkdir -p video-out
           node dist-video/video-entry.mjs
+          # Persist the resolved quake payload for later steps (dispatch or manual).
+          if [ "$DISPATCH_PAYLOAD" = "null" ] || [ -z "$DISPATCH_PAYLOAD" ]; then
+            echo "$QUAKE_JSON" > video-out/quake.json
+          else
+            echo "$DISPATCH_PAYLOAD" > video-out/quake.json
+          fi
+
+      - name: Reformat for TikTok (9:16)
+        run: ffmpeg -y -i video-out/out.mp4 -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" -c:a copy video-out/tiktok.mp4
+
+      - name: TikTok upload
+        if: ${{ secrets.TIKTOK_REFRESH_TOKEN != '' }}
+        env:
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          TIKTOK_MODE: ${{ vars.TIKTOK_MODE || 'draft' }}
+          GH_SECRETS_PAT: ${{ secrets.GH_SECRETS_PAT }}
+          GH_REPO: ${{ github.repository }}
+          MP4: video-out/tiktok.mp4
+          QUAKE_FILE: video-out/quake.json
+        run: node scripts/tiktok-upload.mjs
 
       - name: Keep MP4 artifact
         if: always()

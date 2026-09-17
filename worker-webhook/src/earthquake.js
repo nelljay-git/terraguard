@@ -168,9 +168,9 @@ async function recordFbPosted(kv, entry) {
 }
 
 // Fire-and-forget trigger for the free headless video renderer (GitHub
-// Actions + node-canvas + FFmpeg, scripts/video-entry.ts). Only called on
-// EMSC/PHIVOLCS Facebook successes at/above RENDER_MIN_MAG — never for
-// USGS finals, never on failure. All failures stay in the logs.
+// Actions + node-canvas + FFmpeg, scripts/video-entry.ts). Auto video data
+// is USGS-only: called on USGS final-report successes at/above
+// RENDER_MIN_MAG — never for EMSC/PHIVOLCS. All failures stay in the logs.
 async function dispatchVideoRender(env, payload) {
     const token = (env.GH_DISPATCH_TOKEN ?? "").trim();
     const repo = (env.GH_REPO ?? "nelljay-git/terraguard").trim();
@@ -410,8 +410,16 @@ async function handleUsgs(env) {
     };
     const recordFb = async (fbStatus) => {
         console.log(`[fb][usgs] ${dedupKey}: ${fbStatus}`);
-        if (fbStatus.startsWith("posted"))
-            await recordFbPosted(kv, { source: "usgs", id: latest.usgsId, timeMs: latest.timeMs, lat, lng, mag });
+        if (!fbStatus.startsWith("posted"))
+            return;
+        await recordFbPosted(kv, { source: "usgs", id: latest.usgsId, timeMs: latest.timeMs, lat, lng, mag });
+        // Auto video data is USGS-only: fire the headless renderer on final
+        // report successes (fresh + cross-duplicate paths both land here).
+        await dispatchVideoRender(env, {
+            source: "usgs", latitude: latest.latitude, longitude: latest.longitude,
+            magnitude: latest.magnitude, depth: latest.depth, place: latest.location,
+            datetime: latest.datetime, fbPostId: fbStatus.replace(/^posted (photo )?/, ""),
+        });
     };
     const match = findCrossMatch(await getSentIndex(kv), "usgs", latest.timeMs, lat, lng, mag);
     if (match) {
@@ -774,12 +782,6 @@ async function handleEmsc(env) {
     await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, fbStatus, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
     if (fbStatus.startsWith("posted"))
         await recordFbPosted(kv, { source: "emsc", id: latest.unid, timeMs: latest.timeMs, lat, lng, mag });
-    if (fbStatus.startsWith("posted"))
-        await dispatchVideoRender(env, {
-            source: "emsc", latitude: latest.latitude, longitude: latest.longitude,
-            magnitude: latest.magnitude, depth: latest.depth, place: latest.location,
-            datetime: latest.datetime, fbPostId: fbStatus.replace(/^posted (photo )?/, ""),
-        });
     await recordSent(kv, { source: "emsc", id: latest.unid, timeMs: latest.timeMs, lat, lng, mag });
     return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | fb: ${fbStatus}`;
 }
@@ -1214,11 +1216,6 @@ async function handlePhivolcsFb(env) {
     await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, fbStatus, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
     if (fbStatus.startsWith("posted")) {
         await recordFbPosted(kv, { source: "phivolcs", id: dedupKey, timeMs: latest.timeMs, lat, lng, mag });
-        await dispatchVideoRender(env, {
-            source: "phivolcs", latitude: latest.latitude, longitude: latest.longitude,
-            magnitude: latest.magnitude, depth: latest.depth, place: latest.location,
-            datetime: latest.datetime, fbPostId: fbStatus.replace(/^posted (photo )?/, ""),
-        });
     }
     return `fb ${dedupKey} M${latest.magnitude} ${latest.location} | ${fbStatus}`;
 }

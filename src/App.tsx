@@ -20,6 +20,7 @@ import { Stars } from './pages/Stars';
 import { Forum } from './pages/Forum';
 import { ForumPost } from './pages/ForumPost';
 import { ForumEdit } from './pages/ForumEdit';
+import { TikTokCallback } from './pages/TikTokCallback';
 import { Blog } from './pages/Blog';
 import { BlogPost } from './pages/BlogPost';
 import './App.css';
@@ -68,6 +69,7 @@ function App() {
             <Route path="/forum/:id/edit" element={<ForumEdit />} />
             <Route path="/blog" element={<Blog />} />
             <Route path="/blog/:slug" element={<BlogPost />} />
+            <Route path="/tiktok-callback" element={<TikTokCallback />} />
           </Routes>
         </main>
       </div>

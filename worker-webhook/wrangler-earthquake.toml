@@ -50,8 +50,9 @@ EMSC_MAX_LNG = "180"
 # same FB_MAG_MIN / FB_COUNTRY_FOCUS gates, no PH exception. Posts even
 # when EMSC/PHIVOLCS already covered the quake; own exact-dedup only.
 # USGS_POST_FB=false (also 0/no/off) disables USGS FB posts entirely.
-# Free video renderer (GitHub Actions, $0): after an EMSC/PHIVOLCS FB post
+# Free video renderer (GitHub Actions, $0): after a USGS final report
 # at/above RENDER_MIN_MAG (default "5.0"), the worker fires a
-# repository_dispatch to build + upload the video report.
+# repository_dispatch to build + upload the video report. EMSC/PHIVOLCS
+# FB posts do NOT trigger videos.
 # GH_DISPATCH_TOKEN = classic PAT with `repo` scope (GITHUB_TOKEN cannot
 # trigger dispatches). GH_REPO default "nelljay-git/terraguard".
