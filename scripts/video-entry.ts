@@ -71,6 +71,16 @@ interface QuakeInput {
   tsunamiThreat?: string;
   usgsEventId?: string;
   source?: string;
+  // Dispatch payloads nest enrichment here (GitHub caps
+  // repository_dispatch at 10 top-level properties); manual JSON may
+  // still carry the same fields flat — main() flattens once.
+  extra?: {
+    intensity?: string;
+    threat?: string;
+    tsunamiThreat?: string;
+    shakes?: Array<{ area: string; intensity: string }>;
+    usgsEventId?: string;
+  };
 }
 
 // b64url slug for the /details link (same scheme the workers use:
@@ -145,6 +155,13 @@ async function main(): Promise<void> {
   fs.mkdirSync(outDir, { recursive: true });
   const quake = JSON.parse(process.env.QUAKE_JSON || '{}') as QuakeInput;
   if (!quake.location && quake.place) quake.location = quake.place;
+  // Flatten dispatch `extra` enrichment (flat manual fields win when set).
+  const ex = quake.extra ?? {};
+  quake.intensity = quake.intensity || ex.intensity || '';
+  quake.threat = quake.threat || ex.threat || '';
+  quake.tsunamiThreat = quake.tsunamiThreat || ex.tsunamiThreat || quake.threat;
+  quake.shakes = quake.shakes ?? ex.shakes ?? [];
+  quake.usgsEventId = quake.usgsEventId || ex.usgsEventId;
   if (!quake.latitude || !quake.longitude) throw new Error('QUAKE_JSON missing latitude/longitude');
 
   registerFont('public/fonts/oswald-700.ttf', { family: 'Oswald', weight: '700' });

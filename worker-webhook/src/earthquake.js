@@ -426,12 +426,14 @@ async function handleUsgs(env) {
             source: "usgs", latitude: latest.latitude, longitude: latest.longitude,
             magnitude: latest.magnitude, depth: latest.depth, place: latest.location,
             datetime: latest.datetime, fbPostId: fbStatus.replace(/^posted (photo )?/, ""),
-            // Same enrichment the manual Post Video path sends: exact event
-            // id (DYFI), threat label, and feed MMI as roman intensity.
-            usgsEventId: latest.usgsId,
-            threat: usgsTsunamiLabel(latest.tsunami),
-            tsunamiThreat: usgsTsunamiLabel(latest.tsunami),
-            intensity: mmiToRoman(latest.mmi),
+            // Nested under ONE key: GitHub repository_dispatch rejects
+            // payloads with more than 10 top-level properties (HTTP 422).
+            extra: {
+                usgsEventId: latest.usgsId,
+                threat: usgsTsunamiLabel(latest.tsunami),
+                tsunamiThreat: usgsTsunamiLabel(latest.tsunami),
+                intensity: mmiToRoman(latest.mmi),
+            },
         });
     };
     const match = findCrossMatch(await getSentIndex(kv), "usgs", latest.timeMs, lat, lng, mag);
