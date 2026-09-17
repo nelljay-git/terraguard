@@ -1763,6 +1763,8 @@ export function Details() {
           intensity={extractMaxIntensity(details?.reportedIntensities, details?.instrumentalIntensities)}
           tsunamiThreat={tsunamiInfo?.label ?? ''}
           shakes={extractShakeRows(details?.reportedIntensities)}
+          usgsEventId={isUsgs ? (extractUsgsEventId(earthquake.link) ?? undefined) : undefined}
+          quakeSource={dataSource}
           onClose={() => setShowVideoReport(false)}
         />
       )}

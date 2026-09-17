@@ -4,7 +4,7 @@
 //
 // Input:  QUAKE_JSON env — { datetime, latitude, longitude, depth,
 //           magnitude, location, link?, intensity?, threat?, shakes?,
-//           description? }
+//           description?, usgsEventId?, source? }
 // Output: OUT_DIR/out.mp4 (+ frames), optional Facebook upload when
 //   FB_PAGE_ID + FB_UPLOAD_TOKEN are set.
 //
@@ -33,6 +33,7 @@ import {
   MOSAIC_D,
 } from '../src/components/VideoReport.js';
 import { estimateAffectedRadiusKm, estimateDamage } from '../src/lib/videoMeta.js';
+import { fetchDyfiPoints } from '../src/lib/dyfi.js';
 
 // Re-exported so tests/tools can import the shared render pieces from the
 // bundled output (esbuild tree-shakes otherwise-unreferenced exports).
@@ -68,6 +69,8 @@ interface QuakeInput {
   faultType?: string;
   infoNo?: string;
   tsunamiThreat?: string;
+  usgsEventId?: string;
+  source?: string;
 }
 
 // b64url slug for the /details link (same scheme the workers use:
@@ -180,13 +183,23 @@ async function main(): Promise<void> {
     eyD: (H - ROWS * TILE * MOSAIC_D) / 2 + epy * MOSAIC_D,
   };
 
+  // DYFI felt responses (never fatal — [] keeps the video identical).
+  const dyfi = await fetchDyfiPoints({
+    usgsEventId: quake.usgsEventId,
+    datetime: quake.datetime,
+    source: (quake as { source?: string }).source,
+    latitude: quake.latitude,
+    longitude: quake.longitude,
+  });
+  console.log(`dyfi points: ${dyfi.length}`);
+
   // Frames (deterministic timesteps — smoother than realtime capture).
   const total = Math.round(DUR * FPS);
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
   for (let i = 0; i < total; i++) {
     const tt = i / FPS;
-    drawFrame(ctx as unknown as CanvasRenderingContext2D, view, quake, quake.intensity ?? '', quake.threat ?? '', quake.shakes ?? [], tt);
+    drawFrame(ctx as unknown as CanvasRenderingContext2D, view, quake, quake.intensity ?? '', quake.threat ?? '', quake.shakes ?? [], dyfi, tt);
     fs.writeFileSync(path.join(outDir, `frame${String(i).padStart(4, '0')}.png`), canvas.toBuffer('image/png'));
     if (i % 120 === 0) console.log(`frame ${i}/${total}`);
   }

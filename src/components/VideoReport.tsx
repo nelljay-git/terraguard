@@ -6,14 +6,17 @@ import { useEffect, useRef, useState } from 'react';
 import { X, Download, Clapperboard } from 'lucide-react';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { estimateAffectedRadiusKm, estimateDamage, type ShakeRow } from '../lib/videoMeta';
+import type { DyfiPoint } from '../lib/dyfi';
+import { fetchDyfiPoints } from '../lib/dyfi';
+import { mmiColor } from '../lib/usgsOverlays';
 import './VideoReport.css';
 
 // Staged video export of the earthquake report, rendered + captured
 // fully in-browser (canvas.captureStream + MediaRecorder — no server).
 //
 // Timeline (~14s): plain map (0-1s) -> epicenter pop (1s) -> shockwave
-// spreading across the map (3s, ~1s) -> styled info cards fade/slide in
-// (4s) -> idle drift until the end.
+// spreading across the map (3s, ~1s) -> DYFI felt responses + styled
+// info cards fade in (4s) -> idle drift until the end.
 
 export const W = 1080;
 export const H = 1440;
@@ -23,6 +26,7 @@ export const MAP_T = 1; // epicenter appears
 export const WAVE_T = 3; // shockwave starts
 export const WAVE_DUR = 0.9;
 export const INFO_T = 4; // info cards appear
+export const DYFI_T = WAVE_T + WAVE_DUR + 0.1; // DYFI fade-in, right after the wave
 // Mosaic: 5 cols x 6 rows of 256px Esri tiles (same map as the app),
 // covering the canvas with a slight crop. Epicenter lands at canvas center.
 export const COLS = 5;
@@ -65,21 +69,48 @@ function tileUrls(eq: PhivolcsEarthquake): string[] {
   return esriTileUrls(eq).map((u) => `/api/tile?src=${encodeURIComponent(u)}`);
 }
 
-// Epicenter position inside the COLSxROWS mosaic (tile px), for the
-// zoom-about-point math in drawFrame.
-export function epicenterMosaicPx(eq: PhivolcsEarthquake): { epx: number; epy: number } {
-  const lat = parseFloat(eq.latitude);
-  const lng = parseFloat(eq.longitude);
-  const z = zoomForMag(eq.magnitude);
+// Global Web-Mercator tile px for a lat/lng at zoom z.
+function tileGlobalPx(latRaw: string, lngRaw: string, z: number): { gx: number; gy: number } {
+  const lat = parseFloat(latRaw);
+  const lng = parseFloat(lngRaw);
   const n = 2 ** z;
   const rad = ((isNaN(lat) ? 0 : lat) * Math.PI) / 180;
   const gx = (((isNaN(lng) ? 0 : lng) + 180) / 360) * n * TILE;
   const gy = ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n * TILE;
+  return { gx, gy };
+}
+
+// Top-left of the COLSxROWS mosaic in global tile px, for the quake's zoom.
+function mosaicOrigin(eq: PhivolcsEarthquake): { x0: number; y0: number } {
+  const z = zoomForMag(eq.magnitude);
+  const { gx, gy } = tileGlobalPx(eq.latitude, eq.longitude, z);
   const cx = Math.floor(gx / TILE);
   const cy = Math.floor(gy / TILE);
-  const x0 = (cx + Math.round(0 - (COLS - 1) / 2)) * TILE;
-  const y0 = (cy + Math.round(0 - (ROWS - 1) / 2)) * TILE;
+  return {
+    x0: (cx + Math.round(0 - (COLS - 1) / 2)) * TILE,
+    y0: (cy + Math.round(0 - (ROWS - 1) / 2)) * TILE,
+  };
+}
+
+// Epicenter position inside the COLSxROWS mosaic (tile px), for the
+// zoom-about-point math in drawFrame.
+export function epicenterMosaicPx(eq: PhivolcsEarthquake): { epx: number; epy: number } {
+  const z = zoomForMag(eq.magnitude);
+  const { gx, gy } = tileGlobalPx(eq.latitude, eq.longitude, z);
+  const { x0, y0 } = mosaicOrigin(eq);
   return { epx: gx - x0, epy: gy - y0 };
+}
+
+// Any lat/lng -> canvas display px (same zoom + centering as the mosaic),
+// so overlays like DYFI points land exactly on the map underneath.
+export function latLngToDisplayPx(eq: PhivolcsEarthquake, lat: number, lng: number): { x: number; y: number } {
+  const z = zoomForMag(eq.magnitude);
+  const { gx, gy } = tileGlobalPx(String(lat), String(lng), z);
+  const { x0, y0 } = mosaicOrigin(eq);
+  return {
+    x: (W - COLS * TILE * MOSAIC_D) / 2 + (gx - x0) * MOSAIC_D,
+    y: (H - ROWS * TILE * MOSAIC_D) / 2 + (gy - y0) * MOSAIC_D,
+  };
 }
 
 function loadImage(src: string): Promise<{ img: HTMLImageElement | null; status: string }> {
@@ -183,6 +214,7 @@ export function drawFrame(
   intensity: string,
   threat: string,
   shakes: ShakeRow[],
+  dyfi: DyfiPoint[],
   t: number,
 ) {
   const p = Math.min(Math.max(t / DUR, 0), 1);
@@ -277,6 +309,36 @@ export function drawFrame(
     ctx.strokeStyle = `rgba(239,68,68,${(0.85 * (1 - wt)).toFixed(3)})`;
     ctx.lineWidth = 9 * (1 - wt) + 2;
     ctx.stroke();
+  }
+
+  // DYFI felt responses: MMI-colored dots fading in right after the wave
+  // spread finishes (under the info cards). Events without DYFI data draw
+  // nothing. Off-map points are skipped.
+  if (dyfi.length > 0 && t >= DYFI_T) {
+    const a = easeOutCubic(Math.min((t - DYFI_T) / 0.8, 1));
+    ctx.save();
+    ctx.globalAlpha = 0.9 * a;
+    for (const p of dyfi) {
+      const { x, y } = latLngToDisplayPx(eq, p.lat, p.lng);
+      if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = p.cdi != null ? mmiColor(p.cdi) : '#ffd166';
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.stroke();
+    }
+    ctx.restore();
+    // Count caption, top-center in the gap between the data columns.
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '400 15px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`\u25CF ${dyfi.length} DYFI FELT REPORTS`, W / 2, 60);
+    ctx.restore();
+    ctx.textAlign = 'left';
   }
 
   // Broadcast data columns + callout + intensity scale (t>=INFO_T).
@@ -559,12 +621,16 @@ export function VideoReportModal({
   intensity,
   tsunamiThreat,
   shakes,
+  usgsEventId,
+  quakeSource,
   onClose,
 }: {
   earthquake: PhivolcsEarthquake;
   intensity?: string;
   tsunamiThreat?: string;
   shakes?: ShakeRow[];
+  usgsEventId?: string;
+  quakeSource?: string;
   onClose: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -584,6 +650,26 @@ export function VideoReportModal({
   useEffect(() => {
     shakesRef.current = shakes ?? [];
   }, [shakes]);
+  // DYFI felt responses load in the background (never block the preview
+  // or recording); drawFrame reads the ref each frame, so points pop in
+  // whenever they arrive.
+  const dyfiRef = useRef<DyfiPoint[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchDyfiPoints({
+      usgsEventId,
+      datetime: earthquake.datetime,
+      source: quakeSource,
+      latitude: earthquake.latitude,
+      longitude: earthquake.longitude,
+    }).then((pts) => {
+      if (!cancelled) dyfiRef.current = pts;
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [phase, setPhase] = useState<Phase>('loading');
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [mime, setMime] = useState<string>('');
@@ -654,11 +740,11 @@ export function VideoReportModal({
     const tick = (now: number) => {
       const t = (now - t0) / 1000;
       if (phase === 'recording' && t >= DUR) {
-        drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, DUR);
+        drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, dyfiRef.current, DUR);
         recRef.current?.stop();
         return;
       }
-      drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, phase === 'preview' ? t % (DUR + 1) : t);
+      drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, dyfiRef.current, phase === 'preview' ? t % (DUR + 1) : t);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
