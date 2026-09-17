@@ -6,8 +6,9 @@
  * magnitude/depth panel, epicenter rings + callout, location box,
  * bottom info bar (date/source/synthetic seismograph).
  *
- * Query: ?lat=&lng=&mag=&place=&date=&time=&depth=&source=&sat=
- *   (lat/lng/mag required; source defaults to PHIVOLCS)
+ * Query: ?lat=&lng=&mag=&place=&date=&time=&depth=&source=&info=&sat=
+ *   (lat/lng/mag required; source defaults to PHIVOLCS; info = PHIVOLCS
+ *   bulletin number, shows an "INFORMATION NO." pill when present)
  * Output: image/png (720x900), cached to disk per query (24h).
  *
  * Requirements: PHP 8+ with GD + FreeType (imagettftext), cURL (or
@@ -81,6 +82,9 @@ $date = safeSubstr((string)($_GET['date'] ?? ''), 40);
 $time = safeSubstr((string)($_GET['time'] ?? ''), 20);
 $depth = safeSubstr((string)($_GET['depth'] ?? ''), 12);
 $source = safeSubstr((string)($_GET['source'] ?? 'PHIVOLCS'), 24);
+// PHIVOLCS bulletin number (digits only): renders the INFORMATION pill.
+// Absent for EMSC/USGS cards, which simply omit the pill.
+$infoNo = safeSubstr(preg_replace('/\D+/', '', (string)($_GET['info'] ?? '')), 4);
 // Event hour (24h) from the card's time string ("09:22 PM", "14:30", ...).
 function eventHour24(string $t): ?int {
     if (preg_match('/(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP])\.?\s*M\.?/i', $t, $m)) {
@@ -104,7 +108,7 @@ $mapLayer = $satellite ? 'sat,skl' : 'map';
 
 // --- Disk cache (cards never change for the same query) ---
 if (!is_dir(CACHE_DIR)) { @mkdir(CACHE_DIR, 0777, true); }
-$cacheKey = md5(implode('|', [$lat, $lng, $magRaw, $place, $date, $time, $depth, $mapLayer, $source]));
+$cacheKey = md5(implode('|', [$lat, $lng, $magRaw, $place, $date, $time, $depth, $mapLayer, $source, $infoNo]));
 $cacheFile = CACHE_DIR . '/' . $cacheKey . '.png';
 if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < CACHE_TTL) {
     header('Content-Type: image/png');
@@ -413,6 +417,19 @@ $magSize = autofit($fontOswald, $magText, 53, 200);
 $panelCx = (int)round($panelX0 + ($panelX1 - $panelX0) / 2);
 drawCentered($im, $fontInter, 15, $panelCx, $panelTop + 36, 'MAGNITUDE', $muted);
 drawCentered($im, $fontOswald, $magSize, $panelCx, $panelTop + 104, $magText, $white);
+
+// --- 2b. Information number pill (PHIVOLCS bulletins only, ?info=) ---
+// Same width/style as the magnitude panel, tucked right below it (clear
+// of the epicenter rings, which start ~40px lower).
+if ($infoNo !== '') {
+    $infoText = 'INFORMATION NO. ' . $infoNo;
+    $pillTop = $panelTop + $panelH + 10;
+    $pillH = 44;
+    imagefilledrectangle($im, $panelX0, $pillTop, $panelX1, $pillTop + $pillH, $panelBg);
+    imagefilledrectangle($im, $panelX1 - 8, $pillTop, $panelX1, $pillTop + $pillH, $magBar);
+    $infoSize = autofit($fontOswald, $infoText, 22, $panelW - 32);
+    drawCentered($im, $fontOswald, $infoSize, $panelCx, $pillTop + 31, $infoText, $white);
+}
 
 // --- 3. Epicenter rings + dot, severity word-coding color ---
 $sevRingFaint = imagecolorallocatealpha($im, $sevBarRgb[0], $sevBarRgb[1], $sevBarRgb[2], 100);

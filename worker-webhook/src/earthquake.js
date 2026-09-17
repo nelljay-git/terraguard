@@ -1045,6 +1045,13 @@ function parsePhivolcsTimeMs(s) {
 function phivolcsEqId(datetime, lat, lng) {
     return btoa(`${datetime}-${lat}-${lng}`).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
+// PHIVOLCS bulletin number from the bulletin filename:
+// ".../2026_0701_0004_B1.html" -> "1" (Earthquake Information No. 1,
+// B2 = revised No. 2, ...). "" when the link carries no bulletin marker.
+function phivolcsInfoNo(link) {
+    const m = /B(\d+)\.html?(?:[?#]|$)/i.exec(String(link ?? ""));
+    return m ? String(parseInt(m[1], 10)) : "";
+}
 
 async function fetchLatestPhivolcs(env) {
     const apiUrl = (env.PHIVOLCS_API_URL ?? "https://trikefare.x10.mx/terraguard/phivolcs.php").trim();
@@ -1081,6 +1088,7 @@ async function fetchLatestPhivolcs(env) {
         magnitude: (Math.round(best.mag * 10) / 10).toFixed(1),
         location: String(r.location ?? `${latStr}, ${lngStr}`),
         link: r.link,
+        infoNo: phivolcsInfoNo(r.link),
         timeMs,
     };
 }
@@ -1095,6 +1103,7 @@ function buildPhivolcsFbMessage(eq) {
     return [
         `${magPrefix}JUST IN: ${date} - ${timeShort} | Magnitude: ${eq.magnitude} - ${place} | Earthquake Visual Report`,
         ``,
+        ...(eq.infoNo ? [`Information No.: ${eq.infoNo}`] : []),
         `Magnitude: ${eq.magnitude}`,
         `Location: ${place}`,
         `Date & Time: ${date} - ${timeShort}`,
@@ -1143,6 +1152,7 @@ async function postPhivolcsToFacebook(eq, env) {
             place: String(eq.location ?? "").slice(0, 90),
             date: fbDate, time: fbTime,
             depth: eq.depth, source: "PHIVOLCS",
+            ...(eq.infoNo ? { info: eq.infoNo } : {}),
         }).toString()
         : "";
     const cardUrl = hasCoords && cardParams
@@ -1258,7 +1268,7 @@ function json(body, status = 200) {
 }
 
 // Named exports for unit testing (harmless in the worker runtime).
-export { parsePhivolcsTimeMs, buildPhivolcsFbMessage, fetchLatestPhivolcs, fbPassesFilters, postEmscToFacebook, postPhivolcsToFacebook, buildFacebookMessage, formatUtcDisplayMs, phivolcsDisplayParts, findEmscRevision, buildUsgsFbMessage, postUsgsToFacebook };
+    export { parsePhivolcsTimeMs, buildPhivolcsFbMessage, fetchLatestPhivolcs, fbPassesFilters, postEmscToFacebook, postPhivolcsToFacebook, buildFacebookMessage, formatUtcDisplayMs, phivolcsDisplayParts, phivolcsInfoNo, findEmscRevision, buildUsgsFbMessage, postUsgsToFacebook };
 
 export default {
     async fetch(request, env) {
