@@ -7,7 +7,7 @@ import { getSeverityColor, getSeverityLabel, haversineKm, timeAgo } from '../lib
 import { PH_PROVINCES, PH_CITIES } from '../data/phLocations';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation, Menu, Download, Send, Loader2, Megaphone, Clapperboard } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation, Menu, Download, Send, Loader2, Megaphone, Clapperboard, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
 import { VideoReportModal } from '../components/VideoReport';
@@ -390,6 +390,8 @@ export function Details() {
   const isWebhookAuthorized = user?.email?.toLowerCase() === 'gianganwneljae@gmail.com';
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [fbPostStatus, setFbPostStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [videoPostStatus, setVideoPostStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [videoPostError, setVideoPostError] = useState('');
   const [showVideoReport, setShowVideoReport] = useState(false);
 
   // For USGS events, pull the raw event "products" so the overlay panel can show
@@ -1009,6 +1011,49 @@ export function Details() {
     }
   };
 
+  // Video render trigger — same owner gating. Fires the free headless
+  // renderer (GitHub Actions); the PAT stays server-side in /api/video-trigger.
+  // Rendering takes minutes: success here means "started", watch the
+  // Actions tab / Facebook page for the finished video.
+  const handlePostVideo = async () => {
+    if (!earthquake || !isWebhookAuthorized) return;
+    if (videoPostStatus === 'sending') return;
+    setVideoPostStatus('sending');
+    setVideoPostError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error('Not signed in (no session token)');
+      const res = await fetch('/api/video-trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          datetime: earthquake.datetime,
+          latitude: earthquake.latitude,
+          longitude: earthquake.longitude,
+          depth: earthquake.depth,
+          magnitude: earthquake.magnitude,
+          location: earthquake.location,
+          link: activeLink || earthquake.link,
+          source: dataSource,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.success) throw new Error(j.error || `HTTP ${res.status}`);
+      setVideoPostStatus('success');
+      setTimeout(() => setVideoPostStatus('idle'), 5000);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('Video trigger failed:', e);
+      setVideoPostError(msg);
+      setVideoPostStatus('error');
+      setTimeout(() => {
+        setVideoPostStatus('idle');
+        setVideoPostError('');
+      }, 8000);
+    }
+  };
+
   const renderIntensities = (text: string) => {
     if (!text) return null;
     const lines = text.split(/Intensity\s+/i).filter(line => line.trim().length > 0);
@@ -1097,6 +1142,26 @@ export function Details() {
               <Clapperboard size={16} />
               <span>Video Report</span>
             </button>
+          )}
+          {isWebhookAuthorized && (
+            <button
+              className="action-btn glass flex-center"
+              onClick={handlePostVideo}
+              disabled={videoPostStatus === 'sending'}
+              title="Render + post video via GitHub Actions"
+              style={{
+                background: videoPostStatus === 'success' ? 'rgba(16,185,129,0.15)' : videoPostStatus === 'error' ? 'rgba(239,68,68,0.15)' : undefined,
+                borderColor: videoPostStatus === 'success' ? 'rgba(16,185,129,0.4)' : videoPostStatus === 'error' ? 'rgba(239,68,68,0.4)' : undefined,
+              }}
+            >
+              {videoPostStatus === 'sending' ? <Loader2 size={16} className="spinner-icon" /> : videoPostStatus === 'success' ? <Check size={16} color="#10b981" /> : videoPostStatus === 'error' ? <AlertTriangle size={16} color="#ef4444" /> : <Upload size={16} />}
+              <span>{videoPostStatus === 'sending' ? 'Starting…' : videoPostStatus === 'success' ? 'Render started!' : videoPostStatus === 'error' ? 'Failed' : 'Post Video'}</span>
+            </button>
+          )}
+          {isWebhookAuthorized && videoPostStatus === 'error' && videoPostError && (
+            <span className="text-muted" style={{ fontSize: '0.8rem', color: '#ef4444', maxWidth: '100%', overflowWrap: 'anywhere' }}>
+              {videoPostError}
+            </span>
           )}
           {isWebhookAuthorized && (
             <button
