@@ -99,6 +99,21 @@ export async function onRequest(context: { request: Request; env?: Record<string
           depth: String(body.depth ?? ''),
           place: esc(body.location).slice(0, 90),
           datetime: esc(body.datetime),
+          // Enrichment from /details (intensity/threat/shakes/event id).
+          // The headless renderer reads intensity + threat + shakes +
+          // usgsEventId; threat is also aliased as tsunamiThreat for the
+          // Facebook caption builder. All capped — dispatch payloads
+          // should stay small.
+          intensity: esc(body.intensity).slice(0, 10),
+          threat: esc(body.tsunamiThreat).slice(0, 60),
+          tsunamiThreat: esc(body.tsunamiThreat).slice(0, 60),
+          shakes: Array.isArray(body.shakes)
+            ? body.shakes.slice(0, 4).map((r) => {
+                const row = (r ?? {}) as Record<string, unknown>;
+                return { area: esc(row.area).slice(0, 40), intensity: esc(row.intensity).slice(0, 10) };
+              })
+            : [],
+          usgsEventId: esc(body.usgsEventId).slice(0, 32) || undefined,
         },
       }),
     });

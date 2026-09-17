@@ -264,6 +264,12 @@ function usgsTsunamiLabel(tsunami) {
         return "TSUNAMI ADVISORY";
     return "NONE";
 }
+// Feed MMI (when assigned) -> roman numerals for the video renderer.
+function mmiToRoman(mmi) {
+    const n = Math.round(Number(mmi));
+    const romans = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+    return n >= 1 && n <= 10 ? romans[n] : "";
+}
 
 async function fetchLatestUsgsEarthquake(env) {
     const feed = (env.USGS_FEED ?? "all_day.geojson").replace(/^\//, "");
@@ -308,6 +314,7 @@ async function fetchLatestUsgsEarthquake(env) {
             usgsId: f.id,
             timeMs,
             tsunami: f.properties.tsunami ?? 0,
+            mmi: f.properties.mmi ?? null,
         };
     }
     return null;
@@ -419,6 +426,12 @@ async function handleUsgs(env) {
             source: "usgs", latitude: latest.latitude, longitude: latest.longitude,
             magnitude: latest.magnitude, depth: latest.depth, place: latest.location,
             datetime: latest.datetime, fbPostId: fbStatus.replace(/^posted (photo )?/, ""),
+            // Same enrichment the manual Post Video path sends: exact event
+            // id (DYFI), threat label, and feed MMI as roman intensity.
+            usgsEventId: latest.usgsId,
+            threat: usgsTsunamiLabel(latest.tsunami),
+            tsunamiThreat: usgsTsunamiLabel(latest.tsunami),
+            intensity: mmiToRoman(latest.mmi),
         });
     };
     const match = findCrossMatch(await getSentIndex(kv), "usgs", latest.timeMs, lat, lng, mag);

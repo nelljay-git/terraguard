@@ -1036,6 +1036,14 @@ export function Details() {
           location: earthquake.location,
           link: activeLink || earthquake.link,
           source: dataSource,
+          // Same enrichment the in-browser Video Report modal gets — the
+          // headless renderer has no Details context, so without these the
+          // video prints "—" for intensity/threat and a magnitude-only
+          // damage estimate.
+          intensity: extractMaxIntensity(details?.reportedIntensities, details?.instrumentalIntensities),
+          tsunamiThreat: tsunamiInfo?.label ?? '',
+          shakes: extractShakeRows(details?.reportedIntensities),
+          usgsEventId: isUsgs ? (extractUsgsEventId(activeLink || earthquake.link) ?? undefined) : undefined,
         }),
       });
       const j = await res.json().catch(() => ({}));
