@@ -64,7 +64,13 @@ async function refreshAccessToken(clientKey, clientSecret, refreshToken) {
     refresh_token: refreshToken,
   });
   if (!res.ok || !data.access_token) {
-    throw new Error(`token refresh failed: ${data.error?.message ?? res.status} — re-run Login Kit to get a fresh pair`);
+    // Token endpoint uses OAuth shapes ({error, error_description, log_id})
+    // while API endpoints use {error:{code,message,log_id}} — surface both
+    // so the next failure names its real cause instead of just "200".
+    const reason = data.error_description ?? data.error?.message ?? res.status;
+    const code = typeof data.error === 'string' ? data.error : (data.error?.code ?? 'none');
+    const logId = data.log_id ?? data.error?.log_id ?? 'none';
+    throw new Error(`token refresh failed: ${reason} (code=${code}, log_id=${logId}) — re-run Login Kit to get a fresh pair`);
   }
   return data;
 }
@@ -144,9 +150,9 @@ async function main() {
   const title = (process.env.TITLE || '').slice(0, 2200) || buildTitle(quake);
   console.log(`mode=${mode} mp4=${mp4Path}`);
 
-  const clientKey = process.env.TIKTOK_CLIENT_KEY || '';
-  const clientSecret = process.env.TIKTOK_CLIENT_SECRET || '';
-  let refreshToken = process.env.TIKTOK_REFRESH_TOKEN || '';
+  const clientKey = (process.env.TIKTOK_CLIENT_KEY || '').trim();
+  const clientSecret = (process.env.TIKTOK_CLIENT_SECRET || '').trim();
+  let refreshToken = (process.env.TIKTOK_REFRESH_TOKEN || '').trim();
   if (!clientKey || !clientSecret || !refreshToken) {
     // No credentials (e.g. secrets not set yet): skip green so the video
     // pipeline stays green. The workflow `if:` gate can't read secrets.
