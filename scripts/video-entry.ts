@@ -118,22 +118,48 @@ async function main(): Promise<void> {
     if (i % 120 === 0) console.log(`frame ${i}/${total}`);
   }
 
-  // Encode.
+  // Encode: PNG frames + timed sound effects (repo public/sounds).
+  // epicenter-appear @2s (pop), wave-spread @3s (shockwave),
+  // reports @4s (info cards). Missing SFX files are skipped so one absent
+  // file can never kill the video; with none present it renders silent.
   const mp4 = path.join(outDir, 'out.mp4');
-  await execFileAsync('ffmpeg', [
+  const sfxDir = path.join(process.cwd(), 'public', 'sounds');
+  const sfxPlan = [
+    { file: 'epicenter-appear.mp3', at: 2000 },
+    { file: 'wave-spread.mp3', at: 3000 },
+    { file: 'reports.mp3', at: 4000 },
+  ].filter((s) => {
+    const ok = fs.existsSync(path.join(sfxDir, s.file));
+    if (!ok) console.error('sfx missing, skipping:', s.file);
+    return ok;
+  });
+  const ffmpegArgs = [
     '-y',
     '-framerate',
     String(FPS),
     '-i',
     path.join(outDir, 'frame%04d.png'),
-    '-c:v',
-    'libx264',
-    '-pix_fmt',
-    'yuv420p',
-    '-crf',
-    '20',
-    mp4,
-  ]);
+  ];
+  for (const s of sfxPlan) ffmpegArgs.push('-i', path.join(sfxDir, s.file));
+  if (sfxPlan.length > 0) {
+    const mix = sfxPlan
+      .map((s, i) => `[${i + 1}:a]adelay=delays=${s.at}:all=1,volume=1.0[a${i}]`)
+      .join(';');
+    // amix normalizes down, volume restores punch.
+    const mixed = sfxPlan.map((_, i) => `[a${i}]`).join('') + `amix=inputs=${sfxPlan.length}:duration=longest:dropout_transition=0,volume=2.2[aout]`;
+    ffmpegArgs.push(
+      '-filter_complex',
+      `${mix};${mixed}`,
+      '-map',
+      '0:v',
+      '-map',
+      '[aout]',
+      '-c:a',
+      'aac',
+    );
+  }
+  ffmpegArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-shortest', mp4);
+  await execFileAsync('ffmpeg', ffmpegArgs);
   console.log('mp4:', mp4, fs.statSync(mp4).size, 'bytes');
 
   // Optional Facebook upload.

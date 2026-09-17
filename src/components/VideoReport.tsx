@@ -210,6 +210,18 @@ export function drawFrame(
   vg.addColorStop(1, 'rgba(0,0,0,0.48)');
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, W, H);
+
+  // Watermark: vertical "TERRA GUARD PH" on the right center, 50% opacity.
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.translate(W - 44, H / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 24px Oswald, Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('TERRA GUARD PH', 0, 0);
+  ctx.restore();
+  ctx.textAlign = 'left';
   const dex = view ? view.exD : W / 2;
   const dey = view ? view.eyD : H / 2;
   const magText = eq.magnitude || '?';
@@ -242,12 +254,15 @@ export function drawFrame(
     ctx.arc(dex, dey, badgeR, 0, Math.PI * 2);
     ctx.fillStyle = sevColor;
     ctx.fill();
-    if (sc > 0.6) {
+    if (sc > 0.6 && t >= INFO_T) {
+      ctx.save();
+      ctx.globalAlpha = Math.min((t - INFO_T) / 0.3, 1);
       ctx.fillStyle = '#ffffff';
       ctx.font = '700 44px Oswald, Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(magText, dex, dey + 15 * Math.min(sc, 1));
       ctx.textAlign = 'left';
+      ctx.restore();
     }
   }
 
@@ -548,6 +563,7 @@ export function VideoReportModal({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number>(0);
   const recRef = useRef<MediaRecorder | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const viewRef = useRef<MosaicView | null>(null);
   const intensityRef = useRef<string>(intensity ?? '');
   useEffect(() => {
@@ -643,7 +659,7 @@ export function VideoReportModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  // Cleanup recorder + object URL on unmount.
+  // Cleanup recorder + audio context + object URL on unmount.
   useEffect(() => {
     return () => {
       cancelAnimationFrame(rafRef.current);
@@ -654,12 +670,16 @@ export function VideoReportModal({
           /* ignore */
         }
       }
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
       if (videoUrl) URL.revokeObjectURL(videoUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const startRecording = () => {
+  const startRecording = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const stream = typeof canvas.captureStream === 'function' ? canvas.captureStream(FPS) : null;
@@ -672,13 +692,56 @@ export function VideoReportModal({
       setPhase('unsupported');
       return;
     }
+    // Timed sound effects: the same three MP3s the headless renderer
+    // mixes, scheduled against the recording clock and captured through
+    // a MediaStreamDestination (plus live monitor so you hear it too).
+    // Created here (user gesture) so autoplay policy allows playback.
+    // Any failure degrades to the previous silent recording.
+    let recordStream: MediaStream = stream;
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AC) {
+        const actx = new AC({ sampleRate: 48000 });
+        audioCtxRef.current = actx;
+        await actx.resume().catch(() => {});
+        const files = ['epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
+        const at = [2.0, 3.0, 4.0];
+        const dest = actx.createMediaStreamDestination();
+        const t0 = actx.currentTime + 0.05;
+        await Promise.all(
+          files.map(async (f, i) => {
+            const res = await fetch(`/sounds/${f}`);
+            if (!res.ok) return;
+            const buf = await actx.decodeAudioData(await res.arrayBuffer());
+            const src = actx.createBufferSource();
+            src.buffer = buf;
+            const g = actx.createGain();
+            g.gain.value = 1.0;
+            src.connect(g);
+            g.connect(dest);
+            g.connect(actx.destination);
+            src.start(t0 + at[i]);
+          }),
+        );
+        const audioTracks = dest.stream.getAudioTracks();
+        if (audioTracks.length > 0) {
+          recordStream = new MediaStream([...stream.getVideoTracks(), ...audioTracks]);
+        }
+      }
+    } catch (e) {
+      console.error('[VideoReport] sound setup failed, recording silent:', e instanceof Error ? e.message : e);
+    }
     const chunks: Blob[] = [];
-    const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 24_000_000 });
+    const rec = new MediaRecorder(recordStream, { mimeType: type, videoBitsPerSecond: 24_000_000, audioBitsPerSecond: 128_000 });
     rec.ondataavailable = (e: BlobEvent) => {
       if (e.data && e.data.size > 0) chunks.push(e.data);
     };
     rec.onstop = () => {
       stream.getTracks().forEach((tr) => tr.stop());
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
       const blob = new Blob(chunks, { type: type.split(';')[0] });
       if (videoUrl) URL.revokeObjectURL(videoUrl);
       setVideoUrl(URL.createObjectURL(blob));
