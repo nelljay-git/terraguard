@@ -186,9 +186,23 @@ async function main() {
 
   // 2. Creator info (validates token/scopes; draft mode still calls it).
   console.log('querying creator info…');
-  const creator = dry
-    ? { creator_username: 'DRY', privacy_level_options: ['SELF_ONLY'], max_video_post_duration_sec: 600 }
-    : await apiJson('POST', '/v2/post/publish/creator_info/query/', accessToken, {});
+  // 2. Creator info. REQUIRED for direct post (video.publish scope), but
+  // the inbox draft flow never needs it — TikTok's own upload guide goes
+  // straight to init, and our draft path only logs these fields. So in
+  // draft mode a failure is a warning, not fatal (e.g. token carries
+  // video.upload but not video.publish).
+  let creator = { creator_username: '?', privacy_level_options: ['SELF_ONLY'], max_video_post_duration_sec: 600 };
+  if (dry) {
+    creator = { creator_username: 'DRY', privacy_level_options: ['SELF_ONLY'], max_video_post_duration_sec: 600 };
+  } else if (mode === 'direct') {
+    creator = await apiJson('POST', '/v2/post/publish/creator_info/query/', accessToken, {});
+  } else {
+    try {
+      creator = await apiJson('POST', '/v2/post/publish/creator_info/query/', accessToken, {});
+    } catch (e) {
+      console.log(`::warning::creator info unavailable in draft mode (${e instanceof Error ? e.message : e}) — continuing to inbox init.`);
+    }
+  }
   console.log('creator:', creator.creator_username, '| privacy options:', (creator.privacy_level_options || []).join(','));
 
   // 3. Init (inbox draft vs direct post).
@@ -218,10 +232,16 @@ async function main() {
     console.log(`DRY RUN: would upload ${size} bytes in ${Math.ceil(size / (10 * 1024 * 1024))} chunk(s) to <upload_url>, title: ${title.slice(0, 80)}`);
   }
 
-  // 5. Status check.
+  // 5. Status check (informational — the chunks are already on TikTok's
+  // servers at this point, so in draft mode a failure warns, not kills).
   if (!dry) {
-    const status = await apiJson('POST', '/v2/post/publish/status/fetch/', accessToken, { publish_id: init.publish_id });
-    console.log('publish status:', JSON.stringify(status).slice(0, 300));
+    try {
+      const status = await apiJson('POST', '/v2/post/publish/status/fetch/', accessToken, { publish_id: init.publish_id });
+      console.log('publish status:', JSON.stringify(status).slice(0, 300));
+    } catch (e) {
+      if (mode === 'direct') throw e;
+      console.log(`::warning::status check failed (${e instanceof Error ? e.message : e}) — upload itself completed.`);
+    }
   }
   console.log(mode === 'draft' ? 'DONE: video is in the creator inbox — finish posting inside the TikTok app.' : 'DONE: direct post submitted.');
 }
