@@ -163,6 +163,18 @@ async function main() {
   if (!fs.existsSync(mp4Path)) throw new Error(`MP4 not found: ${mp4Path}`);
   const size = fs.statSync(mp4Path).size;
   console.log(`video bytes: ${size}`);
+  // TikTok chunk rules (Media Transfer Guide): each chunk 5–64MB, count =
+  // floor(size/chunk), last chunk absorbs the remainder; videos < 5MB go
+  // whole with chunk_size = video_size. Our renders (~2MB) always take
+  // the single-chunk path; the branch below keeps bigger files valid too.
+  const MIN_CHUNK = 5 * 1024 * 1024;
+  let chunkSize = 10 * 1024 * 1024;
+  let totalChunks = Math.floor(size / chunkSize);
+  if (size < MIN_CHUNK || totalChunks < 1) {
+    chunkSize = size;
+    totalChunks = 1;
+  }
+  console.log(`chunks: ${totalChunks} x ${chunkSize} bytes`);
 
   // 1. Fresh access token (24h life) + capture rotation.
   console.log('refreshing access token…');
@@ -218,18 +230,19 @@ async function main() {
     ? { publish_id: 'DRY', upload_url: 'DRY' }
     : await apiJson('POST', initPath, accessToken, {
         post_info: postInfo,
-        source_info: { source: 'FILE_UPLOAD', video_size: size, chunk_size: 10 * 1024 * 1024, total_chunk_count: Math.ceil(size / (10 * 1024 * 1024)) },
+        source_info: { source: 'FILE_UPLOAD', video_size: size, chunk_size: chunkSize, total_chunk_count: totalChunks },
       });
   console.log('publish_id:', init.publish_id);
 
-  // 4. Chunked upload.
+  // 4. Chunked upload (same chunkSize declared at init; the final slice
+  // absorbs any remainder).
   if (!dry) {
     const { readFile } = await import('node:fs/promises');
     const bytes = new Uint8Array(await readFile(mp4Path));
-    console.log(`uploading ${Math.ceil(bytes.length / (10 * 1024 * 1024))} chunk(s)…`);
-    await uploadChunks(init.upload_url, bytes);
+    console.log(`uploading ${totalChunks} chunk(s)…`);
+    await uploadChunks(init.upload_url, bytes, chunkSize);
   } else {
-    console.log(`DRY RUN: would upload ${size} bytes in ${Math.ceil(size / (10 * 1024 * 1024))} chunk(s) to <upload_url>, title: ${title.slice(0, 80)}`);
+    console.log(`DRY RUN: would upload ${size} bytes in ${totalChunks} chunk(s) to <upload_url>, title: ${title.slice(0, 80)}`);
   }
 
   // 5. Status check (informational — the chunks are already on TikTok's
