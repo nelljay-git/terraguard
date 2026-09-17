@@ -11,7 +11,7 @@ import './VideoReport.css';
 // Staged video export of the earthquake report, rendered + captured
 // fully in-browser (canvas.captureStream + MediaRecorder — no server).
 //
-// Timeline (~14s): plain map (0-2s) -> epicenter pop (2s) -> shockwave
+// Timeline (~14s): plain map (0-1s) -> epicenter pop (1s) -> shockwave
 // spreading across the map (3s, ~1s) -> styled info cards fade/slide in
 // (4s) -> idle drift until the end.
 
@@ -19,7 +19,7 @@ export const W = 1080;
 export const H = 1440;
 export const FPS = 60;
 export const DUR = 14;
-export const MAP_T = 2; // epicenter appears
+export const MAP_T = 1; // epicenter appears
 export const WAVE_T = 3; // shockwave starts
 export const WAVE_DUR = 0.9;
 export const INFO_T = 4; // info cards appear
@@ -205,9 +205,10 @@ export function drawFrame(
   }
   // Cinematic map vignette: clear center, darkened corners/edges. Always
   // on, part of the map look (not tied to the info reveal).
-  const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.36, W / 2, H / 2, Math.max(W, H) * 0.72);
+  const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.72);
   vg.addColorStop(0, 'rgba(0,0,0,0)');
-  vg.addColorStop(1, 'rgba(0,0,0,0.48)');
+  vg.addColorStop(0.55, 'rgba(0,0,0,0.28)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.72)');
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, W, H);
 
@@ -347,34 +348,35 @@ export function drawFrame(
     ctx.font = '400 19px Inter, sans-serif';
     ctx.fillText(timeText.slice(0, 34), lx, ly);
 
-    // Right column: IMPACT DATA (drawn at 64% scale).
-    const rx = 648;
-    ctx.fillStyle = '#fbbf24';
-    ctx.beginPath();
-    ctx.arc(rx, colTop - 7, 5, 0, Math.PI * 2);
-    ctx.fill();
+    // Right column: IMPACT DATA (drawn at 64% scale, right-aligned).
+    const re = W - 64; // right edge of the column (clears the watermark)
+    ctx.textAlign = 'right';
     ctx.fillStyle = '#fbbf24';
     ctx.font = '400 15px Inter, sans-serif';
-    ctx.fillText('IMPACT DATA', rx + 18, colTop);
+    ctx.fillText('IMPACT DATA', re, colTop);
+    const impactW = ctx.measureText('IMPACT DATA').width;
+    ctx.beginPath();
+    ctx.arc(re - impactW - 18, colTop - 7, 5, 0, Math.PI * 2);
+    ctx.fill();
     let ry = colTop + 35;
     ctx.fillStyle = '#9ca3af';
     ctx.font = '400 13px Inter, sans-serif';
-    ctx.fillText('MAX INTENSITY', rx, ry);
+    ctx.fillText('MAX INTENSITY', re, ry);
     ry += 40;
     // Intensity badge.
     ctx.fillStyle = 'rgba(127,29,29,0.92)';
     if (typeof ctx.roundRect === 'function') {
       ctx.beginPath();
-      ctx.roundRect(rx, ry - 26, 77, 34, 6);
+      ctx.roundRect(re - 77, ry - 26, 77, 34, 6);
       ctx.fill();
     } else {
-      ctx.fillRect(rx, ry - 26, 77, 34);
+      ctx.fillRect(re - 77, ry - 26, 77, 34);
     }
     ctx.fillStyle = '#ffffff';
     ctx.font = '700 19px Oswald, Inter, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(intensity || '—', rx + 38, ry);
-    ctx.textAlign = 'left';
+    ctx.fillText(intensity || '—', re - 38, ry);
+    ctx.textAlign = 'right';
     ry += 34;
     const rightRows: Array<[string, string, string]> = [
       ['TSUNAMI THREAT', threatText, threatColor(threatText)],
@@ -385,12 +387,12 @@ export function drawFrame(
     for (const [label, value, color] of rightRows) {
       ctx.fillStyle = '#9ca3af';
       ctx.font = '400 13px Inter, sans-serif';
-      ctx.fillText(label, rx, ry);
+      ctx.fillText(label, re, ry);
       ry += 26;
       if (value) {
         ctx.fillStyle = color;
         ctx.font = '400 19px Inter, sans-serif';
-        ctx.fillText(value.slice(0, 26), rx, ry);
+        ctx.fillText(value.slice(0, 26), re, ry);
         ry += 28;
       }
     }
@@ -415,33 +417,34 @@ export function drawFrame(
     if (locCur && locLines.length < 2) locLines.push(locCur);
     ctx.fillStyle = '#ffffff';
     for (const line of locLines.slice(0, 2)) {
-      ctx.fillText(line, rx, ry);
+      ctx.fillText(line, re, ry);
       ry += 26;
     }
     // Affected radius caps the column.
     ry += 4;
     ctx.fillStyle = '#9ca3af';
     ctx.font = '400 13px Inter, sans-serif';
-    ctx.fillText('AFFECTED RADIUS', rx, ry);
+    ctx.fillText('AFFECTED RADIUS', re, ry);
     ry += 26;
     ctx.fillStyle = '#ffffff';
     ctx.font = '400 19px Inter, sans-serif';
-    ctx.fillText(radius, rx, ry);
+    ctx.fillText(radius, re, ry);
+    ctx.textAlign = 'left';
 
-    // SHAKE REPORT (bottom-left): strongest felt areas with intensity.
-    // Falls back to the max intensity + epicenter location when no
-    // per-area rows were parsed.
+    // SHAKE REPORT (bottom-left): strongest felt areas with intensity,
+    // bottom-anchored so the last row sits near the progress bar. Falls
+    // back to the max intensity + epicenter location when no per-area
+    // rows were parsed; with neither, a muted line holds the slot.
     const shakeList: ShakeRow[] =
       shakes.length > 0
         ? shakes.slice(0, 4)
         : intensity
           ? [{ area: (eq.location || '').slice(0, 30) || 'Epicenter area', intensity }]
           : [];
-    if (shakeList.length > 0) {
-      // Bottom-anchored: last row sits near the progress bar so no dead
-      // space remains below the block.
+    {
+      const rows = shakeList.length > 0 ? shakeList.length : 1;
       const lastBaseline = 1360;
-      const firstBaseline = lastBaseline - (shakeList.length - 1) * 38;
+      const firstBaseline = lastBaseline - (rows - 1) * 38;
       const headY = firstBaseline - 40;
       ctx.fillStyle = '#f97316';
       ctx.beginPath();
@@ -452,6 +455,10 @@ export function drawFrame(
       ctx.fillText('SHAKE REPORT', 66, headY);
       ctx.font = '400 19px Inter, sans-serif';
       let sy = firstBaseline;
+      if (shakeList.length === 0) {
+        ctx.fillStyle = '#6b7280';
+        ctx.fillText('No official data yet', 48, sy);
+      }
       for (const row of shakeList) {
         ctx.fillStyle = '#ffffff';
         const area = row.area.slice(0, 28);
@@ -705,7 +712,7 @@ export function VideoReportModal({
         audioCtxRef.current = actx;
         await actx.resume().catch(() => {});
         const files = ['epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
-        const at = [2.0, 3.0, 4.0];
+        const at = [1.0, 3.0, 4.0];
         const dest = actx.createMediaStreamDestination();
         const t0 = actx.currentTime + 0.05;
         await Promise.all(
