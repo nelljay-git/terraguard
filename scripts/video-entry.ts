@@ -205,14 +205,14 @@ async function main(): Promise<void> {
   }
 
   // Encode: PNG frames + timed sound effects (repo public/sounds).
-  // epicenter-appear @1s (pop), wave-spread @3s (shockwave),
+  // epicenter-appear @1s (pop), wave-spread @1.5s (shockwave),
   // reports @4s (info cards). Missing SFX files are skipped so one absent
   // file can never kill the video; with none present it renders silent.
   const mp4 = path.join(outDir, 'out.mp4');
   const sfxDir = path.join(process.cwd(), 'public', 'sounds');
   const sfxPlan = [
     { file: 'epicenter-appear.mp3', at: 1000 },
-    { file: 'wave-spread.mp3', at: 3000 },
+    { file: 'wave-spread.mp3', at: 1500 },
     { file: 'reports.mp3', at: 4000 },
   ].filter((s) => {
     const ok = fs.existsSync(path.join(sfxDir, s.file));

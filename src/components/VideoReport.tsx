@@ -15,15 +15,15 @@ import './VideoReport.css';
 // fully in-browser (canvas.captureStream + MediaRecorder — no server).
 //
 // Timeline (~14s): plain map (0-1s) -> epicenter pop (1s) -> shockwave
-// spreading across the map (3s, ~1s) -> DYFI felt responses + styled
-// info cards fade in (4s) -> idle drift until the end.
+// spreading across the map (1.5s, ~1s) -> DYFI felt responses fade in
+// (2.5s) -> styled info cards fade/slide in (4s) -> idle drift until end.
 
 export const W = 1080;
 export const H = 1440;
 export const FPS = 60;
 export const DUR = 14;
 export const MAP_T = 1; // epicenter appears
-export const WAVE_T = 3; // shockwave starts
+export const WAVE_T = 1.5; // shockwave starts (0.5s after the epicenter)
 export const WAVE_DUR = 0.9;
 export const INFO_T = 4; // info cards appear
 export const DYFI_T = WAVE_T + WAVE_DUR + 0.1; // DYFI fade-in, right after the wave
@@ -443,8 +443,12 @@ export function drawFrame(
     const rightRows: Array<[string, string, string]> = [
       ['TSUNAMI THREAT', threatText, threatColor(threatText)],
       ['EVENT TYPE', 'Earthquake', '#60a5fa'],
-      ['COUNTRY', country || '—', '#ffffff'],
-      ['LOCATION', '', '#ffffff'],
+      // No parseable country (common for PH locations): the row becomes
+      // LOCATION showing the available location instead of a dead "—".
+      ...(country
+        ? [['COUNTRY', country, '#ffffff'] as [string, string, string]]
+        : [['LOCATION', (eq.location || '').slice(0, 26) || '—', '#ffffff'] as [string, string, string]]),
+      ...(country ? [['LOCATION', '', '#ffffff'] as [string, string, string]] : []),
     ];
     for (const [label, value, color] of rightRows) {
       ctx.fillStyle = '#9ca3af';
@@ -458,29 +462,32 @@ export function drawFrame(
         ry += 28;
       }
     }
-    // Location can wrap to two lines.
-    const locWords = (eq.location || '').split(/\s+/).filter(Boolean);
-    const locLines: string[] = [];
-    let locCur = '';
-    ctx.font = '400 19px Inter, sans-serif';
-    for (const w of locWords) {
-      const trial = locCur ? `${locCur} ${w}` : w;
-      if (ctx.measureText(trial).width <= 230 || !locCur) {
-        locCur = trial;
-      } else {
-        locLines.push(locCur);
-        if (locLines.length >= 2) {
-          locCur = '';
-          break;
+    // Location wraps to two lines under its own label — but only when the
+    // COUNTRY row above didn't already show it inline.
+    if (country) {
+      const locWords = (eq.location || '').split(/\s+/).filter(Boolean);
+      const locLines: string[] = [];
+      let locCur = '';
+      ctx.font = '400 19px Inter, sans-serif';
+      for (const w of locWords) {
+        const trial = locCur ? `${locCur} ${w}` : w;
+        if (ctx.measureText(trial).width <= 230 || !locCur) {
+          locCur = trial;
+        } else {
+          locLines.push(locCur);
+          if (locLines.length >= 2) {
+            locCur = '';
+            break;
+          }
+          locCur = w;
         }
-        locCur = w;
       }
-    }
-    if (locCur && locLines.length < 2) locLines.push(locCur);
-    ctx.fillStyle = '#ffffff';
-    for (const line of locLines.slice(0, 2)) {
-      ctx.fillText(line, re, ry);
-      ry += 26;
+      if (locCur && locLines.length < 2) locLines.push(locCur);
+      ctx.fillStyle = '#ffffff';
+      for (const line of locLines.slice(0, 2)) {
+        ctx.fillText(line, re, ry);
+        ry += 26;
+      }
     }
     // Affected radius caps the column.
     ry += 4;
@@ -798,7 +805,7 @@ export function VideoReportModal({
         audioCtxRef.current = actx;
         await actx.resume().catch(() => {});
         const files = ['epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
-        const at = [1.0, 3.0, 4.0];
+        const at = [1.0, 1.5, 4.0];
         const dest = actx.createMediaStreamDestination();
         const t0 = actx.currentTime + 0.05;
         await Promise.all(
