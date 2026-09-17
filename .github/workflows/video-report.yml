@@ -66,7 +66,7 @@ jobs:
 
       - name: Render + encode + upload
         env:
-          QUAKE_JSON: ${{ toJson(github.event.client_payload) != 'null' && github.event.client_payload || vars.MANUAL_QUAKE }}
+          DISPATCH_PAYLOAD: ${{ toJson(github.event.client_payload) }}
           MANUAL_LAT: ${{ inputs.lat }}
           MANUAL_LNG: ${{ inputs.lng }}
           MANUAL_MAG: ${{ inputs.mag }}
@@ -78,9 +78,11 @@ jobs:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_UPLOAD_TOKEN: ${{ secrets.FB_UPLOAD_TOKEN }}
         run: |
-          if [ "$QUAKE_JSON" = "null" ] || [ -z "$QUAKE_JSON" ]; then
+          if [ "$DISPATCH_PAYLOAD" = "null" ] || [ -z "$DISPATCH_PAYLOAD" ]; then
             QUAKE_JSON=$(node -e "console.log(JSON.stringify({latitude:process.env.MANUAL_LAT,longitude:process.env.MANUAL_LNG,magnitude:process.env.MANUAL_MAG,place:process.env.MANUAL_PLACE,datetime:process.env.MANUAL_DATETIME,depth:process.env.MANUAL_DEPTH,description:process.env.MANUAL_DESCRIPTION}))")
             export QUAKE_JSON
+          else
+            export QUAKE_JSON="$DISPATCH_PAYLOAD"
           fi
           mkdir -p video-out
           node dist-video/video-entry.mjs
