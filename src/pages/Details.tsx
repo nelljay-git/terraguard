@@ -998,6 +998,9 @@ export function Details() {
           pageUrl: window.location.href,
           sourceLink: activeLink || earthquake.link,
           source: dataSource,
+          // Explicit bulletin number (same value the page displays) so the
+          // post doesn't depend on filename parsing server-side.
+          infoNo: bulletin?.no ?? undefined,
         }),
       });
       const j = await res.json().catch(() => ({}));

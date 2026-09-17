@@ -1046,10 +1046,10 @@ function phivolcsEqId(datetime, lat, lng) {
     return btoa(`${datetime}-${lat}-${lng}`).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 // PHIVOLCS bulletin number from the bulletin filename:
-// ".../2026_0701_0004_B1.html" -> "1" (Earthquake Information No. 1,
-// B2 = revised No. 2, ...). "" when the link carries no bulletin marker.
+// ".../2026_0701_0004_B1.html" -> "1", "..._B2F.html" -> "2" (Final).
+// "" when the link carries no bulletin marker.
 function phivolcsInfoNo(link) {
-    const m = /B(\d+)\.html?(?:[?#]|$)/i.exec(String(link ?? ""));
+    const m = /B(\d+)F?\.html?(?:[?#]|$)/i.exec(String(link ?? ""));
     return m ? String(parseInt(m[1], 10)) : "";
 }
 

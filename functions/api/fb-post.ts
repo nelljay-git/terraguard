@@ -52,10 +52,10 @@ function sourceTag(source: string): string {
 }
 
 // PHIVOLCS bulletin number from the bulletin filename:
-// ".../2026_0701_0004_B1.html" -> "1" (Earthquake Information No. 1).
+// ".../2026_0701_0004_B1.html" -> "1", "..._B2F.html" -> "2" (Final).
 // "" when the link carries no bulletin marker (then number is omitted).
 function infoNoFromLink(link: string): string {
-  const m = /B(\d+)\.html?(?:[?#]|$)/i.exec(link || '');
+  const m = /B(\d+)F?\.html?(?:[?#]|$)/i.exec(link || '');
   return m ? String(parseInt(m[1], 10)) : '';
 }
 
@@ -161,9 +161,14 @@ export async function onRequest(context: { request: Request; env?: Record<string
 
   const { date, time } = displayParts(esc(body.datetime), tag);
   const timeBare = time.replace(/\s*(UTC|PHT|UST)\s*$/i, '').trim();
-  // PHIVOLCS-only: bulletin number from the source link (worker auto-posts
-  // show the same line; EMSC/USGS posts never carry it).
-  const infoNo = tag === 'PHIVOLCS' ? infoNoFromLink(sourceLink) : '';
+  // PHIVOLCS-only: bulletin number. Prefer the explicit number the
+  // Details page sends (it already resolved Final variants); fall back to
+  // parsing the source-link filename (worker auto-posts show the same line;
+  // EMSC/USGS posts never carry it).
+  const explicitNo = parseInt(esc(body.infoNo), 10);
+  const infoNo = tag === 'PHIVOLCS'
+    ? (Number.isFinite(explicitNo) && explicitNo > 0 ? String(explicitNo) : infoNoFromLink(sourceLink))
+    : '';
   const lines = [
     `${magPrefix(mag)}JUST IN: A Magnitude: ${esc(body.magnitude) || '?'} struck near ${place} on ${date}${timeBare ? ` - ${timeBare}` : ''}`,
     ``,
