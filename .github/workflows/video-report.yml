@@ -97,7 +97,6 @@ jobs:
         run: ffmpeg -y -i video-out/out.mp4 -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" -c:a copy video-out/tiktok.mp4
 
       - name: TikTok upload
-        if: ${{ secrets.TIKTOK_REFRESH_TOKEN != '' }}
         env:
           TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
           TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}

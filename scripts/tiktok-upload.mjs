@@ -140,7 +140,12 @@ async function main() {
   const clientKey = process.env.TIKTOK_CLIENT_KEY || '';
   const clientSecret = process.env.TIKTOK_CLIENT_SECRET || '';
   let refreshToken = process.env.TIKTOK_REFRESH_TOKEN || '';
-  if (!clientKey || !clientSecret || !refreshToken) throw new Error('Missing TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET / TIKTOK_REFRESH_TOKEN');
+  if (!clientKey || !clientSecret || !refreshToken) {
+    // No credentials (e.g. secrets not set yet): skip green so the video
+    // pipeline stays green. The workflow `if:` gate can't read secrets.
+    console.log('TikTok creds not set — skipping upload (MP4 artifact still kept).');
+    return;
+  }
 
   if (!fs.existsSync(mp4Path)) throw new Error(`MP4 not found: ${mp4Path}`);
   const size = fs.statSync(mp4Path).size;
