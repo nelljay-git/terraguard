@@ -1,0 +1,94 @@
+# Free headless video renderer: reuses the exact drawFrame() from
+# src/components/VideoReport.tsx via node-canvas. Triggered by the
+# earthquake worker (repository_dispatch) after a successful FB post,
+# or manually. Costs $0 (GitHub-hosted runners: 2000 min/month free).
+#
+# Required repo secrets: FB_PAGE_ID, FB_UPLOAD_TOKEN (Page token with
+# pages_manage_posts — can be the same token the workers use).
+# Optional: none (upload step is skipped without FB secrets, MP4 kept
+# as a 7-day artifact instead).
+
+name: quake-video
+
+on:
+  repository_dispatch:
+    types: [quake-video]
+  workflow_dispatch:
+    inputs:
+      lat:
+        description: 'Epicenter latitude'
+        required: true
+        default: '6.45'
+      lng:
+        description: 'Epicenter longitude'
+        required: true
+        default: '126.12'
+      mag:
+        description: 'Magnitude'
+        required: true
+        default: '5.2'
+      place:
+        description: 'Location name'
+        required: false
+        default: 'MINDANAO, PHILIPPINES'
+      datetime:
+        description: 'Event datetime string'
+        required: false
+        default: '14 September 2026 - 05:22 PM'
+      depth:
+        description: 'Depth km'
+        required: false
+        default: '10'
+      description:
+        description: 'Facebook video description'
+        required: false
+        default: ''
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Ensure FFmpeg
+        run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+
+      - name: Bundle renderer
+        run: npx esbuild scripts/video-entry.ts --bundle --platform=node --format=esm --external:react --external:lucide-react --external:canvas --loader:.css=empty --outfile=dist-video/video-entry.mjs
+
+      - name: Render + encode + upload
+        env:
+          QUAKE_JSON: ${{ toJson(github.event.client_payload) != 'null' && github.event.client_payload || vars.MANUAL_QUAKE }}
+          MANUAL_LAT: ${{ inputs.lat }}
+          MANUAL_LNG: ${{ inputs.lng }}
+          MANUAL_MAG: ${{ inputs.mag }}
+          MANUAL_PLACE: ${{ inputs.place }}
+          MANUAL_DATETIME: ${{ inputs.datetime }}
+          MANUAL_DEPTH: ${{ inputs.depth }}
+          MANUAL_DESCRIPTION: ${{ inputs.description }}
+          OUT_DIR: video-out
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_UPLOAD_TOKEN: ${{ secrets.FB_UPLOAD_TOKEN }}
+        run: |
+          if [ "$QUAKE_JSON" = "null" ] || [ -z "$QUAKE_JSON" ]; then
+            QUAKE_JSON=$(node -e "console.log(JSON.stringify({latitude:process.env.MANUAL_LAT,longitude:process.env.MANUAL_LNG,magnitude:process.env.MANUAL_MAG,place:process.env.MANUAL_PLACE,datetime:process.env.MANUAL_DATETIME,depth:process.env.MANUAL_DEPTH,description:process.env.MANUAL_DESCRIPTION}))")
+            export QUAKE_JSON
+          fi
+          mkdir -p video-out
+          node dist-video/video-entry.mjs
+
+      - name: Keep MP4 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quake-video
+          path: video-out/out.mp4
+          retention-days: 7

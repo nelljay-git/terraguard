@@ -167,6 +167,44 @@ async function recordFbPosted(kv, entry) {
     await kv.put(FB_POSTED_KEY, JSON.stringify(index.slice(0, 50)), { expirationTtl: 60 * 60 * 24 * 30 });
 }
 
+// Fire-and-forget trigger for the free headless video renderer (GitHub
+// Actions + node-canvas + FFmpeg, scripts/video-entry.ts). Only called on
+// EMSC/PHIVOLCS Facebook successes at/above RENDER_MIN_MAG — never for
+// USGS finals, never on failure. All failures stay in the logs.
+async function dispatchVideoRender(env, payload) {
+    const token = (env.GH_DISPATCH_TOKEN ?? "").trim();
+    const repo = (env.GH_REPO ?? "nelljay-git/terraguard").trim();
+    if (!token || !repo.includes("/"))
+        return;
+    const minMag = parseFloat(env.RENDER_MIN_MAG ?? "5.0");
+    const mag = parseFloat(payload.magnitude);
+    if (!isNaN(minMag) && (isNaN(mag) || mag < minMag))
+        return;
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 8000);
+        const r = await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
+            method: "POST",
+            signal: ctrl.signal,
+            headers: {
+                Accept: "application/vnd.github+json",
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+                "User-Agent": "TerraGuard-Worker/1.0",
+            },
+            body: JSON.stringify({ event_type: "quake-video", client_payload: payload }),
+        });
+        clearTimeout(t);
+        if (r.status === 204)
+            console.log(`[video] dispatch sent for ${payload.source} M${payload.magnitude}`);
+        else
+            console.error(`[video] dispatch HTTP ${r.status}`);
+    }
+    catch (e) {
+        console.error("[video] dispatch failed", e instanceof Error ? e.message : String(e));
+    }
+}
+
 // Same physical quake already posted to Facebook (any FB source)?
 function findFbPostMatch(index, timeMs, lat, lng, mag) {
     for (const e of index) {
@@ -736,6 +774,12 @@ async function handleEmsc(env) {
     await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, fbStatus, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
     if (fbStatus.startsWith("posted"))
         await recordFbPosted(kv, { source: "emsc", id: latest.unid, timeMs: latest.timeMs, lat, lng, mag });
+    if (fbStatus.startsWith("posted"))
+        await dispatchVideoRender(env, {
+            source: "emsc", latitude: latest.latitude, longitude: latest.longitude,
+            magnitude: latest.magnitude, depth: latest.depth, place: latest.location,
+            datetime: latest.datetime, fbPostId: fbStatus.replace(/^posted (photo )?/, ""),
+        });
     await recordSent(kv, { source: "emsc", id: latest.unid, timeMs: latest.timeMs, lat, lng, mag });
     return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | fb: ${fbStatus}`;
 }
@@ -1168,8 +1212,14 @@ async function handlePhivolcsFb(env) {
     console.log(`[fb][phivolcs] ${dedupKey}: ${fbStatus}`);
     await kv.put("last_phivolcs_id", dedupKey);
     await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, fbStatus, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
-    if (fbStatus.startsWith("posted"))
+    if (fbStatus.startsWith("posted")) {
         await recordFbPosted(kv, { source: "phivolcs", id: dedupKey, timeMs: latest.timeMs, lat, lng, mag });
+        await dispatchVideoRender(env, {
+            source: "phivolcs", latitude: latest.latitude, longitude: latest.longitude,
+            magnitude: latest.magnitude, depth: latest.depth, place: latest.location,
+            datetime: latest.datetime, fbPostId: fbStatus.replace(/^posted (photo )?/, ""),
+        });
+    }
     return `fb ${dedupKey} M${latest.magnitude} ${latest.location} | ${fbStatus}`;
 }
 

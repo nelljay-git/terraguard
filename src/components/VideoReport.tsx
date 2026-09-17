@@ -1,3 +1,7 @@
+/* eslint-disable react-refresh/only-export-components --
+   Pure render pieces in this file are intentionally shared with the free
+   headless renderer (scripts/video-entry.ts: GitHub Actions + node-canvas
+   + FFmpeg). The default export below is still the only component. */
 import { useEffect, useRef, useState } from 'react';
 import { X, Download, Clapperboard } from 'lucide-react';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
@@ -11,19 +15,19 @@ import './VideoReport.css';
 // spreading across the map (3s, ~1s) -> styled info cards fade/slide in
 // (4s) -> idle drift until the end.
 
-const W = 1080;
-const H = 1440;
-const FPS = 60;
-const DUR = 14;
-const MAP_T = 2; // epicenter appears
-const WAVE_T = 3; // shockwave starts
-const WAVE_DUR = 0.9;
-const INFO_T = 4; // info cards appear
+export const W = 1080;
+export const H = 1440;
+export const FPS = 60;
+export const DUR = 14;
+export const MAP_T = 2; // epicenter appears
+export const WAVE_T = 3; // shockwave starts
+export const WAVE_DUR = 0.9;
+export const INFO_T = 4; // info cards appear
 // Mosaic: 5 cols x 6 rows of 256px Esri tiles (same map as the app),
 // covering the canvas with a slight crop. Epicenter lands at canvas center.
-const COLS = 5;
-const ROWS = 6;
-const TILE = 256;
+export const COLS = 5;
+export const ROWS = 6;
+export const TILE = 256;
 
 function zoomForMag(magRaw: string): number {
   const m = parseFloat(magRaw);
@@ -33,7 +37,9 @@ function zoomForMag(magRaw: string): number {
   return 8;
 }
 
-function tileUrls(eq: PhivolcsEarthquake): string[] {
+// Direct Esri tile URLs (no proxy). Shared with the headless renderer;
+// the browser component wraps these in /api/tile?src= for CORS.
+export function esriTileUrls(eq: PhivolcsEarthquake): string[] {
   const lat = parseFloat(eq.latitude);
   const lng = parseFloat(eq.longitude);
   const z = zoomForMag(eq.magnitude);
@@ -49,15 +55,19 @@ function tileUrls(eq: PhivolcsEarthquake): string[] {
     for (let c = 0; c < COLS; c++) {
       const x = (((cx + Math.round(c - (COLS - 1) / 2)) % n) + n) % n;
       const esri = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
-      urls.push(`/api/tile?src=${encodeURIComponent(esri)}`);
+      urls.push(esri);
     }
   }
   return urls;
 }
 
+function tileUrls(eq: PhivolcsEarthquake): string[] {
+  return esriTileUrls(eq).map((u) => `/api/tile?src=${encodeURIComponent(u)}`);
+}
+
 // Epicenter position inside the COLSxROWS mosaic (tile px), for the
 // zoom-about-point math in drawFrame.
-function epicenterMosaicPx(eq: PhivolcsEarthquake): { epx: number; epy: number } {
+export function epicenterMosaicPx(eq: PhivolcsEarthquake): { epx: number; epy: number } {
   const lat = parseFloat(eq.latitude);
   const lng = parseFloat(eq.longitude);
   const z = zoomForMag(eq.magnitude);
@@ -156,7 +166,7 @@ function shakeChipColor(intensity: string): string {
   }
 }
 
-interface MosaicView {
+export interface MosaicView {
   mosaic: HTMLCanvasElement;
   /** Epicenter display point (canvas px, zoom pivot). */
   exD: number;
@@ -164,9 +174,9 @@ interface MosaicView {
 }
 
 // Display scale for the 1280x1536 mosaic on the 1080x1440 canvas.
-const MOSAIC_D = Math.max(W / (COLS * TILE), H / (ROWS * TILE));
+export const MOSAIC_D = Math.max(W / (COLS * TILE), H / (ROWS * TILE));
 
-function drawFrame(
+export function drawFrame(
   ctx: CanvasRenderingContext2D,
   view: MosaicView | null,
   eq: PhivolcsEarthquake,
