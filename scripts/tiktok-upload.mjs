@@ -44,7 +44,14 @@ async function apiJson(method, path, token, body) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || (data.error && data.error.code !== 'ok')) {
-    throw new Error(`${method} ${path} failed: ${data.error?.message ?? res.status} (${data.error?.code ?? 'no-code'})`);
+    const code = data.error?.code ?? 'no-code';
+    let hint = '';
+    if (code === 'scope_not_authorized') {
+      hint = ' FIX: re-run the TikTok authorize URL WITH video.upload (and video.publish if needed) in scope, exchange for a new refresh token, and update the TIKTOK_REFRESH_TOKEN secret. Tokens minted before a scope was added never gain it.';
+    } else if (code === 'access_token_invalid') {
+      hint = ' FIX: token expired or revoked — refresh pair is stale, redo the OAuth dance for a fresh refresh token.';
+    }
+    throw new Error(`${method} ${path} failed: ${data.error?.message ?? res.status} (${code}).${hint}`);
   }
   return data.data ?? data;
 }
