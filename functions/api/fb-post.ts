@@ -51,6 +51,14 @@ function sourceTag(source: string): string {
   return 'PHIVOLCS';
 }
 
+// PHIVOLCS bulletin number from the bulletin filename:
+// ".../2026_0701_0004_B1.html" -> "1" (Earthquake Information No. 1).
+// "" when the link carries no bulletin marker (then number is omitted).
+function infoNoFromLink(link: string): string {
+  const m = /B(\d+)\.html?(?:[?#]|$)/i.exec(link || '');
+  return m ? String(parseInt(m[1], 10)) : '';
+}
+
 // Split a Details-page datetime into display parts. PHIVOLCS strings are
 // PHT wall time ("14 September 2026 - 05:22 PM"); USGS/EMSC normalized
 // strings are UTC ("14 September 2026 - 09:22:15 UTC").
@@ -153,9 +161,13 @@ export async function onRequest(context: { request: Request; env?: Record<string
 
   const { date, time } = displayParts(esc(body.datetime), tag);
   const timeBare = time.replace(/\s*(UTC|PHT|UST)\s*$/i, '').trim();
+  // PHIVOLCS-only: bulletin number from the source link (worker auto-posts
+  // show the same line; EMSC/USGS posts never carry it).
+  const infoNo = tag === 'PHIVOLCS' ? infoNoFromLink(sourceLink) : '';
   const lines = [
     `${magPrefix(mag)}JUST IN: A Magnitude: ${esc(body.magnitude) || '?'} struck near ${place} on ${date}${timeBare ? ` - ${timeBare}` : ''}`,
     ``,
+    ...(infoNo ? [`Information No.: ${infoNo}`] : []),
     `Magnitude: ${esc(body.magnitude) || '?'}`,
     `Location: ${place}`,
     `Date & Time: ${date}${timeBare ? ` - ${timeBare}` : ''}`,
@@ -211,6 +223,7 @@ export async function onRequest(context: { request: Request; env?: Record<string
         time,
         depth: String(body.depth ?? ''),
         source: tag,
+        ...(infoNo ? { info: infoNo } : {}),
       }).toString()
     : '';
   const cardUrl =
