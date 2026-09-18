@@ -1407,7 +1407,7 @@ function chunk(text, max = 1900) {
         chunks.push(current);
     return chunks;
 }
-async function sendDiscordReport(webhookUrl, title, text, risk, sourceUrl, sat) {
+async function sendDiscordReport(webhookUrl, title, text, risk, sourceUrl, sat, footer) {
     if (!webhookUrl)
         throw new Error("DISCORD_WEBHOOK_URL not set");
     // sat === null disables the image; undefined auto-resolves the latest.
@@ -1422,7 +1422,7 @@ async function sendDiscordReport(webhookUrl, title, text, risk, sourceUrl, sat) 
                         title: title.slice(0, 256),
                         color: RISK_COLOR[risk] ?? 0x3b82f6,
                         ...(image ? { image: { url: image } } : {}),
-                        footer: { text: image ? "TerraGuard Weather Desk • DOST-PAGASA (source) • 🛰️ JMA Himawari imagery" : "TerraGuard Weather Desk • DOST-PAGASA (authoritative source)" },
+                        footer: { text: footer || (image ? "TerraGuard Weather Desk • DOST-PAGASA (source) • 🛰️ JMA Himawari imagery" : "TerraGuard Weather Desk • DOST-PAGASA (authoritative source)") },
                         timestamp: new Date().toISOString(),
                         url: sourceUrl || undefined,
                     },
@@ -1641,6 +1641,21 @@ async function runMonitor(env) {
                 }
                 catch (e) {
                     outcomes.push(`${source.key}: fb error ${e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120)}`);
+                }
+                // Discord mirror: the same FB template + branded image, in
+                // addition to the technical report above. Same gate, same
+                // never-throw contract.
+                try {
+                    const slot = weatherFbSlot(source.key);
+                    if (slot && !event.parsed?.statesNoActive) {
+                        const fbMessage = slot.kind === "cyclone" ? buildCycloneFbMessage(event, source) : buildWeatherFbMessage(event, source);
+                        const fbTitle = slot.kind === "cyclone" ? "TerraGuard Cyclone Report" : "TerraGuard Weather Report";
+                        await sendDiscordReport(env.DISCORD_WEBHOOK_URL, fbTitle, fbMessage, risk.status, source.url, slot.image, "TerraGuard • DOST-PAGASA (authoritative source)");
+                        outcomes.push(`${source.key}: discord mirror sent`);
+                    }
+                }
+                catch (e) {
+                    outcomes.push(`${source.key}: discord mirror error ${e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120)}`);
                 }
             }
             else {
