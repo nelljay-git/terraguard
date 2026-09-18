@@ -1128,6 +1128,162 @@ function buildWeatherNews(event) {
     ].join("\n");
     return sanitizeReport(text);
 }
+// ===== facebook weather + cyclone posts (same notify gate as Discord) =====
+// Static branded images (public/ on the site): WEATHER REPORT for the daily
+// forecast, CYCLONE REPORT for tropical cyclone bulletins. Only these two
+// sources post to Facebook; the rest stay Discord-only.
+const WEATHER_REPORT_IMG = "https://terraguard-ph.pages.dev/image-weather-report.png";
+const CYCLONE_REPORT_IMG = "https://terraguard-ph.pages.dev/image-cyclone-report.png";
+function weatherFbSlot(sourceKey) {
+    if (sourceKey === "forecast") return { image: WEATHER_REPORT_IMG, kind: "weather" };
+    if (sourceKey === "tc-bulletin") return { image: CYCLONE_REPORT_IMG, kind: "cyclone" };
+    return null;
+}
+// First ~600 chars of the PAGASA "Synopsis" paragraph from raw page text.
+function extractSynopsis(text) {
+    const t = String(text ?? "");
+    const m = /synopsis\s*([\s\S]+?)(?=forecast weather conditions|tc information|forecast wind|temperature and relative|tides and astronomical|$)/i.exec(t);
+    const s = (m ? m[1] : "").replace(/\s+/g, " ").trim();
+    if (s.length < 40) return "";
+    return s.length > 600 ? s.slice(0, 600).trimEnd() + "…" : s;
+}
+// Bulletin number from title/text ("Bulletin #5", "Bulletin No. 5").
+function cycloneBulletinNo(parsed) {
+    const m = /(?:bulletin|advisory)\s*(?:no\.?|#|number)?\s*(\d+)/i.exec(`${parsed.title ?? ""}\n${parsed.text ?? ""}`);
+    return m ? m[1] : "";
+}
+function cycloneLocationLine(text) {
+    const m = /location[^:\n]{0,40}:\s*([^.\n]{10,220})/i.exec(String(text ?? ""));
+    return m ? m[1].replace(/\s+/g, " ").trim() : "";
+}
+function nextBulletinLine(text) {
+    const m = /next bulletin[^.\n]*/i.exec(String(text ?? ""));
+    return m ? m[0].replace(/\s+/g, " ").trim() : "";
+}
+function signalFbLines(signals) {
+    const list = (signals ?? []).slice().sort((a, b) => a.level - b.level);
+    const out = [];
+    for (const s of list) {
+        const areas = (s.areas ?? []).slice(0, 8).join(", ");
+        const extra = (s.areas ?? []).length > 8 ? ` (+${(s.areas ?? []).length - 8} more)` : "";
+        out.push(`• Signal No. ${s.level}${areas ? ` — ${areas}` : ""}${extra}`);
+    }
+    return out;
+}
+function buildWeatherFbMessage(event, source) {
+    const { parsed } = event;
+    const issued = parsed.issuedAt || "latest PAGASA update";
+    const synopsis = extractSynopsis(parsed.text) || buildNarrative(parsed);
+    const lines = [
+        `⛅ WEATHER UPDATE: ${issued} | Daily Weather Forecast | TerraGuard`,
+        "",
+        `🕐 Issued: ${issued}`,
+        "",
+        "📡 SYNOPSIS",
+        synopsis,
+    ];
+    if (parsed.cycloneName && parsed.cycloneCategory) {
+        lines.push("", "🌀 TROPICAL CYCLONE WATCH", `${titleCase(parsed.cycloneCategory)} ${parsed.cycloneName}.${parsed.cycloneMovement ? ` ${parsed.cycloneMovement}` : ""}${parsed.winds ? ` ${parsed.winds}` : ""}`);
+    }
+    else if (parsed.cycloneCategory) {
+        lines.push("", "🌀 TROPICAL CYCLONE WATCH", buildNarrative(parsed));
+    }
+    const areas = (parsed.affectedAreas ?? []).slice(0, 10);
+    if (areas.length > 0) {
+        lines.push("", "🌧 FORECAST AREAS", ...areas.map((a) => `• ${a}`));
+        if ((parsed.affectedAreas ?? []).length > 10)
+            lines.push(`• (+${parsed.affectedAreas.length - 10} more areas in the full bulletin)`);
+    }
+    if (parsed.rainfall)
+        lines.push("", "🌧 RAINFALL", parsed.rainfall);
+    if (parsed.systems && parsed.systems.length > 0)
+        lines.push("", "🌦️ SYSTEMS", `In effect: ${parsed.systems.join(", ")}.`);
+    lines.push("", "Source: PAGASA", `Bulletin: ${source.url}`, "", "Join our discord for discussions: https://discord.gg/tdGrvnvehP", "", "#Weather #PAGASA #TerraGuardPH #StaySafe");
+    return sanitizeReport(lines.join("\n"));
+}
+function buildCycloneFbMessage(event, source) {
+    const { parsed } = event;
+    const no = cycloneBulletinNo(parsed);
+    const name = [parsed.cycloneCategory ? titleCase(parsed.cycloneCategory) : "", parsed.cycloneName || ""].filter(Boolean).join(" ") || "Tropical Cyclone";
+    const issued = parsed.issuedAt || "latest PAGASA update";
+    const lines = [
+        `🌀 TROPICAL CYCLONE BULLETIN${no ? ` NO. ${no}` : ""}: ${name} - ${issued} | TerraGuard`,
+        "",
+    ];
+    const loc = cycloneLocationLine(parsed.text);
+    if (loc)
+        lines.push(`📍 ${loc}`);
+    if (parsed.cycloneMovement)
+        lines.push(`🧭 ${parsed.cycloneMovement}`);
+    if (parsed.winds)
+        lines.push(`💨 ${parsed.winds}`);
+    const sigs = signalFbLines(parsed.signals);
+    if (sigs.length > 0)
+        lines.push("", "🚨 WIND SIGNALS", ...sigs);
+    else if ((parsed.affectedAreas ?? []).length > 0)
+        lines.push("", "📍 AREAS", ...(parsed.affectedAreas ?? []).slice(0, 10).map((a) => `• ${a}`));
+    if (parsed.rainfall)
+        lines.push("", "🌧 RAINFALL", parsed.rainfall);
+    if (parsed.surge)
+        lines.push("", "🌊 STORM SURGE & SEAS", parsed.surge);
+    const next = nextBulletinLine(parsed.text);
+    if (next)
+        lines.push("", `⏭ ${next}`);
+    lines.push("", "Source: PAGASA", `Bulletin: ${source.url}`, "", "Join our discord for discussions: https://discord.gg/tdGrvnvehP", "", "#TropicalCyclone #PAGASA #TerraGuardPH #StaySafe");
+    return sanitizeReport(lines.join("\n"));
+}
+async function postWeatherToFacebook(event, source, env) {
+    const slot = weatherFbSlot(event.normalized?.sourceKey ?? source.key);
+    if (!slot)
+        return "skipped (no FB slot for source)";
+    if ((env.PAGASA_FB ?? "1") === "0")
+        return "skipped (PAGASA_FB=0)";
+    if (event.parsed?.statesNoActive)
+        return "skipped (no active warning)";
+    const pageId = (env.FB_PAGE_ID ?? "").trim();
+    const userToken = (env.FB_USER_ACCESS_TOKEN ?? "").trim();
+    if (!pageId || !userToken)
+        return "skipped (FB_PAGE_ID / FB_USER_ACCESS_TOKEN not set)";
+    let pageToken = await fbPageToken(env);
+    if (!pageToken)
+        pageToken = userToken; // stored token may already be a Page token
+    const proof = await fbAppSecretProof(pageToken, (env.FB_APP_SECRET ?? "").trim());
+    const withProof = (params) => {
+        if (proof)
+            params.appsecret_proof = proof;
+        return params;
+    };
+    const message = slot.kind === "cyclone" ? buildCycloneFbMessage(event, source) : buildWeatherFbMessage(event, source);
+    // Static branded image — plain file on Pages, no card warmup needed.
+    try {
+        const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(withProof({ access_token: pageToken, caption: message, url: slot.image })),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && (data.post_id || data.id))
+            return `posted photo ${data.post_id ?? data.id}`;
+        console.error(`[fb][pagasa] photo post failed: ${String(data?.error?.message ?? `HTTP ${res.status}`).slice(0, 300)}`);
+    }
+    catch (e) {
+        console.error("[fb][pagasa] photo post exception", e instanceof Error ? e.message : String(e));
+    }
+    try {
+        const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/feed`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(withProof({ access_token: pageToken, message, link: source.url })),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.id)
+            return `error ${data?.error?.message ?? `HTTP ${res.status}`}`.slice(0, 200);
+        return `posted ${data.id}`;
+    }
+    catch (e) {
+        return `error ${e instanceof Error ? e.message : String(e)}`.slice(0, 200);
+    }
+}
 function manilaDateLabel(now = new Date()) {
     const parts = new Intl.DateTimeFormat("en-GB", {
         timeZone: "Asia/Manila",
@@ -1477,6 +1633,15 @@ async function runMonitor(env) {
             if (shouldNotify && event.reportText) {
                 await sendDiscordReport(env.DISCORD_WEBHOOK_URL, `TerraGuard ${event.reportKind} — ${parsed.title || source.label}`, event.reportText, risk.status, source.url, env.PAGASA_SATELLITE === "0" ? null : undefined);
                 outcomes.push(`${source.key}: sent ${event.reportKind} (${risk.status})`);
+                // Facebook: daily forecast + cyclone bulletins only, same
+                // notify gate. Never throws, never blocks the loop.
+                try {
+                    const fbStatus = await postWeatherToFacebook(event, source, env);
+                    outcomes.push(`${source.key}: fb ${fbStatus}`);
+                }
+                catch (e) {
+                    outcomes.push(`${source.key}: fb error ${e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120)}`);
+                }
             }
             else {
                 outcomes.push(`${source.key}: stored, no notify (${risk.status})`);
