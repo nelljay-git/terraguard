@@ -406,6 +406,29 @@ async function handleUsgs(env) {
     if (already || lastId === dedupKey || lastId === earthquakeToEqId(latest))
         return `duplicate ${dedupKey}`;
     const lat = parseFloat(latest.latitude), lng = parseFloat(latest.longitude), mag = parseFloat(latest.magnitude);
+    // USGS closes with the cinematic report: at/above RENDER_MIN_MAG the
+    // confirmation IS the rendered video (dispatched here, posted by
+    // Actions on completion) — no immediate image post. Below threshold
+    // (or when FB is off/filtered) the classic image final still goes out.
+    const renderMinMag = parseFloat(env.RENDER_MIN_MAG ?? "5.0");
+    const wantsVideo = !isNaN(mag) && mag >= renderMinMag;
+    const usgsFbOff = ["false", "0", "no", "off", "disabled"].includes(String(env.USGS_POST_FB ?? "true").trim().toLowerCase());
+    const dispatchFinalVideo = async () => {
+        await dispatchVideoRender(env, {
+            source: "usgs", latitude: latest.latitude, longitude: latest.longitude,
+            magnitude: latest.magnitude, depth: latest.depth, place: latest.location,
+            datetime: latest.datetime, fbPostId: "",
+            // Nested under ONE key: GitHub repository_dispatch rejects
+            // payloads with more than 10 top-level properties (HTTP 422).
+            extra: {
+                usgsEventId: latest.usgsId,
+                threat: usgsTsunamiLabel(latest.tsunami),
+                tsunamiThreat: usgsTsunamiLabel(latest.tsunami),
+                intensity: mmiToRoman(latest.mmi),
+                finalReport: true,
+            },
+        });
+    };
     // FB final report helper (never throws by itself; caller wraps anyway).
     const tryFbFinal = async () => {
         try {
@@ -439,12 +462,41 @@ async function handleUsgs(env) {
     const match = findCrossMatch(await getSentIndex(kv), "usgs", latest.timeMs, lat, lng, mag);
     if (match) {
         await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, crossOf: `${match.source}:${match.id}`, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
+        // Video-first close (threshold met, FB on, gates pass): the USGS
+        // confirmation is the rendered video, not an image post.
+        if (wantsVideo && !usgsFbOff && !fbPassesFilters(latest, env)) {
+            await dispatchFinalVideo();
+            return `cross-duplicate ${dedupKey} (already announced by ${match.source}) | video dispatched (USGS final closes on render)`;
+        }
+        // Below render threshold: no video AND no image (Discord already
+        // covered it via sendUsgsWebhook in the fresh path).
+        if (!wantsVideo) {
+            return `cross-duplicate ${dedupKey} (already announced by ${match.source}) | below render threshold (silent)`;
+        }
         // Still post the FB final report: USGS numbers confirm the earlier call.
         const fbStatus = await tryFbFinal();
         await recordFb(fbStatus);
         return `cross-duplicate ${dedupKey} (already announced by ${match.source}) | fb: ${fbStatus}`;
     }
     await sendUsgsWebhook(latest, env);
+    // Video-first close (threshold met, FB on, gates pass).
+    if (wantsVideo && !usgsFbOff && !fbPassesFilters(latest, env)) {
+        await dispatchFinalVideo();
+        await kv.put("last_eq_id", dedupKey);
+        await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, videoFinal: true, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
+        await kv.put(`sent:${earthquakeToEqId(latest)}`, dedupKey, { expirationTtl: 60 * 60 * 24 * 30 });
+        await recordSent(kv, { source: "usgs", id: latest.usgsId, timeMs: latest.timeMs, lat, lng, mag });
+        return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | video dispatched (USGS final closes on render)`;
+    }
+    // Below render threshold: USGS stays off Facebook entirely (no video,
+    // no image). Discord already fired above.
+    if (!wantsVideo) {
+        await kv.put("last_eq_id", dedupKey);
+        await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, silent: true, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
+        await kv.put(`sent:${earthquakeToEqId(latest)}`, dedupKey, { expirationTtl: 60 * 60 * 24 * 30 });
+        await recordSent(kv, { source: "usgs", id: latest.usgsId, timeMs: latest.timeMs, lat, lng, mag });
+        return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | below render threshold (silent)`;
+    }
     const fbStatus = await tryFbFinal();
     await recordFb(fbStatus);
     await kv.put("last_eq_id", dedupKey);
@@ -454,11 +506,12 @@ async function handleUsgs(env) {
     return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | fb: ${fbStatus}`;
 }
 
-// ===== USGS → Facebook FINAL REPORT (confirmation of earlier calls) =====
-// Same FB_MAG_MIN + FB_COUNTRY_FOCUS gates as the other sources (no PH
-// exception — a USGS final is wanted even for PH quakes). Posts
-// independently of fb:posted-index: the final report confirms, it does
-// not duplicate.
+// ===== USGS → Facebook: video close (no image posts) =====
+// At/above RENDER_MIN_MAG the USGS confirmation IS the rendered video
+// (dispatched here, posted by Actions). Below threshold USGS stays off
+// Facebook entirely — Discord still fires. Same FB_MAG_MIN /
+// FB_COUNTRY_FOCUS gates, no PH exception. postUsgsToFacebook /
+// buildUsgsFbMessage remain as fallback + caption reference.
 
 function buildUsgsFbMessage(eq) {
     const { date, time } = formatUtcDisplayMs(eq.timeMs);

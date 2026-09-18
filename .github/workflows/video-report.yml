@@ -1,7 +1,9 @@
 # Free headless video renderer: reuses the exact drawFrame() from
 # src/components/VideoReport.tsx via node-canvas. Triggered by the
-# earthquake worker (repository_dispatch) after a successful FB post,
-# or manually. Costs $0 (GitHub-hosted runners: 2000 min/month free).
+# earthquake worker (repository_dispatch) — for USGS events at/above
+# RENDER_MIN_MAG the video IS the FB final report (finalReport flag),
+# otherwise a FLASH-format video post, or manually. Costs $0
+# (GitHub-hosted runners: 2000 min/month free).
 #
 # Required repo secrets: FB_PAGE_ID, FB_UPLOAD_TOKEN (Page token with
 # pages_manage_posts — can be the same token the workers use).

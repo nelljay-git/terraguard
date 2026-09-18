@@ -71,6 +71,9 @@ interface QuakeInput {
   tsunamiThreat?: string;
   usgsEventId?: string;
   source?: string;
+  // Set by the worker for USGS confirmations: the video IS the final
+  // report, so the FB upload uses the FINAL caption, not FLASH.
+  finalReport?: boolean;
   // Dispatch payloads nest enrichment here (GitHub caps
   // repository_dispatch at 10 top-level properties); manual JSON may
   // still carry the same fields flat — main() flattens once.
@@ -150,6 +153,47 @@ export function buildVideoCaption(quake: QuakeInput): string {
   ].join('\n');
 }
 
+// FINAL REPORT caption for USGS confirmation videos: same wording as the
+// worker's USGS FB final (buildUsgsFbMessage in earthquake.js), adapted to
+// video-payload fields. Used only when the dispatch sets finalReport.
+export function buildFinalCaption(quake: QuakeInput): string {
+  const mag = String(quake.magnitude ?? '?');
+  const place = quake.location || quake.place || '';
+  const { date, time } = splitDateTime(quake.datetime ?? '');
+  const timeBare = time.replace(/\s*(UTC|PHT|UST)\s*$/i, '').trim();
+  const lat = String(quake.latitude ?? '');
+  const lng = String(quake.longitude ?? '');
+  const m = parseFloat(mag);
+  const prefix = isNaN(m) ? '🌍 ' : m >= 7 ? '🟥 ' : m >= 6 ? '🟥 ' : m >= 5 ? '🟧 ' : m >= 4 ? '🟨 ' : m >= 3 ? '🟦 ' : '🟩 ';
+  const detailsUrl = `https://terraguard-ph.pages.dev/details/${detailsSlug(quake.datetime ?? '', lat, lng)}`;
+  return [
+    `${prefix}USGS FINAL REPORT`,
+    ``,
+    `A magnitude ${mag} earthquake was recorded near ${place} on ${date}${timeBare ? ` at ${timeBare}` : ''}.`,
+    ``,
+    `EARTHQUAKE INFORMATION`,
+    ``,
+    `Magnitude: ${mag}`,
+    `Location: ${place}`,
+    `Date & Time: ${date}${timeBare ? ` - ${timeBare}` : ''}`,
+    `Depth: ${quake.depth ? `${quake.depth} km` : 'N/A'}`,
+    ...(lat && lng ? [`Coordinates: ${lat}°N, ${lng}°E`, ``] : []),
+    `Cinematic visual report attached — produced from USGS final data.`,
+    ``,
+    `Earthquake Details:`,
+    detailsUrl,
+    ``,
+    `This is the final report issued by the United States Geological Survey (USGS).`,
+    ``,
+    `Source: USGS`,
+    ``,
+    `Join the Terra Guard Discord community for earthquake discussions:`,
+    `https://discord.gg/tdGrvnvehP`,
+    ``,
+    `#Earthquake #USGS #TerraGuard #EarthquakeReport #SeismicActivity #Philippines #EarthquakePH #Lindol #TerraGuardPH`,
+  ].join('\n');
+}
+
 async function main(): Promise<void> {
   const outDir = process.env.OUT_DIR || '/tmp/terraguard-video';
   fs.mkdirSync(outDir, { recursive: true });
@@ -162,6 +206,7 @@ async function main(): Promise<void> {
   quake.tsunamiThreat = quake.tsunamiThreat || ex.tsunamiThreat || quake.threat;
   quake.shakes = quake.shakes ?? ex.shakes ?? [];
   quake.usgsEventId = quake.usgsEventId || ex.usgsEventId;
+  quake.finalReport = quake.finalReport || ex.finalReport || false;
   if (!quake.latitude || !quake.longitude) throw new Error('QUAKE_JSON missing latitude/longitude');
 
   registerFont('public/fonts/oswald-700.ttf', { family: 'Oswald', weight: '700' });
@@ -271,7 +316,7 @@ async function main(): Promise<void> {
   if (pageId && token) {
     const form = new FormData();
     form.append('access_token', token);
-    form.append('description', quake.description || buildVideoCaption(quake));
+    form.append('description', quake.description || (quake.finalReport ? buildFinalCaption(quake) : buildVideoCaption(quake)));
     form.append('source', new Blob([fs.readFileSync(mp4)], { type: 'video/mp4' }), 'report.mp4');
     const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/videos`, { method: 'POST', body: form });
     const data = (await res.json().catch(() => ({}))) as { id?: string; error?: { message?: string } };
