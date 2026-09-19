@@ -11,7 +11,7 @@ import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, C
 import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
 import { VideoReportModal } from '../components/VideoReport';
-import { extractMaxIntensity, extractShakeRows } from '../lib/videoMeta';
+import { estimateAffectedRadiusKm, extractMaxIntensity, extractShakeRows } from '../lib/videoMeta';
 import { useAuth } from '../context/AuthContext';
 import { FunFactLoader } from '../components/FunFactLoader';
 import { ActiveFaultsLayer } from '../components/ActiveFaultsLayer';
