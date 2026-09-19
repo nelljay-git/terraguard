@@ -216,6 +216,7 @@ export function drawFrame(
   shakes: ShakeRow[],
   dyfi: DyfiPoint[],
   t: number,
+  source?: string,
 ) {
   const p = Math.min(Math.max(t / DUR, 0), 1);
   // Slow zoom 1.0 -> 1.08 around the epicenter display point.
@@ -339,28 +340,13 @@ export function drawFrame(
     }
   }
 
-  // DYFI felt responses: MMI-colored dots fading in right after the wave
-  // spread finishes (under the info cards). Events without DYFI data draw
-  // nothing. Off-map points are skipped.
+  // DYFI felt responses — keep the caption here but defer dot
+  // drawing until after the side gradients so points stay on top.
+  let dyfiA = 0;
   if (dyfi.length > 0 && t >= DYFI_T) {
-    const a = easeOutCubic(Math.min((t - DYFI_T) / 0.8, 1));
+    dyfiA = easeOutCubic(Math.min((t - DYFI_T) / 0.8, 1));
     ctx.save();
-    ctx.globalAlpha = 0.9 * a;
-    for (const p of dyfi) {
-      const { x, y } = latLngToDisplayPx(eq, p.lat, p.lng);
-      if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
-      ctx.beginPath();
-      ctx.arc(x, y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = p.cdi != null ? mmiColor(p.cdi) : '#ffd166';
-      ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-      ctx.stroke();
-    }
-    ctx.restore();
-    // Count caption, top-center in the gap between the data columns.
-    ctx.save();
-    ctx.globalAlpha = a;
+    ctx.globalAlpha = dyfiA;
     ctx.fillStyle = '#9ca3af';
     ctx.font = '400 15px Inter, sans-serif';
     ctx.textAlign = 'center';
@@ -392,6 +378,30 @@ export function drawFrame(
     }
     ctx.globalAlpha = q;
     ctx.textAlign = 'left';
+
+    // DYFI dots — drawn after gradients (on top) so they aren't dimmed, larger + stronger outline.
+    if (dyfi.length > 0 && t >= DYFI_T) {
+      ctx.save();
+      ctx.globalAlpha = q * (0.95 * dyfiA + 0.05);
+      for (const p of dyfi) {
+        const { x, y } = latLngToDisplayPx(eq, p.lat, p.lng);
+        if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
+        ctx.beginPath();
+        ctx.arc(x, y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = p.cdi != null ? mmiColor(p.cdi) : '#ffd166';
+        ctx.fill();
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+        ctx.stroke();
+        // subtle outer glow for visibility on dark map
+        ctx.beginPath();
+        ctx.arc(x, y, 10, 0, Math.PI * 2);
+        ctx.strokeStyle = p.cdi != null ? mmiColor(p.cdi) + '55' : 'rgba(255,209,102,0.35)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     const depthNum = eq.depth || '?';
     const depthTag = (() => {
@@ -454,6 +464,16 @@ export function drawFrame(
     ctx.fillStyle = '#ffffff';
     ctx.font = '400 19px Inter, sans-serif';
     ctx.fillText(timeText.slice(0, 34), lx, ly);
+    ly += 30;
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '400 14px Inter, sans-serif';
+    ctx.fillText('SOURCE', lx, ly);
+    ly += 26;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '400 19px Inter, sans-serif';
+    const rawSrc = (source ?? (eq as unknown as { source?: string }).source ?? '').toString().trim();
+    const srcLabel = rawSrc ? rawSrc.toUpperCase() : 'PHIVOLCS';
+    ctx.fillText(srcLabel === 'EMSC' ? 'EMSC-CSEM' : srcLabel, lx, ly);
 
     // Right column: IMPACT DATA (drawn at 64% scale, right-aligned).
     const re = W - 64; // right edge of the column (clears the watermark)
@@ -762,7 +782,7 @@ export function VideoReportModal({
         const mosaic = document.createElement('canvas');
         mosaic.width = COLS * TILE;
         mosaic.height = ROWS * TILE;
-        const mctx = mosaic.getContext('2d');
+        const mctx = mosaic.getContext('2d', { colorSpace: 'srgb', alpha: false } as unknown as CanvasRenderingContext2DSettings);
         if (mctx) {
           mctx.fillStyle = '#0a0d12';
           mctx.fillRect(0, 0, mosaic.width, mosaic.height);
@@ -792,17 +812,17 @@ export function VideoReportModal({
   useEffect(() => {
     if (phase !== 'preview' && phase !== 'recording') return;
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
+    const ctx = canvas?.getContext('2d', { colorSpace: 'srgb', alpha: false, desynchronized: false } as unknown as CanvasRenderingContext2DSettings);
     if (!canvas || !ctx) return;
     const t0 = performance.now();
     const tick = (now: number) => {
       const t = (now - t0) / 1000;
       if (phase === 'recording' && t >= DUR) {
-        drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, dyfiRef.current, DUR);
+        drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, dyfiRef.current, DUR, quakeSource);
         recRef.current?.stop();
         return;
       }
-      drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, dyfiRef.current, phase === 'preview' ? t % (DUR + 1) : t);
+      drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, dyfiRef.current, phase === 'preview' ? t % (DUR + 1) : t, quakeSource);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);

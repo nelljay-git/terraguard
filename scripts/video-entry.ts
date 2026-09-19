@@ -229,7 +229,7 @@ async function main(): Promise<void> {
   if (loaded === 0) throw new Error('no map tiles loaded');
 
   const mosaic = createCanvas(COLS * TILE, ROWS * TILE);
-  const mctx = mosaic.getContext('2d');
+  const mctx = mosaic.getContext('2d', { alpha: false } as unknown as Record<string, unknown>);
   mctx.fillStyle = '#0a0d12';
   mctx.fillRect(0, 0, mosaic.width, mosaic.height);
   settled.forEach((img, i) => {
@@ -258,10 +258,10 @@ async function main(): Promise<void> {
   // Frames (deterministic timesteps — smoother than realtime capture).
   const total = Math.round(DUR * FPS);
   const canvas = createCanvas(W, H);
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { alpha: false } as unknown as Record<string, unknown>);
   for (let i = 0; i < total; i++) {
     const tt = i / FPS;
-    drawFrame(ctx as unknown as CanvasRenderingContext2D, view, quake, quake.intensity ?? '', quake.threat ?? '', quake.shakes ?? [], dyfi, tt);
+    drawFrame(ctx as unknown as CanvasRenderingContext2D, view, quake, quake.intensity ?? '', quake.threat ?? '', quake.shakes ?? [], dyfi, tt, quake.source);
     fs.writeFileSync(path.join(outDir, `frame${String(i).padStart(4, '0')}.png`), canvas.toBuffer('image/png'));
     if (i % 120 === 0) console.log(`frame ${i}/${total}`);
   }
@@ -306,7 +306,12 @@ async function main(): Promise<void> {
       'aac',
     );
   }
-  ffmpegArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-shortest', mp4);
+  // Full-range pc + bt709 keeps the MP4 looking like the sRGB canvas preview (no crushed blacks).
+  ffmpegArgs.push(
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+    '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'pc',
+    '-crf', '20', '-shortest', mp4,
+  );
   await execFileAsync('ffmpeg', ffmpegArgs);
   console.log('mp4:', mp4, fs.statSync(mp4).size, 'bytes');
 
