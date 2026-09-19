@@ -396,6 +396,11 @@ export function Details() {
   const [showVideoReport, setShowVideoReport] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const [banner, setBanner] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const showBanner = (type: 'success' | 'error' | 'info', message: string) => {
+    setBanner({ type, message });
+    setTimeout(() => setBanner(null), 3500);
+  };
   useEffect(() => {
     if (!moreMenuOpen) return;
     const onDown = (e: MouseEvent) => {
@@ -871,9 +876,11 @@ export function Details() {
     try {
       await navigator.clipboard.writeText(window.location.href);
       setCopied(true);
+      showBanner('success', 'Link copied to clipboard');
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy', err);
+      showBanner('error', 'Failed to copy link');
     }
   };
 
@@ -885,7 +892,10 @@ export function Details() {
           text: `Check out details for this M${earthquake.magnitude} earthquake in ${earthquake.location} at ${earthquake.datetime}`,
           url: window.location.href,
         });
+        showBanner('success', 'Shared successfully');
       } catch (err) {
+        // AbortError when user cancels — don't show error
+        if ((err as Error)?.name !== 'AbortError') showBanner('error', 'Share failed');
         console.error('Error sharing', err);
       }
     } else {
@@ -945,9 +955,11 @@ export function Details() {
       const text = buildCopyDescription();
       await navigator.clipboard.writeText(text);
       setCopiedDesc(true);
+      showBanner('success', 'Description copied — ready to paste on Facebook');
       setTimeout(() => setCopiedDesc(false), 2000);
     } catch (err) {
       console.error('Failed to copy description', err);
+      showBanner('error', 'Failed to copy description');
     }
   };
 
@@ -1036,9 +1048,11 @@ export function Details() {
         throw new Error(`Webhook failed ${res.status} ${txt}`);
       }
       setWebhookStatus('success');
+      showBanner('success', 'Sent to Discord webhook');
       setTimeout(() => setWebhookStatus('idle'), 3000);
     } catch (e) {
       console.error('Webhook send failed:', e);
+      showBanner('error', e instanceof Error ? e.message.slice(0,120) : 'Discord webhook failed');
       // CORS fallback: open webhook URL hint
       setWebhookStatus('error');
       setTimeout(() => setWebhookStatus('idle'), 4000);
@@ -1077,9 +1091,11 @@ export function Details() {
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j.success) throw new Error(j.error || `HTTP ${res.status}`);
       setFbPostStatus('success');
+      showBanner('success', 'Posted to Facebook Page');
       setTimeout(() => setFbPostStatus('idle'), 3000);
     } catch (e) {
       console.error('Facebook post failed:', e);
+      showBanner('error', e instanceof Error ? e.message.slice(0,140) : 'Facebook post failed');
       setFbPostStatus('error');
       setTimeout(() => setFbPostStatus('idle'), 4000);
     }
@@ -1123,10 +1139,12 @@ export function Details() {
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j.success) throw new Error(j.error || `HTTP ${res.status}`);
       setVideoPostStatus('success');
+      showBanner('success', 'Video render started — check Actions / Facebook in a few minutes');
       setTimeout(() => setVideoPostStatus('idle'), 5000);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('Video trigger failed:', e);
+      showBanner('error', msg.slice(0,140));
       setVideoPostError(msg);
       setVideoPostStatus('error');
       setTimeout(() => {
@@ -1178,6 +1196,17 @@ export function Details() {
 
   return (
     <>
+      {banner && (
+        <div className={`status-banner status-banner--${banner.type}`} role="status" onClick={() => setBanner(null)}>
+          <div className="status-banner-body">
+            {banner.type === 'success' ? <Check size={16} color="#10b981" /> : banner.type === 'error' ? <AlertTriangle size={16} color="#ef4444" /> : <Info size={16} />}
+            <span>{banner.message}</span>
+            <button type="button" className="status-banner-close" aria-label="Dismiss" onClick={(e) => { e.stopPropagation(); setBanner(null); }}>
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
       <motion.div 
         className="details-container container"
         initial={{ x: 0 }}
