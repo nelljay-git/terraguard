@@ -876,7 +876,7 @@ export function VideoReportModal({
         audioCtxRef.current = actx;
         await actx.resume().catch(() => {});
         const files = ['epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
-        const at = [1.0, 1.5, 4.0];
+        const at = [1.0, 2.0, 4.0];
         const dest = actx.createMediaStreamDestination();
         const t0 = actx.currentTime + 0.05;
         await Promise.all(

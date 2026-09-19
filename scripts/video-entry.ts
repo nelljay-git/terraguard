@@ -274,7 +274,7 @@ async function main(): Promise<void> {
   const sfxDir = path.join(process.cwd(), 'public', 'sounds');
   const sfxPlan = [
     { file: 'epicenter-appear.mp3', at: 1000 },
-    { file: 'wave-spread.mp3', at: 1500 },
+    { file: 'wave-spread.mp3', at: 2000 },
     { file: 'reports.mp3', at: 4000 },
   ].filter((s) => {
     const ok = fs.existsSync(path.join(sfxDir, s.file));
