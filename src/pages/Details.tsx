@@ -7,7 +7,7 @@ import { getSeverityColor, getSeverityLabel, haversineKm, timeAgo } from '../lib
 import { PH_PROVINCES, PH_CITIES } from '../data/phLocations';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation, Menu, Download, Send, Loader2, Megaphone, Clapperboard, Upload } from 'lucide-react';
+import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation, Menu, Download, Send, Loader2, Megaphone, Clapperboard, Upload, MoreHorizontal } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ImageModal } from '../components/ImageModal';
 import { VideoReportModal } from '../components/VideoReport';
@@ -394,6 +394,18 @@ export function Details() {
   const [videoPostStatus, setVideoPostStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [videoPostError, setVideoPostError] = useState('');
   const [showVideoReport, setShowVideoReport] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) setMoreMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [moreMenuOpen]);
+  // close More on navigation / source change
+  useEffect(() => { setMoreMenuOpen(false); }, [id]);
 
   // For USGS events, pull the raw event "products" so the overlay panel can show
   // ShakeMap / DYFI / ground-failure / aftershock layers on the interactive map.
@@ -1193,7 +1205,7 @@ export function Details() {
             {copied ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
             <span>{copied ? 'Copied!' : 'Copy Link'}</span>
           </button>
-          {isWebhookAuthorized && (
+          {!isMobile && isWebhookAuthorized && (
             <button className="action-btn glass flex-center" onClick={handleCopyDescription} title="Copy FB description">
               {copiedDesc ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
               <span>{copiedDesc ? 'Copied!' : 'Copy description'}</span>
@@ -1209,7 +1221,7 @@ export function Details() {
               <span>Share</span>
             </button>
           )}
-          {isUsgs && isWebhookAuthorized && (
+          {!isMobile && isUsgs && isWebhookAuthorized && (
             <button
               className="action-btn glass flex-center"
               onClick={() => setShowVideoReport(true)}
@@ -1219,7 +1231,7 @@ export function Details() {
               <span>Video Report</span>
             </button>
           )}
-          {isWebhookAuthorized && (
+          {!isMobile && isWebhookAuthorized && (
             <button
               className="action-btn glass flex-center"
               onClick={handlePostVideo}
@@ -1239,7 +1251,7 @@ export function Details() {
               {videoPostError}
             </span>
           )}
-          {isWebhookAuthorized && (
+          {!isMobile && isWebhookAuthorized && (
             <button
               className="action-btn glass flex-center"
               onClick={handleSendToWebhook}
@@ -1254,7 +1266,7 @@ export function Details() {
               <span>{webhookStatus === 'sending' ? 'Sending...' : webhookStatus === 'success' ? 'Sent!' : webhookStatus === 'error' ? 'Failed' : 'Send to Webhooks'}</span>
             </button>
           )}
-          {isWebhookAuthorized && (
+          {!isMobile && isWebhookAuthorized && (
             <button
               className="action-btn glass flex-center"
               onClick={handlePostToFacebook}
@@ -1268,6 +1280,41 @@ export function Details() {
               {fbPostStatus === 'sending' ? <Loader2 size={16} className="spinner-icon" /> : fbPostStatus === 'success' ? <Check size={16} color="#10b981" /> : fbPostStatus === 'error' ? <AlertTriangle size={16} color="#ef4444" /> : <Megaphone size={16} />}
               <span>{fbPostStatus === 'sending' ? 'Posting...' : fbPostStatus === 'success' ? 'Posted!' : fbPostStatus === 'error' ? 'Failed' : 'Post to Facebook'}</span>
             </button>
+          )}
+          {isMobile && isWebhookAuthorized && (
+            <div className="more-menu-wrap" ref={moreMenuRef}>
+              <button
+                className="action-btn glass flex-center"
+                onClick={() => setMoreMenuOpen((o) => !o)}
+                title="More actions"
+                aria-expanded={moreMenuOpen}
+                aria-haspopup="menu"
+              >
+                <MoreHorizontal size={16} />
+                <span>More</span>
+              </button>
+              {moreMenuOpen && (
+                <div className="more-dropdown glass" role="menu">
+                  {isUsgs && (
+                    <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); setShowVideoReport(true); }}>
+                      <Clapperboard size={14} /> Video Report
+                    </button>
+                  )}
+                  <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handleCopyDescription(); }}>
+                    {copiedDesc ? <Check size={14} color="#10b981" /> : <Copy size={14} />} Copy description
+                  </button>
+                  <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handlePostVideo(); }} disabled={videoPostStatus === 'sending'}>
+                    {videoPostStatus === 'sending' ? <Loader2 size={14} className="spinner-icon" /> : <Upload size={14} />} Post Video
+                  </button>
+                  <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handleSendToWebhook(); }} disabled={webhookStatus === 'sending'}>
+                    <Send size={14} /> Send to Webhooks
+                  </button>
+                  <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handlePostToFacebook(); }} disabled={fbPostStatus === 'sending'}>
+                    <Megaphone size={14} /> Post to Facebook
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

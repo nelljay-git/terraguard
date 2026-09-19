@@ -167,7 +167,10 @@
 }
 
 .action-buttons {
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
+  align-items: center;
 }
 
 .action-btn {
@@ -1224,3 +1227,41 @@
   color: #fff;
   background: rgba(255, 255, 255, 0.12);
 }
+
+/* More menu (mobile owner actions) */
+.more-menu-wrap { position: relative; display: inline-flex; }
+.more-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 700;
+  min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(17, 24, 39, 0.96);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  backdrop-filter: blur(8px);
+}
+.more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: flex-start;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+.more-item:hover { background: rgba(255,255,255,0.06); }
+.more-item:disabled { opacity: 0.5; cursor: not-allowed; }
