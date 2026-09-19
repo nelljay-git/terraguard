@@ -2510,13 +2510,12 @@ async function postVolcanoToFacebook(event, imageUrl, env) {
         so2: parsed.so2 ? String(parsed.so2) : "",
         pdz: parsed.pdzKm ? String(parsed.pdzKm) : "",
     }).toString();
-    const cardUrl = `https://terraguard-ph.pages.dev/api/volcano-card?${cardParams}`;
+    const cardUrl = `https://trikefare.x10.mx/terraguard/api/volcano-card.php?${cardParams}`;
     const photoUrls = [cardUrl];
     if (imageUrl)
         photoUrls.push(imageUrl); // bulletin map / Himawari as backup
-    // Warm the designed card first (cold WASM/tiles/fonts make FB's image
-    // scraper time out, silently downgrading to the backup image).
-    const isCard = (u) => String(u).includes("/api/volcano-card");
+    // Warm the PHP card first (ensure GD tiles are ready for FB's scraper).
+    const isCard = (u) => String(u).includes("volcano-card.php");
     async function warmCard(url) {
         for (let attempt = 1; attempt <= 2; attempt++) {
             try {
