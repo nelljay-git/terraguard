@@ -307,10 +307,11 @@ async function main(): Promise<void> {
     );
   }
   // Full-range pc + bt709 keeps the MP4 looking like the sRGB canvas preview (no crushed blacks).
+  // Use -t DUR (not -shortest) so the MP4 stays exactly 20s even when the mixed SFX is shorter.
   ffmpegArgs.push(
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
     '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'pc',
-    '-crf', '20', '-shortest', mp4,
+    '-crf', '20', '-t', String(DUR), mp4,
   );
   await execFileAsync('ffmpeg', ffmpegArgs);
   console.log('mp4:', mp4, fs.statSync(mp4).size, 'bytes');
