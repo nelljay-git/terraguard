@@ -366,6 +366,7 @@ export function Details() {
   const [detailsLoading, setDetailsLoading] = useState(true);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedDesc, setCopiedDesc] = useState(false);
   const [mapView, setMapView] = useState<'interactive' | 'official'>('interactive');
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [usgsProducts, setUsgsProducts] = useState<Record<string, any[]> | null>(null);
@@ -880,6 +881,64 @@ export function Details() {
     }
   };
 
+  const buildCopyDescription = (): string => {
+    if (!earthquake) return '';
+    const mag = earthquake.magnitude || '?';
+    const place = earthquake.location || '';
+    const datetime = earthquake.datetime || '';
+    const depth = earthquake.depth ? `${earthquake.depth} km` : 'N/A';
+    const lat = earthquake.latitude || '';
+    const lng = earthquake.longitude || '';
+    const coords = lat && lng ? `${lat}°N, ${lng}°E` : '';
+    const country = (() => {
+      const parts = place.split(',').map(s => s.trim()).filter(Boolean);
+      const raw = (parts.length > 1 ? parts[parts.length - 1] : parts[0] || '').replace(/\(.*?\)/g, ' ').trim();
+      if (!raw || raw.length > 30 || raw.split(/\s+/).length > 3) return '';
+      return raw.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    })();
+    const detailsUrl = window.location.href.replace(/[?&]_spa=1/, '');
+    const agency = reportingAgency;
+    const intensity = extractMaxIntensity(details?.reportedIntensities, details?.instrumentalIntensities) || 'N/A';
+    const tsunamiThreat = classifyTsunami(details?.tsunami || '')?.label || 'N/A';
+    const radius = estimateAffectedRadiusKm(mag) || 'N/A';
+    const datePart = datetime.split(' - ')[0] || datetime;
+    const timePart = datetime.split(' - ')[1] || '';
+    return [
+      `${datePart}${timePart ? ` - ${timePart}` : ''} | Mag ${mag} - ${place} | FLASH REPORT`,
+      ``,
+      `M${mag} Earthquake`,
+      `Location: ${place}`,
+      `Country: ${country || 'N/A'}`,
+      `Date: ${datetime}`,
+      `Depth: ${depth}`,
+      `Fault Type: N/A`,
+      `Agency: ${agency}`,
+      `Information No.: ${extractBulletin(activeLink || earthquake.link)?.no ?? 'N/A'}`,
+      `Max Intensity: ${intensity}`,
+      `Affected Radius: ${radius}`,
+      `Tsunami Threat: ${tsunamiThreat}`,
+      `Event Type: Earthquake`,
+      ...(coords ? [`Coordinates: ${coords}`, ``] : []),
+      `Earthquake Visual Report:`,
+      detailsUrl,
+      ``,
+      `Source: ${agency}`,
+      ``,
+      `#Earthquake #${agency} #TerraGuardPH`,
+    ].join('\n');
+  };
+
+  const handleCopyDescription = async () => {
+    try {
+      const text = buildCopyDescription();
+      await navigator.clipboard.writeText(text);
+      setCopiedDesc(true);
+      setTimeout(() => setCopiedDesc(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy description', err);
+    }
+  };
+
   // Discord webhook — gated to gianganwneljae@gmail.com only
   const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1546330478221598761/V8cOp8RPHxGozQYtclAO5JvOHoAllA1jJn5fvXRn4-hiO4v3eglWcimndhc2S-3mZ7d5';
 
@@ -1134,6 +1193,12 @@ export function Details() {
             {copied ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
             <span>{copied ? 'Copied!' : 'Copy Link'}</span>
           </button>
+          {isWebhookAuthorized && (
+            <button className="action-btn glass flex-center" onClick={handleCopyDescription} title="Copy FB description">
+              {copiedDesc ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
+              <span>{copiedDesc ? 'Copied!' : 'Copy description'}</span>
+            </button>
+          )}
           {typeof navigator.share === 'function' && (
             <button
               className="action-btn glass flex-center"
