@@ -1,6 +1,35 @@
 ﻿// TerraGuard all-hazard monitor: weather (PAGASA) + volcano (PHIVOLCS) + haze (ASMC).
 // ONE worker, ONE cron set. See worker-webhook/TERRA_README.md.
 
+// Shared Facebook Graph helpers (used by Weather, Volcano, Haze)
+const FB_GRAPH_VERSION = "v21.0";
+async function fbAppSecretProof(accessToken, appSecret) {
+    try {
+        if (!accessToken || !appSecret || !crypto?.subtle) return null;
+        const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(appSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+        const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(accessToken));
+        return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch { return null; }
+}
+async function fbPageToken(env) {
+    const userToken = (env.FB_USER_ACCESS_TOKEN ?? "").trim();
+    const pageId = (env.FB_PAGE_ID ?? "").trim();
+    if (!userToken || !pageId) return null;
+    try {
+        const proof = await fbAppSecretProof(userToken, (env.FB_APP_SECRET ?? "").trim());
+        const url = new URL(`https://graph.facebook.com/${FB_GRAPH_VERSION}/me/accounts`);
+        url.searchParams.set("access_token", userToken);
+        url.searchParams.set("fields", "id,name,access_token");
+        url.searchParams.set("limit", "50");
+        if (proof) url.searchParams.set("appsecret_proof", proof);
+        const res = await fetch(url.toString());
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => ({}));
+        const page = (data.data ?? []).find((p) => String(p.id) === String(pageId));
+        return page?.access_token ?? null;
+    } catch { return null; }
+}
+
 // ===== weather (from pagasa.js) =====
 const Weather = (() => {
 // Combined from worker-webhook modules - see PAGASA_README.md
@@ -1171,65 +1200,92 @@ function signalFbLines(signals) {
     return out;
 }
 function buildWeatherFbMessage(event, source) {
-    const { parsed } = event;
+    const { parsed, risk } = event;
     const issued = parsed.issuedAt || "latest PAGASA update";
     const synopsis = extractSynopsis(parsed.text) || buildNarrative(parsed);
+    const riskEmoji = RISK_EMOJI[risk?.status ?? "LOW"] ?? "⛅";
     const lines = [
-        `⛅ WEATHER UPDATE: ${issued} | Daily Weather Forecast | TerraGuard`,
+        `${riskEmoji} DAILY WEATHER UPDATE — ${issued} | TerraGuard PH`,
         "",
-        `🕐 Issued: ${issued}`,
+        `Hello! Here's a friendly, easy-to-read summary of PAGASA's latest Daily Weather Forecast — reworded for clarity, but always faithful to the official bulletin.`,
         "",
-        "📡 SYNOPSIS",
+        `🕐 Officially issued: ${issued}`,
+        `🏷️ TERRAGUARD RISK STATUS: ${risk?.status ?? "LOW"} ${riskEmoji}`,
+        "",
+        "📡 WHAT'S HAPPENING (SYNOPSIS)",
         synopsis,
     ];
-    if (parsed.cycloneName && parsed.cycloneCategory) {
-        lines.push("", "🌀 TROPICAL CYCLONE WATCH", `${titleCase(parsed.cycloneCategory)} ${parsed.cycloneName}.${parsed.cycloneMovement ? ` ${parsed.cycloneMovement}` : ""}${parsed.winds ? ` ${parsed.winds}` : ""}`);
+    // Plain-language context for non-experts
+    if (parsed.systems && parsed.systems.length > 0) {
+        const expl = {
+            "Southwest Monsoon": "Southwest Monsoon (Habagat) — warm, moist winds from the southwest bringing scattered rains, especially over western Luzon & Visayas",
+            "Northeast Monsoon": "Northeast Monsoon (Amihan) — cool, dry winds from the northeast",
+            "Intertropical Convergence Zone": "Intertropical Convergence Zone (ITCZ) — where trade winds meet, often causing cloudiness and thunderstorms",
+            "Low Pressure Area": "Low Pressure Area (LPA) — a cloud cluster being monitored for possible cyclone development",
+            "Shear Line": "Shear Line — boundary of contrasting winds, can trigger prolonged rains",
+            "Easterlies": "Easterlies — warm winds from the Pacific, often bringing isolated thunderstorms and warm weather",
+            "Thunderstorm": "Localized thunderstorms — typically brief but intense afternoon/evening rain",
+            "Tropical Cyclone": "Tropical Cyclone — a developing or active storm system inside/outside PAR",
+        };
+        const details = parsed.systems.map(s => `• ${expl[s] ?? s}`).join("\n");
+        lines.push("", "🌦️ WEATHER SYSTEMS IN EFFECT", details);
     }
-    else if (parsed.cycloneCategory) {
+    if (parsed.cycloneName && parsed.cycloneCategory) {
+        lines.push("", "🌀 TROPICAL CYCLONE WATCH", `PAGASA is monitoring ${titleCase(parsed.cycloneCategory)} ${parsed.cycloneName}.${parsed.cycloneMovement ? ` ${parsed.cycloneMovement}` : ""}${parsed.winds ? ` ${parsed.winds}` : ""}`, `We are actively tracking this system. No need to panic — just stay updated, especially if you are in coastal or low-lying areas.`);
+    } else if (parsed.cycloneCategory) {
         lines.push("", "🌀 TROPICAL CYCLONE WATCH", buildNarrative(parsed));
     }
-    const areas = (parsed.affectedAreas ?? []).slice(0, 10);
-    if (areas.length > 0) {
-        lines.push("", "🌧 FORECAST AREAS", ...areas.map((a) => `• ${a}`));
-        if ((parsed.affectedAreas ?? []).length > 10)
-            lines.push(`• (+${parsed.affectedAreas.length - 10} more areas in the full bulletin)`);
+    // Forecast by area — with friendly context
+    const forecastBlock = (() => {
+        const t = String(parsed.text ?? "");
+        const m = /forecast weather conditions([\s\S]+?)(?=forecast wind|temperature and relative|tides and astronomical|satellite image|$)/i.exec(t);
+        return m ? m[1].replace(/\s+/g, " ").trim().slice(0, 1200) : "";
+    })();
+    if (forecastBlock) {
+        lines.push("", "🗺️ WHAT TO EXPECT TODAY (BY AREA)", forecastBlock, "", "💡 Tip: “Scattered rains and thunderstorms” means not everyone will get rain, but when it does, it can be heavy and brief. Plan outdoor activities for the morning if possible.");
+    } else {
+        const areas = (parsed.affectedAreas ?? []).slice(0, 10);
+        if (areas.length > 0) {
+            lines.push("", "🗺️ AREAS TO WATCH", ...areas.map((a) => `• ${a}`));
+            if ((parsed.affectedAreas ?? []).length > 10) lines.push(`• (+${parsed.affectedAreas.length - 10} more in the full bulletin)`);
+        }
     }
-    if (parsed.rainfall)
-        lines.push("", "🌧 RAINFALL", parsed.rainfall);
-    if (parsed.systems && parsed.systems.length > 0)
-        lines.push("", "🌦️ SYSTEMS", `In effect: ${parsed.systems.join(", ")}.`);
-    lines.push("", "Source: PAGASA", `Bulletin: ${source.url}`, "", "Join our discord for discussions: https://discord.gg/tdGrvnvehP", "", "#Weather #PAGASA #TerraGuardPH #StaySafe");
+    if (parsed.rainfall) lines.push("", "🌧️ RAINFALL OUTLOOK", parsed.rainfall, "If a heavy rainfall warning is in effect, consider flood-prone routes and keep essentials ready.");
+    if (parsed.hazards && parsed.hazards.length > 0) lines.push("", "⚠️ POSSIBLE HAZARDS", ...parsed.hazards.map(h => `• ${titleCase(h)}`), "Stay safe: avoid flooded roads, secure loose items outdoors, and follow local advisories.");
+    lines.push("", "—", "📚 CONTEXT: This is an automated summary. PAGASA is the authoritative source — we only retrieve, organize, and reword for easier reading. We never add forecasts or change warnings.", `🔗 Official bulletin: ${source.url}`, "💬 Join our community for discussions and quick updates: https://discord.gg/tdGrvnvehP", "", "#WeatherPH #PAGASA #Habagat #TerraGuardPH #StaySafe #WeatherUpdate");
     return sanitizeReport(lines.join("\n"));
 }
 function buildCycloneFbMessage(event, source) {
-    const { parsed } = event;
+    const { parsed, risk } = event;
     const no = cycloneBulletinNo(parsed);
     const name = [parsed.cycloneCategory ? titleCase(parsed.cycloneCategory) : "", parsed.cycloneName || ""].filter(Boolean).join(" ") || "Tropical Cyclone";
     const issued = parsed.issuedAt || "latest PAGASA update";
+    const riskEmoji = RISK_EMOJI[risk?.status ?? "LOW"] ?? "🌀";
     const lines = [
-        `🌀 TROPICAL CYCLONE BULLETIN${no ? ` NO. ${no}` : ""}: ${name} - ${issued} | TerraGuard`,
+        `${riskEmoji} TROPICAL CYCLONE BULLETIN${no ? ` NO. ${no}` : ""}: ${name} — ${issued} | TerraGuard PH`,
         "",
+        `Friendly update: Here's what PAGASA's latest bulletin says about ${name} — summarized in plain language so it's easier to follow, without changing any official detail.`,
+        "",
+        `🕐 Issued: ${issued}`,
+        `🏷️ TERRAGUARD RISK STATUS: ${risk?.status ?? "LOW"} ${riskEmoji}`,
     ];
     const loc = cycloneLocationLine(parsed.text);
-    if (loc)
-        lines.push(`📍 ${loc}`);
-    if (parsed.cycloneMovement)
-        lines.push(`🧭 ${parsed.cycloneMovement}`);
-    if (parsed.winds)
-        lines.push(`💨 ${parsed.winds}`);
+    if (loc) lines.push("", "📍 CURRENT LOCATION & INTENSITY", `• ${loc}`);
+    if (parsed.cycloneMovement) lines.push(`• 🧭 ${parsed.cycloneMovement}`);
+    if (parsed.winds) lines.push(`• 💨 ${parsed.winds}`);
+    if (!loc && !parsed.cycloneMovement && !parsed.winds) lines.push("", "📍 STATUS", buildNarrative(parsed));
     const sigs = signalFbLines(parsed.signals);
-    if (sigs.length > 0)
-        lines.push("", "🚨 WIND SIGNALS", ...sigs);
-    else if ((parsed.affectedAreas ?? []).length > 0)
-        lines.push("", "📍 AREAS", ...(parsed.affectedAreas ?? []).slice(0, 10).map((a) => `• ${a}`));
-    if (parsed.rainfall)
-        lines.push("", "🌧 RAINFALL", parsed.rainfall);
-    if (parsed.surge)
-        lines.push("", "🌊 STORM SURGE & SEAS", parsed.surge);
+    if (sigs.length > 0) {
+        lines.push("", "🚨 WIND SIGNALS — WHAT THEY MEAN", ...sigs, "", "• Signal 1: Strong winds expected within 36h — be alert, secure light structures", "• Signal 2+: Stronger winds — avoid sea travel, stay indoors as advised by LGU");
+    } else if ((parsed.affectedAreas ?? []).length > 0) {
+        lines.push("", "📍 AREAS CURRENTLY MENTIONED", ...(parsed.affectedAreas ?? []).slice(0, 12).map((a) => `• ${a}`));
+    }
+    if (parsed.rainfall) lines.push("", "🌧️ HEAVY RAINFALL OUTLOOK", parsed.rainfall, "Flooding and landslides are possible in high-risk areas — please avoid flood-prone routes and monitor your LGU/PDRRMO updates.");
+    if (parsed.surge) lines.push("", "🌊 STORM SURGE & COASTAL WATERS", parsed.surge, "Sea travel can be risky — fisherfolk and small vessels are advised to follow PAGASA's gale warning.");
+    if (parsed.hazards && parsed.hazards.length > 0) lines.push("", "⚠️ OTHER HAZARDS TO NOTE", ...parsed.hazards.map(h => `• ${titleCase(h)}`));
     const next = nextBulletinLine(parsed.text);
-    if (next)
-        lines.push("", `⏭ ${next}`);
-    lines.push("", "Source: PAGASA", `Bulletin: ${source.url}`, "", "Join our discord for discussions: https://discord.gg/tdGrvnvehP", "", "#TropicalCyclone #PAGASA #TerraGuardPH #StaySafe");
+    if (next) lines.push("", `⏭️ NEXT UPDATE: ${next}`, "Tip: Set a reminder to check again around that time — conditions can change quickly.");
+    lines.push("", "—", "🤝 A calm reminder: No need to panic. Being informed and prepared is the best protection. Keep your emergency kit ready, charge your devices, and look out for neighbors.", "📚 PAGASA remains the authoritative source — TerraGuard only summarizes for easier reading.", `🔗 Official bulletin: ${source.url}`, "💬 Questions or want to share updates from your area? Join us: https://discord.gg/tdGrvnvehP", "", "#TropicalCyclonePH #PAGASA #BagyoPH #TerraGuardPH #StaySafe");
     return sanitizeReport(lines.join("\n"));
 }
 async function postWeatherToFacebook(event, source, env) {
@@ -1783,7 +1839,7 @@ async function handlePrivateApi(request, env, url) {
     return new Response("Not Found", { status: 404, headers: CORS });
 }
 
-return { runMonitor, runDaily, getSnapshot, getIndex, getEvent, getDaily, manilaSlot };
+return { runMonitor, runDaily, getSnapshot, getIndex, getEvent, getDaily, manilaSlot, weatherFbSlot, buildWeatherFbMessage, buildCycloneFbMessage, postWeatherToFacebook, sendDiscordReport };
 })();
 
 // ===== volcano (from volcano.js) =====
@@ -3458,6 +3514,86 @@ export default {
             catch (e) {
                 return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
             }
+        }
+        // ---- manual weather repost (bypasses dedup) ----
+        if (path === "/admin" || path === "/manual") {
+            if (!secretsOk(request, weatherSecrets(env)))
+                return new Response("Not Found", { status: 404, headers: CORS });
+            const key = url.searchParams.get("key") ?? "";
+            const q = key ? `?key=${encodeURIComponent(key)}` : "";
+            const snap = w.kv ? await Weather.getSnapshot(w.kv).catch(() => null) : null;
+            const bySource = snap?.bySource ?? {};
+            const opts = Object.keys(bySource).map(k => {
+                const e = bySource[k];
+                const label = `${k} — ${e.normalized?.title ?? k} (${e.risk?.status ?? "?"}) ${e.parsed?.statesNoActive ? "[inactive]" : ""}`;
+                return `<option value="${k}">${label} — ${e.id?.slice(-8) ?? ""}</option>`;
+            }).join("");
+            const fbHint = `Facebook: only <b>forecast</b> + <b>tc-bulletin</b> have a slot (others are Discord-only by design). Inactive bulletins are skipped.`;
+            const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TerraGuard Manual Post</title>
+<style>body{font-family:system-ui,sans-serif;max-width:640px;margin:32px auto;padding:0 16px}select,button{font-size:15px;padding:8px 12px}button{cursor:pointer}pre{white-space:pre-wrap;background:#f5f5f5;padding:12px;border-radius:8px;overflow:auto}#out{margin-top:16px}.opts label{margin-right:12px;user-select:none}</style>
+<h2>🌦️ TerraGuard — Manual Weather Post</h2>
+<p>${fbHint}</p>
+<p><select id="src">${opts || '<option value="">(no snapshot yet — run /trigger first)</option>'}</select></p>
+<p class="opts"><label><input type="radio" name="dst" value="both" checked> Facebook + Discord</label> <label><input type="radio" name="dst" value="discord"> Discord only</label> <label><input type="radio" name="dst" value="facebook"> Facebook only</label></p>
+<p><button id="btn" onclick="go()">Post</button></p>
+<pre id="out">Ready.</pre>
+<script>
+const q=${JSON.stringify(q)};
+async function go(){
+  const k=document.getElementById('src').value;
+  if(!k) return;
+  const dst=document.querySelector('input[name="dst"]:checked')?.value||'both';
+  const b=document.getElementById('btn'); b.disabled=true; b.textContent='Posting...';
+  const o=document.getElementById('out'); o.textContent='Posting '+k+' → '+dst+' ...';
+  try{
+    const r=await fetch('/repost-weather'+q+'&source='+encodeURIComponent(k)+'&target='+encodeURIComponent(dst),{method:'POST'});
+    const j=await r.json().catch(()=>({raw:''}));
+    o.textContent=JSON.stringify(j,null,2);
+  }catch(e){ o.textContent=String(e); }
+  b.disabled=false; b.textContent='Post';
+}
+</script>`;
+            return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", ...CORS } });
+        }
+        if (path === "/repost-weather") {
+            if (!secretsOk(request, weatherSecrets(env)))
+                return new Response("Not Found", { status: 404, headers: CORS });
+            if (request.method !== "POST")
+                return json({ success: false, error: "Use POST" }, 405);
+            if (!w.kv) return json({ success: false, error: "KV not bound" }, 500);
+            const sourceKey = (url.searchParams.get("source") ?? "").trim();
+            if (!sourceKey) return json({ success: false, error: "Missing ?source=forecast or ?source=tc-bulletin" }, 400);
+            const snap = await Weather.getSnapshot(w.kv);
+            const event = snap?.bySource?.[sourceKey];
+            if (!event) return json({ success: false, error: `No stored event for source '${sourceKey}'` }, 404);
+            const target = (url.searchParams.get("target") ?? "both").toLowerCase();
+            const wantDiscord = target === "both" || target === "discord";
+            const wantFb = target === "both" || target === "facebook" || target === "fb";
+            if (!wantDiscord && !wantFb) return json({ success: false, error: "Invalid ?target= (use both, discord, or facebook)" }, 400);
+            const source = { key: sourceKey, url: event.normalized?.sourceUrl ?? event.sourceUrl ?? "" };
+            const parts = [];
+            if (wantDiscord) {
+                try {
+                    const slot = Weather.weatherFbSlot(sourceKey);
+                    const fbMessage = slot ? (slot.kind === "cyclone" ? Weather.buildCycloneFbMessage(event, source) : Weather.buildWeatherFbMessage(event, source)) : null;
+                    const fbTitle = slot ? (slot.kind === "cyclone" ? "TerraGuard Cyclone Report" : "TerraGuard Weather Report") : "";
+                    const sat = slot ? slot.image : null;
+                    if (fbMessage) {
+                        await Weather.sendDiscordReport(w.env.DISCORD_WEBHOOK_URL, fbTitle, fbMessage, event.risk?.status ?? "LOW", source.url, sat, "TerraGuard • DOST-PAGASA (authoritative source)");
+                        parts.push("discord mirror: posted");
+                    } else {
+                        await Weather.sendDiscordReport(w.env.DISCORD_WEBHOOK_URL, event.reportText ? `TerraGuard ${event.reportKind} — ${event.parsed?.title ?? sourceKey}` : `TerraGuard — ${sourceKey}`, event.reportText ?? fbMessage ?? "Manual repost", event.risk?.status ?? "LOW", source.url, w.env.PAGASA_SATELLITE === "0" ? null : undefined);
+                        parts.push("discord: posted (technical report, no FB slot)");
+                    }
+                } catch (e) { parts.push(`discord error: ${e instanceof Error ? e.message.slice(0,200) : String(e).slice(0,200)}`); }
+            } else { parts.push("discord: skipped"); }
+            if (wantFb) {
+                try {
+                    const fbStatus = await Weather.postWeatherToFacebook(event, source, w.env);
+                    parts.push(`fb: ${fbStatus}`);
+                } catch (e) { parts.push(`fb error: ${e instanceof Error ? e.message.slice(0,200) : String(e).slice(0,200)}`); }
+            } else { parts.push("fb: skipped"); }
+            return json({ success: true, source: sourceKey, target, message: parts.join(" | ") });
         }
 
         // ---- weather API ----
