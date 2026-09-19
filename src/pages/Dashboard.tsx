@@ -7,6 +7,7 @@ import { LatestEarthquake } from '../components/LatestEarthquake';
 import { InteractiveMap } from '../components/InteractiveMap';
 import { ActivityFeed } from '../components/ActivityFeed';
 import { NewsFeed } from '../components/NewsFeed';
+import { VolcanoStatus } from '../components/VolcanoStatus';
 import { Radio, RefreshCw, Shield } from 'lucide-react';
 import { FunFactLoader } from '../components/FunFactLoader';
 import { checkAlerts } from '../lib/alertSystem';
@@ -150,6 +151,9 @@ export function Dashboard() {
 
       {/* ── Summary Cards + Chart ── */}
       <SummaryCards recent={earthquakes} significant={sigEarthquakes} />
+
+      {/* ── Volcano Status (PHIVOLCS-LAVA) ── */}
+      <VolcanoStatus />
 
       {/* ── Activity Feed (full-width below) ── */}
       <ActivityFeed earthquakes={earthquakes.slice(0, 5)} />

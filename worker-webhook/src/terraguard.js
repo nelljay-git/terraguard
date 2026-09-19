@@ -2191,27 +2191,32 @@ function titleCase(s) {
     return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** Extractive narrative — only states what the bulletin contains. */
+/** Friendly, detailed narrative — still extractive, never invents, but explains in plain language. */
 function buildNarrative(parsed) {
     const name = titleCase(parsed.volcano.toLowerCase());
+    const level = parsed.alertLevel;
+    const trend = parsed.trend;
+    const levelMeaning = {
+        0: "No alert — volcano is quiet at background levels.",
+        1: "Low-level unrest — slight activity, but no eruption is expected imminently.",
+        2: trend ? `Moderate unrest — ${trend}.` : "Moderate unrest — elevated activity, but no magmatic eruption yet.",
+        3: "Relatively high unrest — magma is close to the surface; eruption is possible within weeks.",
+        4: "Hazardous eruption is imminent — intense unrest, eruption expected within hours to days.",
+        5: "Hazardous eruption is ongoing — eruption is in progress.",
+    }[level ?? -1] ?? "";
     const parts = [];
-    if (parsed.alertLevel !== null && parsed.alertLevel !== undefined) {
-        parts.push(`PHIVOLCS places ${name} Volcano at Alert Level ${parsed.alertLevel}${parsed.trend ? ` (${parsed.trend})` : ""}.`);
+    if (level !== null && level !== undefined) {
+        parts.push(`PHIVOLCS keeps **${name} Volcano** at **Alert Level ${level}**${trend ? ` — ${trend}` : ""}. ${levelMeaning}`);
     }
     const obs = [];
-    if (parsed.quakes !== null)
-        obs.push(`${parsed.quakes} volcanic earthquakes`);
-    if (parsed.so2)
-        obs.push(`sulfur dioxide flux of ${parsed.so2} tonnes/day`);
-    if (parsed.plume)
-        obs.push(parsed.plume.charAt(0).toLowerCase() + parsed.plume.slice(1));
-    if (parsed.deformation)
-        obs.push(parsed.deformation.charAt(0).toLowerCase() + parsed.deformation.slice(1));
-    if (obs.length > 0)
-        parts.push(`Latest 24-hour observation: ${obs.join("; ")}.`);
-    if (parsed.pdzKm)
-        parts.push(`Entry into the ${parsed.pdzKm}-kilometer radius Permanent Danger Zone is not allowed.`);
-    return parts.length > 0 ? parts.join(" ") : "PHIVOLCS has published updated official information.";
+    if (parsed.quakes !== null) obs.push(`${parsed.quakes} volcanic earthquakes in the last 24 hours`);
+    if (parsed.so2) obs.push(`sulfur dioxide emission at **${parsed.so2} tonnes/day** — a key gas being watched closely`);
+    if (parsed.plume) obs.push(parsed.plume.charAt(0).toLowerCase() + parsed.plume.slice(1));
+    if (parsed.deformation) obs.push(parsed.deformation.charAt(0).toLowerCase() + parsed.deformation.slice(1));
+    if (parsed.glow) obs.push(`crater glow was **${String(parsed.glow).toLowerCase()}** — often visible at night when the volcano is restless`);
+    if (obs.length > 0) parts.push(`**What PHIVOLCS observed in the last 24 hours:** ${obs.join("; ")}.`);
+    if (parsed.pdzKm) parts.push(`👉 **Safety reminder:** Please stay outside the **${parsed.pdzKm}-km Permanent Danger Zone**. Entry is strictly prohibited — this zone is at highest risk for rockfalls, pyroclastic flows, and ash.`);
+    return parts.length > 0 ? parts.join(" ") : "PHIVOLCS has published an update for this volcano — no major change in activity, but 24/7 monitoring continues. Stay tuned for the next bulletin.";
 }
 
 function changeLines(changes) {
@@ -2223,22 +2228,39 @@ function buildVolcanoAlert(event) {
     const { parsed, risk, changes } = event;
     const emoji = RISK_EMOJI[risk.status] ?? "ℹ️";
     const name = titleCase(parsed.volcano.toLowerCase());
+    const levelHelp = {
+        0: "No action needed — but PHIVOLCS still watches 24/7.",
+        1: "Stay informed and avoid the danger zone — no evacuation needed yet.",
+        2: "Be prepared — review your family’s evacuation plan and emergency kit.",
+        3: "Be ready to evacuate quickly if PHIVOLCS raises the alert again — keep monitoring.",
+        4: "Be ready to evacuate NOW if advised by authorities — eruption could happen within hours.",
+        5: "Eruption is ongoing — follow evacuation orders immediately.",
+    }[parsed.alertLevel ?? -1] ?? "Follow PHIVOLCS and your LGU’s advice.";
     return sanitizeReport([
         `${emoji} TERRAGUARD VOLCANO ALERT ${emoji}`,
         "",
         `TERRAGUARD RISK STATUS: ${risk.status} ${emoji}`,
+        `PHIVOLCS Alert Level ${parsed.alertLevel ?? "unknown"} — ${name}`,
         "",
         "📌 VOLCANO",
-        `🌋 ${name} Volcano — Alert Level ${parsed.alertLevel ?? "unknown"}`,
+        `🌋 ${name} Volcano — Alert Level ${parsed.alertLevel ?? "unknown"}${parsed.trend ? ` (${parsed.trend})` : ""}`,
         "",
-        "📰 WHAT'S HAPPENING",
+        "📰 WHAT'S HAPPENING — IN PLAIN LANGUAGE",
         buildNarrative(parsed),
         "",
-        "🔄 CHANGES DETECTED",
+        "🔄 WHAT CHANGED SINCE THE LAST BULLETIN",
         changeLines(changes),
         "",
-        "⚠️ POSSIBLE HAZARDS",
-        parsed.hazards.length > 0 ? parsed.hazards.map((h) => `• ${titleCase(h)}`).join("\n") : "• No specific hazards listed in the source",
+        "💡 WHAT THIS ALERT LEVEL MEANS FOR YOU",
+        `• ${levelHelp}`,
+        "",
+        "⚠️ POSSIBLE HAZARDS (if activity escalates)",
+        parsed.hazards.length > 0 ? parsed.hazards.map((h) => `• ${titleCase(h)}`).join("\n") : "• No specific hazards listed in this bulletin — but PHIVOLCS still advises caution near the danger zone.",
+        "",
+        "🛡️ FRIENDLY SAFETY REMINDERS",
+        "• Stay outside the Permanent Danger Zone and respect Extended Danger Zones if declared.",
+        "• Prepare a go-bag (water, masks for ash, flashlight, documents) and keep it accessible.",
+        "• Follow only PHIVOLCS and your LGU/PDRRMO — avoid unverified social media posts.",
         "",
         "📡 SOURCE",
         SOURCE_ATTRIBUTION,
@@ -2258,15 +2280,20 @@ function buildVolcanoNews(event) {
         "📰 TERRAGUARD VOLCANO NEWS",
         "",
         `TERRAGUARD RISK STATUS: ${risk.status} ${emoji}`,
+        `PHIVOLCS Alert Level ${parsed.alertLevel ?? "unknown"} — ${name}`,
         "",
         "📌 VOLCANO",
-        `🌋 ${name} Volcano — Alert Level ${parsed.alertLevel ?? "unknown"}`,
+        `🌋 ${name} Volcano — Alert Level ${parsed.alertLevel ?? "unknown"}${parsed.trend ? ` (${parsed.trend})` : ""}`,
         "",
-        "📰 WHAT'S HAPPENING",
+        "📰 WHAT'S HAPPENING — IN PLAIN LANGUAGE",
         buildNarrative(parsed),
         "",
-        "⚠️ POSSIBLE HAZARDS",
-        parsed.hazards.length > 0 ? parsed.hazards.map((h) => `• ${titleCase(h)}`).join("\n") : "• No specific hazards listed in the source",
+        "⚠️ POSSIBLE HAZARDS TO BE AWARE OF",
+        parsed.hazards.length > 0 ? parsed.hazards.map((h) => `• ${titleCase(h)}`).join("\n") : "• No specific hazards listed in this bulletin — but staying clear of the danger zone is still advised.",
+        "",
+        "🛡️ QUICK SAFETY NOTES",
+        "• No need to worry, but stay updated — PHIVOLCS posts a new bulletin daily.",
+        "• If you live near the volcano, know your barangay’s evacuation route.",
         "",
         "📡 SOURCE",
         SOURCE_ATTRIBUTION,
@@ -2414,26 +2441,45 @@ function buildVolcanoFbMessage(event) {
     const { parsed, risk, changes, reportKind } = event;
     const emoji = RISK_EMOJI[risk.status] ?? "ℹ️";
     const name = titleCase(parsed.volcano.toLowerCase());
-    const kind = reportKind === "VOLCANO ALERT" ? "ALERT" : "NEWS";
+    const kind = reportKind === "VOLCANO ALERT" ? "ALERT" : "UPDATE";
     const tag = volcanoTag(parsed.volcano);
+    const levelHelp = {
+        0: "Volcano is quiet — no action needed, but daily monitoring continues.",
+        1: "Low-level unrest — stay informed and avoid the danger zone.",
+        2: "Moderate unrest — be prepared and keep your emergency kit ready.",
+        3: "High unrest — be ready to evacuate if PHIVOLCS raises the alert.",
+        4: "Eruption imminent — be ready to evacuate NOW if advised.",
+        5: "Eruption in progress — follow evacuation orders immediately.",
+    }[parsed.alertLevel ?? -1] ?? "Follow PHIVOLCS and LGU advice.";
+    // Facebook has no markdown — strip the ** used for Discord bold
+    const fbNarrative = buildNarrative(parsed).replace(/\*\*/g, "");
     return sanitizeReport([
-        `${emoji} VOLCANO ${kind} | ${name.toUpperCase()} — Alert Level ${parsed.alertLevel ?? "unknown"}`,
+        `${emoji} VOLCANO ${kind} — ${name.toUpperCase()} | Alert Level ${parsed.alertLevel ?? "unknown"} ${parsed.trend ? `(${parsed.trend})` : ""} | TerraGuard PH`,
         "",
-        buildNarrative(parsed),
+        `🕐 Issued: ${parsed.issuedAt || "As published by PHIVOLCS"}`,
+        `🏷️ TERRAGUARD RISK STATUS: ${risk.status} ${emoji}`,
         "",
-        "Changes detected:",
+        "📡 WHAT'S HAPPENING",
+        fbNarrative,
+        "",
+        "🔄 WHAT CHANGED SINCE THE LAST BULLETIN",
         changeLines(changes),
         "",
-        "Possible hazards:",
-        parsed.hazards.length > 0 ? parsed.hazards.map((h) => `• ${titleCase(h)}`).join("\n") : "• No specific hazards listed in the source",
+        `💡 WHAT ALERT LEVEL ${parsed.alertLevel ?? "?"} MEANS`,
+        `• ${levelHelp}`,
         "",
-        `Issued: ${parsed.issuedAt || "As published by PHIVOLCS"}`,
-        `Details: ${event.sourceUrl || ""}`,
+        "⚠️ POSSIBLE HAZARDS",
+        parsed.hazards.length > 0 ? parsed.hazards.map((h) => `• ${titleCase(h)}`).join("\n") : "• No specific hazards listed — but staying clear of the danger zone is still advised.",
         "",
-        `Source: ${SOURCE_ATTRIBUTION}`,
+        "🛡️ FRIENDLY REMINDERS",
+        "• Respect the Permanent Danger Zone and any Extended Danger Zone.",
+        "• Keep a go-bag ready if you live nearby, and follow only PHIVOLCS/LGU updates.",
         "",
-        "Join our discord for more informations: https://discord.gg/tdGrvnvehP",
-        ["#Volcano", tag ? `#${tag}` : "", "#PHIVOLCS", "#TerraGuard", "#TerraGuardPH", "#Philippines", "#StaySafe", "#DisasterPreparedness"].filter(Boolean).join(" "),
+        `🔗 Details & map: ${event.sourceUrl || ""}`,
+        `📚 Source: ${SOURCE_ATTRIBUTION} — PHIVOLCS is the authoritative source.`,
+        "",
+        "💬 Questions or updates from your area? Join our community: https://discord.gg/tdGrvnvehP",
+        ["#Volcano", tag ? `#${tag}` : "", "#PHIVOLCS", "#TerraGuardPH", "#StaySafe", `#${name.replace(/\s+/g, "")}`].filter(Boolean).join(" "),
     ].join("\n"));
 }
 
@@ -2764,7 +2810,7 @@ function json(body, status = 200) {
 }
 
 
-return { runMonitor, kvGet: kvGetJson, SNAPSHOT_KEY, INDEX_KEY };
+return { runMonitor, kvGet: kvGetJson, SNAPSHOT_KEY, INDEX_KEY, buildAlert: buildVolcanoAlert, buildNews: buildVolcanoNews, sendDiscord, postToFacebook: postVolcanoToFacebook, buildFbMessage: buildVolcanoFbMessage };
 })();
 
 // ===== haze (from haze.js) =====
@@ -3515,42 +3561,67 @@ export default {
                 return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
             }
         }
-        // ---- manual weather repost (bypasses dedup) ----
+        // ---- manual repost (bypasses dedup) — weather + volcano ----
         if (path === "/admin" || path === "/manual") {
-            if (!secretsOk(request, weatherSecrets(env)))
+            if (!secretsOk(request, masterSecrets(env)) && !secretsOk(request, weatherSecrets(env)) && !secretsOk(request, volcanoSecrets(env)))
                 return new Response("Not Found", { status: 404, headers: CORS });
             const key = url.searchParams.get("key") ?? "";
             const q = key ? `?key=${encodeURIComponent(key)}` : "";
-            const snap = w.kv ? await Weather.getSnapshot(w.kv).catch(() => null) : null;
-            const bySource = snap?.bySource ?? {};
-            const opts = Object.keys(bySource).map(k => {
-                const e = bySource[k];
+            const wSnap = w.kv ? await Weather.getSnapshot(w.kv).catch(() => null) : null;
+            const vSnap = v.kv ? await Volcano.kvGet(v.kv, Volcano.SNAPSHOT_KEY).catch(() => null) : null;
+            const wBy = wSnap?.bySource ?? {};
+            const vBy = vSnap?.byVolcano ?? {};
+            const wOpts = Object.keys(wBy).map(k => {
+                const e = wBy[k];
                 const label = `${k} — ${e.normalized?.title ?? k} (${e.risk?.status ?? "?"}) ${e.parsed?.statesNoActive ? "[inactive]" : ""}`;
                 return `<option value="${k}">${label} — ${e.id?.slice(-8) ?? ""}</option>`;
             }).join("");
-            const fbHint = `Facebook: only <b>forecast</b> + <b>tc-bulletin</b> have a slot (others are Discord-only by design). Inactive bulletins are skipped.`;
+            const vOpts = Object.keys(vBy).map(k => {
+                const e = vBy[k];
+                const label = `${k} — ${e.parsed?.title ?? k} (L${e.parsed?.alertLevel ?? "?"}, ${e.risk?.status ?? "?"})`;
+                return `<option value="${k}">${label}</option>`;
+            }).join("");
+            const fbHint = `Weather Facebook: only <b>forecast</b> + <b>tc-bulletin</b> have a slot (others Discord-only). Inactive bulletins are skipped.`;
             const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TerraGuard Manual Post</title>
-<style>body{font-family:system-ui,sans-serif;max-width:640px;margin:32px auto;padding:0 16px}select,button{font-size:15px;padding:8px 12px}button{cursor:pointer}pre{white-space:pre-wrap;background:#f5f5f5;padding:12px;border-radius:8px;overflow:auto}#out{margin-top:16px}.opts label{margin-right:12px;user-select:none}</style>
-<h2>🌦️ TerraGuard — Manual Weather Post</h2>
+<style>body{font-family:system-ui,sans-serif;max-width:680px;margin:32px auto;padding:0 16px}select,button{font-size:15px;padding:8px 12px}button{cursor:pointer}pre{white-space:pre-wrap;background:#f5f5f5;padding:12px;border-radius:8px;overflow:auto}#out{margin-top:16px}.opts label{margin-right:12px;user-select:none}h2{margin-top:28px}</style>
+<h2>🌦️ Manual Weather Post</h2>
 <p>${fbHint}</p>
-<p><select id="src">${opts || '<option value="">(no snapshot yet — run /trigger first)</option>'}</select></p>
-<p class="opts"><label><input type="radio" name="dst" value="both" checked> Facebook + Discord</label> <label><input type="radio" name="dst" value="discord"> Discord only</label> <label><input type="radio" name="dst" value="facebook"> Facebook only</label></p>
-<p><button id="btn" onclick="go()">Post</button></p>
+<p><select id="wsrc">${wOpts || '<option value="">(no weather snapshot — run /trigger first)</option>'}</select></p>
+<p class="opts"><label><input type="radio" name="wdst" value="both" checked> Facebook + Discord</label> <label><input type="radio" name="wdst" value="discord"> Discord only</label> <label><input type="radio" name="wdst" value="facebook"> Facebook only</label></p>
+<p><button id="wbtn" onclick="goW()">Post Weather</button></p>
+<h2>🌋 Manual Volcano Post</h2>
+<p>Posts the latest stored bulletin for that volcano to its Discord (and Facebook if configured). Same dedup bypass.</p>
+<p><select id="vsrc">${vOpts || '<option value="">(no volcano snapshot — run /trigger first)</option>'}</select></p>
+<p class="opts"><label><input type="radio" name="vdst" value="both" checked> Facebook + Discord</label> <label><input type="radio" name="vdst" value="discord"> Discord only</label> <label><input type="radio" name="vdst" value="facebook"> Facebook only</label></p>
+<p><button id="vbtn" onclick="goV()">Post Volcano</button></p>
 <pre id="out">Ready.</pre>
 <script>
 const q=${JSON.stringify(q)};
-async function go(){
-  const k=document.getElementById('src').value;
+async function goW(){
+  const k=document.getElementById('wsrc').value;
   if(!k) return;
-  const dst=document.querySelector('input[name="dst"]:checked')?.value||'both';
-  const b=document.getElementById('btn'); b.disabled=true; b.textContent='Posting...';
-  const o=document.getElementById('out'); o.textContent='Posting '+k+' → '+dst+' ...';
+  const dst=document.querySelector('input[name="wdst"]:checked')?.value||'both';
+  const b=document.getElementById('wbtn'); b.disabled=true; b.textContent='Posting...';
+  const o=document.getElementById('out'); o.textContent='Posting weather '+k+' → '+dst+' ...';
   try{
     const r=await fetch('/repost-weather'+q+'&source='+encodeURIComponent(k)+'&target='+encodeURIComponent(dst),{method:'POST'});
     const j=await r.json().catch(()=>({raw:''}));
     o.textContent=JSON.stringify(j,null,2);
   }catch(e){ o.textContent=String(e); }
-  b.disabled=false; b.textContent='Post';
+  b.disabled=false; b.textContent='Post Weather';
+}
+async function goV(){
+  const k=document.getElementById('vsrc').value;
+  if(!k) return;
+  const dst=document.querySelector('input[name="vdst"]:checked')?.value||'both';
+  const b=document.getElementById('vbtn'); b.disabled=true; b.textContent='Posting...';
+  const o=document.getElementById('out'); o.textContent='Posting volcano '+k+' → '+dst+' ...';
+  try{
+    const r=await fetch('/repost-volcano'+q+'&volcano='+encodeURIComponent(k)+'&target='+encodeURIComponent(dst),{method:'POST'});
+    const j=await r.json().catch(()=>({raw:''}));
+    o.textContent=JSON.stringify(j,null,2);
+  }catch(e){ o.textContent=String(e); }
+  b.disabled=false; b.textContent='Post Volcano';
 }
 </script>`;
             return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", ...CORS } });
@@ -3594,6 +3665,57 @@ async function go(){
                 } catch (e) { parts.push(`fb error: ${e instanceof Error ? e.message.slice(0,200) : String(e).slice(0,200)}`); }
             } else { parts.push("fb: skipped"); }
             return json({ success: true, source: sourceKey, target, message: parts.join(" | ") });
+        }
+        if (path === "/repost-volcano") {
+            if (!secretsOk(request, volcanoSecrets(env)) && !secretsOk(request, masterSecrets(env)))
+                return new Response("Not Found", { status: 404, headers: CORS });
+            if (request.method !== "POST")
+                return json({ success: false, error: "Use POST" }, 405);
+            if (!v.kv) return json({ success: false, error: "KV not bound" }, 500);
+            const volcano = (url.searchParams.get("volcano") ?? "").trim().toUpperCase();
+            if (!volcano) return json({ success: false, error: "Missing ?volcano=MAYON|TAAL|KANLAON|BULUSAN|PINATUBO" }, 400);
+            const vSnap = await Volcano.kvGet(v.kv, Volcano.SNAPSHOT_KEY);
+            const event = vSnap?.byVolcano?.[volcano];
+            if (!event) return json({ success: false, error: `No stored event for volcano '${volcano}'` }, 404);
+            const target = (url.searchParams.get("target") ?? "both").toLowerCase();
+            const wantDiscord = target === "both" || target === "discord";
+            const wantFb = target === "both" || target === "facebook" || target === "fb";
+            if (!wantDiscord && !wantFb) return json({ success: false, error: "Invalid ?target= (use both, discord, or facebook)" }, 400);
+            const parts = [];
+            // Discord (and Facebook via postVolcanoToFacebook) share the same volcano event
+            if (wantDiscord) {
+                try {
+                    // Re-use the same send path as the monitor: Discord first
+                    const { parsed } = event;
+                    const img = parsed.mapImg || null;
+                    // Build the same report the monitor would have sent
+                    const reportKind = event.reportKind ?? (event.risk?.status === "HIGH" || event.risk?.status === "CRITICAL" ? "VOLCANO ALERT" : "VOLCANO NEWS");
+                    const reportText = reportKind === "VOLCANO ALERT" ? Volcano.buildAlert(event) : Volcano.buildNews(event);
+                    // Volcano Discord uses its own webhook (VOLCANO_DISCORD_WEBHOOK_URL → fallback)
+                    const hook = v.env.VOLCANO_DISCORD_WEBHOOK_URL || v.env.DISCORD_WEBHOOK_URL;
+                    if (!hook) throw new Error("VOLCANO_DISCORD_WEBHOOK_URL not set");
+                    // Minimal Discord send (reuse Volcano's sender if exposed, else generic)
+                    // Fallback: use the stored reportText if sender not exported
+                    const title = `${reportKind} — ${volcano} (Alert Level ${parsed.alertLevel ?? "?"})`;
+                    // Prefer Volcano's Discord sender when available
+                    if (typeof Volcano.sendDiscord === 'function') {
+                        await Volcano.sendDiscord(hook, title, reportText, event.risk?.status ?? "LOW", event.sourceUrl || "", img);
+                    } else {
+                        // Generic fallback (same shape as weather)
+                        const res = await fetch(hook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: reportText, embeds: img ? [{ image: { url: img } }] : [] }) });
+                        if (!res.ok) throw new Error(`Discord ${res.status}`);
+                    }
+                    parts.push("discord: posted");
+                } catch (e) { parts.push(`discord error: ${e instanceof Error ? e.message.slice(0,200) : String(e).slice(0,200)}`); }
+            } else { parts.push("discord: skipped"); }
+            if (wantFb) {
+                try {
+                    const img = event.parsed?.mapImg ?? null;
+                    const fbStatus = await Volcano.postToFacebook(event, img, v.env);
+                    parts.push(`fb: ${fbStatus}`);
+                } catch (e) { parts.push(`fb error: ${e instanceof Error ? e.message.slice(0,200) : String(e).slice(0,200)}`); }
+            } else { parts.push("fb: skipped"); }
+            return json({ success: true, volcano, target, message: parts.join(" | ") });
         }
 
         // ---- weather API ----

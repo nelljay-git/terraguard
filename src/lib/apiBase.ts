@@ -91,3 +91,11 @@ export function phivolcsBulletinsUrl(url: string): string {
     ? `${phpApi('phivolcs.php')}?bulletins=1&url=${qs}`
     : apiUrl(`/api/bulletins?url=${qs}`);
 }
+
+export function volcanoListUrl(): string {
+  return usePhpApi ? phpApi('volcano.php?page=hub') : apiUrl('/api/volcano?page=hub');
+}
+export function volcanoDetailUrl(url: string): string {
+  const qs = encodeURIComponent(url);
+  return usePhpApi ? phpApi(`volcano.php?detail=1&url=${qs}`) : apiUrl(`/api/volcano?detail=1&url=${qs}`);
+}
