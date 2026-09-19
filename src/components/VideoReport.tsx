@@ -14,17 +14,17 @@ import './VideoReport.css';
 // Staged video export of the earthquake report, rendered + captured
 // fully in-browser (canvas.captureStream + MediaRecorder — no server).
 //
-// Timeline (~14s): plain map (0-1s) -> epicenter pop (1s) -> shockwave
+// Timeline (~20s): plain map (0-1s) -> epicenter pop (1s) -> shockwave
 // spreading across the map (1.5s, ~1s) -> DYFI felt responses fade in
 // (2.5s) -> styled info cards fade/slide in (4s) -> idle drift until end.
 
 export const W = 1080;
 export const H = 1440;
 export const FPS = 60;
-export const DUR = 14;
+export const DUR = 20;
 export const MAP_T = 1; // epicenter appears
-export const WAVE_T = 1.5; // shockwave starts (0.5s after the epicenter)
-export const WAVE_DUR = 0.9;
+export const WAVE_T = 2.0; // shockwave starts (1s after the epicenter)
+export const WAVE_DUR = 2.8; // slow single wave
 export const INFO_T = 4; // info cards appear
 export const DYFI_T = WAVE_T + WAVE_DUR + 0.1; // DYFI fade-in, right after the wave
 // Mosaic: 5 cols x 6 rows of 256px Esri tiles (same map as the app),
@@ -220,6 +220,16 @@ export function drawFrame(
   const p = Math.min(Math.max(t / DUR, 0), 1);
   // Slow zoom 1.0 -> 1.08 around the epicenter display point.
   const s = 1 + 0.08 * easeInOut(p);
+  // Mini shake 0.5s right after the wave appears — watermark excluded.
+  const shakeActive = t >= WAVE_T && t < WAVE_T + 0.5;
+  let shakeX = 0, shakeY = 0;
+  if (shakeActive) {
+    const k = 1 - (t - WAVE_T) / 0.5; // decay 1 -> 0
+    shakeX = Math.sin(t * 82) * 5 * k;
+    shakeY = Math.cos(t * 97) * 4 * k;
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+  }
   ctx.fillStyle = '#0a0d12';
   ctx.fillRect(0, 0, W, H);
   // Single pre-composited blit per frame (smooth even while encoding).
@@ -244,7 +254,8 @@ export function drawFrame(
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, W, H);
 
-  // Watermark: vertical "TERRA GUARD PH" on the right center, 50% opacity.
+  if (shakeActive) ctx.restore();
+  // Watermark: vertical "TERRA GUARD PH" on the right center, 50% opacity — not shaken.
   ctx.save();
   ctx.globalAlpha = 0.5;
   ctx.translate(W - 44, H / 2);
@@ -255,6 +266,7 @@ export function drawFrame(
   ctx.fillText('TERRA GUARD PH', 0, 0);
   ctx.restore();
   ctx.textAlign = 'left';
+  if (shakeActive) { ctx.save(); ctx.translate(shakeX, shakeY); }
   const dex = view ? view.exD : W / 2;
   const dey = view ? view.eyD : H / 2;
   const magText = eq.magnitude || '?';
@@ -262,21 +274,24 @@ export function drawFrame(
 
   // Header bar removed per design (clean map opening).
 
-  // Expanding solid glow behind the epicenter: discs scale up and fade
-  // out, then loop. Starts after the shockwave with a 1s fade-in.
+  // Single pulsing glow: expand + fade, then 1s pause before next pulse.
   const GLOW_T = WAVE_T + WAVE_DUR;
   if (t >= GLOW_T) {
     const fade = Math.min((t - GLOW_T) / 1.0, 1);
-    ctx.save();
-    ctx.fillStyle = sevColor;
-    for (let k = 0; k < 2; k++) {
-      const phase = ((((t - GLOW_T) * 0.45 + k / 2) % 1) + 1) % 1;
-      ctx.globalAlpha = fade * 0.28 * (1 - phase);
+    const pulseDur = 1.9;
+    const gap = 1.0;
+    const total = pulseDur + gap;
+    const elapsed = (t - GLOW_T) % total;
+    if (elapsed < pulseDur) {
+      const phase = elapsed / pulseDur; // 0 -> 1
+      ctx.save();
+      ctx.fillStyle = sevColor;
+      ctx.globalAlpha = fade * 0.70 * (1 - phase);
       ctx.beginPath();
-      ctx.arc(dex, dey, 60 + phase * 150, 0, Math.PI * 2);
+      ctx.arc(dex, dey, 60 + easeOutCubic(phase) * 150, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
     }
-    ctx.restore();
   }
 
   // Magnitude badge on the epicenter (t>=2), severity-colored.
@@ -299,16 +314,29 @@ export function drawFrame(
     }
   }
 
-  // Shockwave: fast expanding front(s) right after the epicenter shows.
-  for (const delay of [0, 0.16]) {
-    const wt = (t - WAVE_T - delay) / WAVE_DUR;
-    if (wt < 0 || wt > 1) continue;
-    const r = 45 + easeOutCubic(wt) * 1140;
-    ctx.beginPath();
-    ctx.arc(dex, dey, r, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(239,68,68,${(0.85 * (1 - wt)).toFixed(3)})`;
-    ctx.lineWidth = 9 * (1 - wt) + 2;
-    ctx.stroke();
+  // Shockwave: slow single front with inner gradient fading to center.
+  {
+    const wt = (t - WAVE_T) / WAVE_DUR;
+    if (wt >= 0 && wt <= 1) {
+      const r = 45 + easeOutCubic(wt) * 1140;
+      const alpha = 0.85 * (1 - wt);
+      // Inner radial fade — transparent at center, soft red toward the edge.
+      const grad = ctx.createRadialGradient(dex, dey, r * 0.15, dex, dey, r);
+      grad.addColorStop(0, 'rgba(239,68,68,0)');
+      grad.addColorStop(0.55, `rgba(239,68,68,${(0.08 * alpha).toFixed(3)})`);
+      grad.addColorStop(0.82, `rgba(239,68,68,${(0.22 * alpha).toFixed(3)})`);
+      grad.addColorStop(1, `rgba(239,68,68,${(0.38 * alpha).toFixed(3)})`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(dex, dey, r, 0, Math.PI * 2);
+      ctx.fill();
+      // Crisp outer ring.
+      ctx.beginPath();
+      ctx.arc(dex, dey, r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(239,68,68,${alpha.toFixed(3)})`;
+      ctx.lineWidth = 9 * (1 - wt) + 2;
+      ctx.stroke();
+    }
   }
 
   // DYFI felt responses: MMI-colored dots fading in right after the wave
@@ -346,6 +374,23 @@ export function drawFrame(
     const q = easeOutCubic(Math.min((t - INFO_T) / 0.7, 1));
     ctx.save();
     ctx.globalAlpha = q;
+    // Side gradients behind the data containers — black at edges fading to
+    // transparent toward the center, drawn before the columns so text stays crisp.
+    {
+      const leftW = W * 0.42;
+      const lg = ctx.createLinearGradient(0, 0, leftW, 0);
+      lg.addColorStop(0, 'rgba(0,0,0,0.44)'); // -30% then -20% more
+      lg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = lg;
+      ctx.fillRect(0, 0, leftW, H);
+      const rightW = W * 0.42;
+      const rg = ctx.createLinearGradient(W, 0, W - rightW, 0);
+      rg.addColorStop(0, 'rgba(0,0,0,0.44)');
+      rg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = rg;
+      ctx.fillRect(W - rightW, 0, rightW, H);
+    }
+    ctx.globalAlpha = q;
     ctx.textAlign = 'left';
 
     const depthNum = eq.depth || '?';
@@ -357,7 +402,7 @@ export function drawFrame(
     const timeText = (eq.datetime || '').slice(0, 44);
     const country = countryOf(eq.location);
     const radius = estimateAffectedRadiusKm(eq.magnitude) || '—';
-    const threatText = threat || '—';
+    const threatText = !threat || threat.trim() === '—' ? 'None' : threat;
 
     const colTop = 60;
     // Left column: EVENT DATA (drawn at 64% scale).
@@ -425,8 +470,12 @@ export function drawFrame(
     ctx.font = '400 13px Inter, sans-serif';
     ctx.fillText('MAX INTENSITY', re, ry);
     ry += 40;
-    // Intensity badge.
-    ctx.fillStyle = 'rgba(127,29,29,0.92)';
+    // Intensity badge — color-coded by level (was always dark red).
+    ctx.fillStyle = (() => {
+      const v = (intensity || '').trim().toUpperCase();
+      if (!v || v === '—' || v === '-') return 'rgba(107,114,128,0.92)';
+      return shakeChipColor(v);
+    })();
     if (typeof ctx.roundRect === 'function') {
       ctx.beginPath();
       ctx.roundRect(re - 77, ry - 26, 77, 34, 6);
@@ -443,12 +492,12 @@ export function drawFrame(
     const rightRows: Array<[string, string, string]> = [
       ['TSUNAMI THREAT', threatText, threatColor(threatText)],
       ['EVENT TYPE', 'Earthquake', '#60a5fa'],
-      // No parseable country (common for PH locations): the row becomes
-      // LOCATION showing the available location instead of a dead "—".
+      // PH locations rarely parse to a country, so we show LOCATION inline
+      // instead of a dead COUNTRY row. When country *is* parseable we show
+      // it and render the full location wrapped below.
       ...(country
         ? [['COUNTRY', country, '#ffffff'] as [string, string, string]]
         : [['LOCATION', (eq.location || '').slice(0, 26) || '—', '#ffffff'] as [string, string, string]]),
-      ...(country ? [['LOCATION', '', '#ffffff'] as [string, string, string]] : []),
     ];
     for (const [label, value, color] of rightRows) {
       ctx.fillStyle = '#9ca3af';
@@ -462,9 +511,13 @@ export function drawFrame(
         ry += 28;
       }
     }
-    // Location wraps to two lines under its own label — but only when the
-    // COUNTRY row above didn't already show it inline.
+    // When COUNTRY was shown, render the full location wrapped under its
+    // own LOCATION label (single label, not the empty duplicate before).
     if (country) {
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '400 13px Inter, sans-serif';
+      ctx.fillText('LOCATION', re, ry);
+      ry += 26;
       const locWords = (eq.location || '').split(/\s+/).filter(Boolean);
       const locLines: string[] = [];
       let locCur = '';
@@ -601,11 +654,9 @@ export function drawFrame(
     ctx.restore();
   }
 
-  // Bottom progress bar.
-  ctx.fillStyle = 'rgba(255,255,255,0.15)';
-  ctx.fillRect(0, H - 12, W, 12);
-  ctx.fillStyle = '#ef4444';
-  ctx.fillRect(0, H - 12, W * p, 12);
+  // Bottom progress bar — hidden per design.
+  void p;
+  if (shakeActive) ctx.restore();
 }
 
 function pickMime(): string {
@@ -861,7 +912,7 @@ export function VideoReportModal({
         <div className="video-modal-head">
           <span className="flex-center" style={{ gap: '8px' }}>
             <Clapperboard size={18} />
-            Video Report (~14s)
+            Video Report (20s)
           </span>
           <button type="button" className="action-btn glass flex-center" onClick={onClose} aria-label="Close">
             <X size={16} />

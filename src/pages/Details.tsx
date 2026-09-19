@@ -1144,7 +1144,7 @@ export function Details() {
               <span>Share</span>
             </button>
           )}
-          {isUsgs && (
+          {isUsgs && isWebhookAuthorized && (
             <button
               className="action-btn glass flex-center"
               onClick={() => setShowVideoReport(true)}
@@ -1768,7 +1768,7 @@ export function Details() {
         imageUrl={details?.mapUrl}
         altText={`Official map for earthquake in ${earthquake.location}`}
       />
-      {showVideoReport && earthquake && (
+      {showVideoReport && earthquake && isWebhookAuthorized && (
         <VideoReportModal
           earthquake={earthquake}
           intensity={extractMaxIntensity(details?.reportedIntensities, details?.instrumentalIntensities)}
