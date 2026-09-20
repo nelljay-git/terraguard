@@ -258,6 +258,164 @@ async function warmCardUrl(url, tag, timeoutMs = 6000) {
     return false;
 }
 
+// ===== USGS video intensity retry (auto-post only) =====
+// Retry anchor is the first check when products were not ready.
+// Delays are 1m, 2m, 5m, 10m from that anchor. Cron is 1m.
+const VIDEO_RETRY_DELAYS = [60 * 1000, 2 * 60 * 1000, 5 * 60 * 1000, 10 * 60 * 1000];
+const PENDING_VIDEO_PREFIX = "video:pending:usgs:";
+
+async function fetchUsgsProductJson(url, timeoutMs = 8000) {
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), timeoutMs);
+        const r = await fetch(url, { signal: ctrl.signal, headers: { "User-Agent": "TerraGuard-USGS-Intensity/1.0" } });
+        clearTimeout(t);
+        if (!r.ok) return null;
+        return await r.json();
+    } catch { return null; }
+}
+
+function cleanUsgsIntensityName(raw) {
+    if (!raw) return "";
+    return raw.replace(/UTM:\([^)]*\)/g, "").replace(/<br\s*\/?>/gi, ", ").replace(/^[,\s;]+|[,\s;]+$/g, "").trim();
+}
+
+// Returns { hasInstrumental, hasReported, intensity } where intensity is the
+// preferred value (instrumental first, then reported). Empty string means not ready.
+async function fetchUsgsIntensityStatus(usgsId, timeoutMs = 8000) {
+    try {
+        const detail = await fetchUsgsProductJson(`https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&eventid=${encodeURIComponent(usgsId)}`, timeoutMs);
+        if (!detail) return { hasInstrumental: false, hasReported: false, intensity: "" };
+        const props = detail.properties || {};
+        const products = props.products || {};
+        // Instrumental: shakemap stationlist or losspager cities
+        let instrumental = "";
+        const shakemap = products.shakemap?.[0];
+        if (shakemap) {
+            const stationJson = await fetchUsgsProductJson(shakemap.contents?.["download/stationlist.json"]?.url, timeoutMs);
+            if (stationJson?.features?.length) {
+                const hasInt = stationJson.features.some((f) => {
+                    const v = f?.properties?.intensity;
+                    return v != null && v !== "null" && !isNaN(Number(v));
+                });
+                if (hasInt) instrumental = "has-data";
+            }
+            if (!instrumental) {
+                const cities = await fetchUsgsProductJson(products.losspager?.[0]?.contents?.["cities.json"]?.url, timeoutMs);
+                if (Array.isArray(cities?.all_cities) && cities.all_cities.length > 0) instrumental = "has-data";
+            }
+            if (!instrumental && props.mmi != null) instrumental = "has-data";
+        }
+        // Reported: dyfi geo
+        let reported = "";
+        const dyfi = products.dyfi?.[0];
+        if (dyfi) {
+            const geo = await fetchUsgsProductJson(dyfi.contents?.["dyfi_geo_10km.geojson"]?.url, timeoutMs);
+            if (geo?.features?.length) {
+                const hasReported = geo.features.some((f) => f?.properties?.cdi != null && f.properties.name);
+                if (hasReported) reported = "has-data";
+            }
+            if (!reported && props.cdi != null) reported = "has-data";
+        }
+        // Prefer instrumental per spec, fallback to reported
+        let intensity = "";
+        if (instrumental) {
+            // Try to get a real roman value for the video payload (best-effort)
+            // Reuse the mmiToRoman helper via props.mmi if available, else generic
+            if (props.mmi != null) intensity = mmiToRoman(props.mmi);
+            else intensity = instrumental;
+        } else if (reported) {
+            if (props.cdi != null) intensity = mmiToRoman(props.cdi);
+            else intensity = reported;
+        }
+        return { hasInstrumental: !!instrumental, hasReported: !!reported, intensity };
+    } catch {
+        return { hasInstrumental: false, hasReported: false, intensity: "" };
+    }
+}
+
+function pendingVideoKey(usgsId) { return `${PENDING_VIDEO_PREFIX}${usgsId}`; }
+
+async function getPendingVideo(kv, usgsId) {
+    try {
+        const raw = await kv.get(pendingVideoKey(usgsId));
+        return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+}
+
+async function setPendingVideo(kv, usgsId, data) {
+    await kv.put(pendingVideoKey(usgsId), JSON.stringify(data), { expirationTtl: 60 * 60 * 24 });
+}
+
+async function clearPendingVideo(kv, usgsId) {
+    try { await kv.delete(pendingVideoKey(usgsId)); } catch { /* ignore */ }
+}
+
+// Called on every cron to advance retries. Dispatches FINAL FLASH when ready,
+// or fallback (magnitude-only) after 10m. Never throws.
+async function processPendingVideos(env) {
+    const kv = env.WEBHOOK_KV;
+    // List pending keys via scan of known prefix - KV has no list, so we store an index
+    const indexRaw = await kv.get("video:pending:index");
+    let index = [];
+    try { index = indexRaw ? JSON.parse(indexRaw) : []; } catch { index = []; }
+    if (!Array.isArray(index) || index.length === 0) return "no pending videos";
+    const now = Date.now();
+    let dispatched = 0;
+    let stillPending = [];
+    for (const usgsId of index) {
+        const pending = await getPendingVideo(kv, usgsId);
+        if (!pending) continue;
+        const elapsed = now - pending.firstCheck;
+        const nextDelay = VIDEO_RETRY_DELAYS[pending.nextIndex] ?? Infinity;
+        // Not yet time for next retry - keep pending
+        if (elapsed < nextDelay && pending.nextIndex < VIDEO_RETRY_DELAYS.length) {
+            stillPending.push(usgsId);
+            continue;
+        }
+        // Time to check or final fallback
+        const status = await fetchUsgsIntensityStatus(usgsId);
+        const isReady = status.hasInstrumental || status.hasReported;
+        // Use instrumental if available, else reported (per spec)
+        const intensityForVideo = status.hasInstrumental ? (status.intensity || "has-data") : (status.hasReported ? (status.intensity || "has-data") : "");
+        const isFinalAttempt = pending.nextIndex >= VIDEO_RETRY_DELAYS.length - 1;
+        if (isReady || isFinalAttempt) {
+            // Dispatch with intensity if ready, else fallback (empty intensity -> magnitude-only template)
+            const payloadIntensity = isReady ? intensityForVideo : "";
+            await dispatchVideoRender(env, {
+                source: "usgs",
+                latitude: pending.payload.latitude,
+                longitude: pending.payload.longitude,
+                magnitude: pending.payload.magnitude,
+                depth: pending.payload.depth,
+                place: pending.payload.place,
+                datetime: pending.payload.datetime,
+                fbPostId: "",
+                extra: {
+                    usgsEventId: usgsId,
+                    threat: pending.payload.threat,
+                    tsunamiThreat: pending.payload.threat,
+                    intensity: payloadIntensity,
+                    finalReport: true,
+                },
+            });
+            await clearPendingVideo(kv, usgsId);
+            dispatched++;
+            // Do not re-add to stillPending
+        } else {
+            // Not ready, schedule next retry
+            pending.nextIndex += 1;
+            pending.lastCheck = now;
+            await setPendingVideo(kv, usgsId, pending);
+            stillPending.push(usgsId);
+        }
+    }
+    await kv.put("video:pending:index", JSON.stringify(stillPending), { expirationTtl: 60 * 60 * 24 });
+    if (dispatched === 0 && stillPending.length > 0) return `pending videos: ${stillPending.length} waiting`;
+    if (dispatched > 0) return `pending videos: dispatched ${dispatched}, ${stillPending.length} still pending`;
+    return "no pending videos";
+}
+
 // ===== USGS =====
 function usgsTsunamiLabel(tsunami) {
     if (tsunami === 1)
@@ -406,28 +564,49 @@ async function handleUsgs(env) {
     if (already || lastId === dedupKey || lastId === earthquakeToEqId(latest))
         return `duplicate ${dedupKey}`;
     const lat = parseFloat(latest.latitude), lng = parseFloat(latest.longitude), mag = parseFloat(latest.magnitude);
-    // USGS closes with the cinematic report: at/above RENDER_MIN_MAG the
-    // confirmation IS the rendered video (dispatched here, posted by
-    // Actions on completion) — no immediate image post. Below threshold
-    // (or when FB is off/filtered) the classic image final still goes out.
     const renderMinMag = parseFloat(env.RENDER_MIN_MAG ?? "5.0");
     const wantsVideo = !isNaN(mag) && mag >= renderMinMag;
     const usgsFbOff = ["false", "0", "no", "off", "disabled"].includes(String(env.USGS_POST_FB ?? "true").trim().toLowerCase());
-    const dispatchFinalVideo = async () => {
-        await dispatchVideoRender(env, {
-            source: "usgs", latitude: latest.latitude, longitude: latest.longitude,
-            magnitude: latest.magnitude, depth: latest.depth, place: latest.location,
-            datetime: latest.datetime, fbPostId: "",
-            // Nested under ONE key: GitHub repository_dispatch rejects
-            // payloads with more than 10 top-level properties (HTTP 422).
-            extra: {
-                usgsEventId: latest.usgsId,
-                threat: usgsTsunamiLabel(latest.tsunami),
-                tsunamiThreat: usgsTsunamiLabel(latest.tsunami),
-                intensity: mmiToRoman(latest.mmi),
-                finalReport: true,
-            },
-        });
+    // Helper: schedule video with intensity retry (auto-post only).
+    // Checks instrumental first, then reported. If not ready, creates pending with 1/2/5/10m retries.
+    const scheduleVideoWithRetry = async (isAuto) => {
+        if (!wantsVideo || usgsFbOff || fbPassesFilters(latest, env)) return null;
+        // For auto-post, wait for intensity. For manual (trigger), dispatch immediately with whatever is available.
+        if (!isAuto) {
+            await dispatchVideoRender(env, {
+                source: "usgs", latitude: latest.latitude, longitude: latest.longitude,
+                magnitude: latest.magnitude, depth: latest.depth, place: latest.location,
+                datetime: latest.datetime, fbPostId: "",
+                extra: { usgsEventId: latest.usgsId, threat: usgsTsunamiLabel(latest.tsunami), tsunamiThreat: usgsTsunamiLabel(latest.tsunami), intensity: mmiToRoman(latest.mmi), finalReport: true },
+            });
+            return "video dispatched (manual, immediate)";
+        }
+        const status = await fetchUsgsIntensityStatus(latest.usgsId);
+        const hasIntensity = status.hasInstrumental || status.hasReported;
+        const intensityVal = status.hasInstrumental ? status.intensity : (status.hasReported ? status.intensity : "");
+        if (hasIntensity) {
+            await dispatchVideoRender(env, {
+                source: "usgs", latitude: latest.latitude, longitude: latest.longitude,
+                magnitude: latest.magnitude, depth: latest.depth, place: latest.location,
+                datetime: latest.datetime, fbPostId: "",
+                extra: { usgsEventId: latest.usgsId, threat: usgsTsunamiLabel(latest.tsunami), tsunamiThreat: usgsTsunamiLabel(latest.tsunami), intensity: intensityVal || mmiToRoman(latest.mmi), finalReport: true },
+            });
+            return `video dispatched (FINAL FLASH REPORT, ${status.hasInstrumental ? "instrumental" : "reported"})`;
+        }
+        // Not ready - schedule retries from first check
+        const pending = {
+            payload: { source: "usgs", latitude: latest.latitude, longitude: latest.longitude, magnitude: latest.magnitude, depth: latest.depth, place: latest.location, datetime: latest.datetime, threat: usgsTsunamiLabel(latest.tsunami) },
+            usgsId: latest.usgsId,
+            firstCheck: Date.now(),
+            nextIndex: 0,
+            lastCheck: Date.now(),
+        };
+        await setPendingVideo(kv, latest.usgsId, pending);
+        const idxRaw = await kv.get("video:pending:index");
+        let idx = [];
+        try { idx = idxRaw ? JSON.parse(idxRaw) : []; } catch { idx = []; }
+        if (!idx.includes(latest.usgsId)) { idx.push(latest.usgsId); await kv.put("video:pending:index", JSON.stringify(idx), { expirationTtl: 60 * 60 * 24 }); }
+        return "video pending (intensity not ready, next retry in 1m)";
     };
     // FB final report helper (never throws by itself; caller wraps anyway).
     const tryFbFinal = async () => {
@@ -443,53 +622,34 @@ async function handleUsgs(env) {
         if (!fbStatus.startsWith("posted"))
             return;
         await recordFbPosted(kv, { source: "usgs", id: latest.usgsId, timeMs: latest.timeMs, lat, lng, mag });
-        // Auto video data is USGS-only: fire the headless renderer on final
-        // report successes (fresh + cross-duplicate paths both land here).
-        await dispatchVideoRender(env, {
-            source: "usgs", latitude: latest.latitude, longitude: latest.longitude,
-            magnitude: latest.magnitude, depth: latest.depth, place: latest.location,
-            datetime: latest.datetime, fbPostId: fbStatus.replace(/^posted (photo )?/, ""),
-            // Nested under ONE key: GitHub repository_dispatch rejects
-            // payloads with more than 10 top-level properties (HTTP 422).
-            extra: {
-                usgsEventId: latest.usgsId,
-                threat: usgsTsunamiLabel(latest.tsunami),
-                tsunamiThreat: usgsTsunamiLabel(latest.tsunami),
-                intensity: mmiToRoman(latest.mmi),
-            },
-        });
+        // For FB final, video is also dispatched but via the same retry gate above.
+        // Here we only record FB; video is handled separately via scheduleVideoWithRetry.
     };
     const match = findCrossMatch(await getSentIndex(kv), "usgs", latest.timeMs, lat, lng, mag);
     if (match) {
         await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, crossOf: `${match.source}:${match.id}`, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
-        // Video-first close (threshold met, FB on, gates pass): the USGS
-        // confirmation is the rendered video, not an image post.
         if (wantsVideo && !usgsFbOff && !fbPassesFilters(latest, env)) {
-            await dispatchFinalVideo();
-            return `cross-duplicate ${dedupKey} (already announced by ${match.source}) | video dispatched (USGS final closes on render)`;
+            const isAuto = env._isAuto === true;
+            const videoMsg = await scheduleVideoWithRetry(isAuto);
+            return `cross-duplicate ${dedupKey} (already announced by ${match.source}) | ${videoMsg ?? "video dispatched (USGS final closes on render)"}`;
         }
-        // Below render threshold: no video AND no image (Discord already
-        // covered it via sendUsgsWebhook in the fresh path).
         if (!wantsVideo) {
             return `cross-duplicate ${dedupKey} (already announced by ${match.source}) | below render threshold (silent)`;
         }
-        // Still post the FB final report: USGS numbers confirm the earlier call.
         const fbStatus = await tryFbFinal();
         await recordFb(fbStatus);
         return `cross-duplicate ${dedupKey} (already announced by ${match.source}) | fb: ${fbStatus}`;
     }
     await sendUsgsWebhook(latest, env);
-    // Video-first close (threshold met, FB on, gates pass).
     if (wantsVideo && !usgsFbOff && !fbPassesFilters(latest, env)) {
-        await dispatchFinalVideo();
+        const isAuto = env._isAuto === true;
+        const videoMsg = await scheduleVideoWithRetry(isAuto);
         await kv.put("last_eq_id", dedupKey);
         await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, videoFinal: true, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
         await kv.put(`sent:${earthquakeToEqId(latest)}`, dedupKey, { expirationTtl: 60 * 60 * 24 * 30 });
         await recordSent(kv, { source: "usgs", id: latest.usgsId, timeMs: latest.timeMs, lat, lng, mag });
-        return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | video dispatched (USGS final closes on render)`;
+        return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | ${videoMsg ?? "video dispatched (USGS final closes on render)"}`;
     }
-    // Below render threshold: USGS stays off Facebook entirely (no video,
-    // no image). Discord already fired above.
     if (!wantsVideo) {
         await kv.put("last_eq_id", dedupKey);
         await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, silent: true, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
@@ -1325,6 +1485,7 @@ function json(body, status = 200) {
 
 export default {
     async fetch(request, env) {
+        env._isAuto = false;
         if (request.method === "OPTIONS")
             return new Response(null, { headers: CORS });
         const url = new URL(request.url);
@@ -1384,7 +1545,14 @@ export default {
     },
 
     async scheduled(event, env, ctx) {
+        // Mark as auto for video retry gate (manual trigger should dispatch immediately)
+        env._isAuto = true;
         ctx.waitUntil((async () => {
+            try {
+                console.log(`[cron][video-pending] ${await processPendingVideos(env)}`);
+            } catch (e) {
+                console.error("[cron][video-pending] failed", e);
+            }
             try {
                 console.log(`[cron][usgs] ${await handleUsgs(env)}`);
             }

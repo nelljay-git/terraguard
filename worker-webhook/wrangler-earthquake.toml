@@ -3,9 +3,9 @@ main = "src/earthquake.js"
 compatibility_date = "2026-09-07"
 compatibility_flags = ["nodejs_compat"]
 
-# Both feeds are fast-moving; every 2 min (same as the old workers).
+# Fast-moving feeds + 1/2/5/10m video intensity retries — every minute.
 [triggers]
-crons = ["*/2 * * * *"]
+crons = ["* * * * *"]
 
 # Reuse the SAME namespace the old workers used (terraguard-push) —
 # KV keys are unchanged, so dedup history carries over, no resend burst.
