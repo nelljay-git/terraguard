@@ -1207,8 +1207,6 @@ function buildWeatherFbMessage(event, source) {
     const lines = [
         `${riskEmoji} DAILY WEATHER UPDATE — ${issued} | TerraGuard PH`,
         "",
-        `Hello! Here's a friendly, easy-to-read summary of PAGASA's latest Daily Weather Forecast — reworded for clarity, but always faithful to the official bulletin.`,
-        "",
         `🕐 Officially issued: ${issued}`,
         `🏷️ TERRAGUARD RISK STATUS: ${risk?.status ?? "LOW"} ${riskEmoji}`,
         "",
