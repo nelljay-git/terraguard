@@ -288,47 +288,89 @@ async function fetchUsgsIntensityStatus(usgsId, timeoutMs = 8000) {
         if (!detail) return { hasInstrumental: false, hasReported: false, intensity: "" };
         const props = detail.properties || {};
         const products = props.products || {};
-        // Instrumental: shakemap stationlist or losspager cities
-        let instrumental = "";
+        // Instrumental: shakemap stationlist / losspager cities / mmi
+        let instrumentalIntensity = "";
+        let hasInstrumentalData = false;
         const shakemap = products.shakemap?.[0];
         if (shakemap) {
             const stationJson = await fetchUsgsProductJson(shakemap.contents?.["download/stationlist.json"]?.url, timeoutMs);
             if (stationJson?.features?.length) {
-                const hasInt = stationJson.features.some((f) => {
+                let maxInt = -Infinity;
+                for (const f of stationJson.features) {
                     const v = f?.properties?.intensity;
-                    return v != null && v !== "null" && !isNaN(Number(v));
-                });
-                if (hasInt) instrumental = "has-data";
+                    const n = Number(v);
+                    if (v != null && v !== "null" && !isNaN(n) && n > maxInt) maxInt = n;
+                }
+                if (maxInt !== -Infinity) {
+                    instrumentalIntensity = mmiToRoman(maxInt);
+                    hasInstrumentalData = true;
+                } else {
+                    hasInstrumentalData = true;
+                }
             }
-            if (!instrumental) {
+            if (!instrumentalIntensity && !hasInstrumentalData) {
                 const cities = await fetchUsgsProductJson(products.losspager?.[0]?.contents?.["cities.json"]?.url, timeoutMs);
-                if (Array.isArray(cities?.all_cities) && cities.all_cities.length > 0) instrumental = "has-data";
+                if (Array.isArray(cities?.all_cities) && cities.all_cities.length > 0) {
+                    let maxMmi = -Infinity;
+                    for (const c of cities.all_cities) {
+                        const n = Number(c.mmi);
+                        if (!isNaN(n) && n > maxMmi) maxMmi = n;
+                    }
+                    if (maxMmi !== -Infinity) {
+                        instrumentalIntensity = mmiToRoman(maxMmi);
+                        hasInstrumentalData = true;
+                    } else {
+                        hasInstrumentalData = true;
+                    }
+                }
             }
-            if (!instrumental && props.mmi != null) instrumental = "has-data";
+            if (!instrumentalIntensity && !hasInstrumentalData && props.mmi != null) {
+                instrumentalIntensity = mmiToRoman(props.mmi);
+                hasInstrumentalData = true;
+            }
         }
-        // Reported: dyfi geo
-        let reported = "";
+        // Reported: dyfi geo / cdi
+        let reportedIntensity = "";
+        let hasReportedData = false;
         const dyfi = products.dyfi?.[0];
         if (dyfi) {
             const geo = await fetchUsgsProductJson(dyfi.contents?.["dyfi_geo_10km.geojson"]?.url, timeoutMs);
             if (geo?.features?.length) {
-                const hasReported = geo.features.some((f) => f?.properties?.cdi != null && f.properties.name);
-                if (hasReported) reported = "has-data";
+                let maxCdi = -Infinity;
+                for (const f of geo.features) {
+                    const cdi = f?.properties?.cdi;
+                    const n = Number(cdi);
+                    if (cdi != null && !isNaN(n) && n > maxCdi) maxCdi = n;
+                }
+                if (maxCdi !== -Infinity) {
+                    reportedIntensity = mmiToRoman(maxCdi);
+                    hasReportedData = true;
+                } else if (geo.features.some((f) => f?.properties?.cdi != null && f.properties.name)) {
+                    hasReportedData = true;
+                }
             }
-            if (!reported && props.cdi != null) reported = "has-data";
+            if (!reportedIntensity && !hasReportedData && props.cdi != null) {
+                reportedIntensity = mmiToRoman(props.cdi);
+                hasReportedData = true;
+            }
+        } else if (props.cdi != null) {
+            reportedIntensity = mmiToRoman(props.cdi);
+            hasReportedData = true;
         }
         // Prefer instrumental per spec, fallback to reported
         let intensity = "";
-        if (instrumental) {
-            // Try to get a real roman value for the video payload (best-effort)
-            // Reuse the mmiToRoman helper via props.mmi if available, else generic
-            if (props.mmi != null) intensity = mmiToRoman(props.mmi);
-            else intensity = instrumental;
-        } else if (reported) {
-            if (props.cdi != null) intensity = mmiToRoman(props.cdi);
-            else intensity = reported;
+        if (hasInstrumentalData && instrumentalIntensity) {
+            intensity = instrumentalIntensity;
+        } else if (hasInstrumentalData && props.mmi != null) {
+            intensity = mmiToRoman(props.mmi);
+        } else if (hasReportedData && reportedIntensity) {
+            intensity = reportedIntensity;
+        } else if (hasReportedData && props.cdi != null) {
+            intensity = mmiToRoman(props.cdi);
+        } else if (hasInstrumentalData || hasReportedData) {
+            intensity = "";
         }
-        return { hasInstrumental: !!instrumental, hasReported: !!reported, intensity };
+        return { hasInstrumental: hasInstrumentalData, hasReported: hasReportedData, intensity };
     } catch {
         return { hasInstrumental: false, hasReported: false, intensity: "" };
     }
@@ -376,8 +418,7 @@ async function processPendingVideos(env) {
         // Time to check or final fallback
         const status = await fetchUsgsIntensityStatus(usgsId);
         const isReady = status.hasInstrumental || status.hasReported;
-        // Use instrumental if available, else reported (per spec)
-        const intensityForVideo = status.hasInstrumental ? (status.intensity || "has-data") : (status.hasReported ? (status.intensity || "has-data") : "");
+        const intensityForVideo = status.intensity || "";
         const isFinalAttempt = pending.nextIndex >= VIDEO_RETRY_DELAYS.length - 1;
         if (isReady || isFinalAttempt) {
             // Dispatch with intensity if ready, else fallback (empty intensity -> magnitude-only template)
