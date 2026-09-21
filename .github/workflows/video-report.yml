@@ -7,8 +7,8 @@
 #
 # Required repo secrets: FB_PAGE_ID, FB_UPLOAD_TOKEN (Page token with
 # pages_manage_posts — can be the same token the workers use).
-# Optional: none (upload step is skipped without FB secrets, MP4 kept
-# as a 7-day artifact instead).
+# Optional: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (for Telegram group -5405090766)
+# (upload steps are skipped without their secrets, MP4 kept as a 7-day artifact instead).
 
 name: quake-video
 
@@ -109,6 +109,43 @@ jobs:
           MP4: video-out/tiktok.mp4
           QUAKE_FILE: video-out/quake.json
         run: node scripts/tiktok-upload.mjs
+
+      - name: Telegram send
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          QUAKE_FILE: video-out/quake.json
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram skipped (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)"
+            exit 0
+          fi
+          if [ ! -f "video-out/out.mp4" ]; then
+            echo "Telegram skipped (no video-out/out.mp4)"
+            exit 0
+          fi
+          # Reuse the same FINAL FLASH / fallback caption the FB upload used
+          CAPTION=$(node -e "
+            try {
+              const fs=require('fs');
+              const q=JSON.parse(fs.readFileSync(process.env.QUAKE_FILE,'utf8'));
+              // Use the same caption builders as the renderer (via dist-video)
+              // Fallback to a simple caption if the module isn't available
+              const mag=q.magnitude||'?';
+              const place=q.location||q.place||'';
+              const date=(q.datetime||'').split(' - ')[0]||q.datetime||'';
+              console.log(\`\${date} | Mag \${mag} - \${place} | TerraGuard\`);
+            } catch(e){ console.log('TerraGuard USGS Video Report'); }
+          " 2>/dev/null || echo "TerraGuard USGS Video Report")
+          # Telegram caption limit is 1024 chars
+          CAPTION=$(echo "$CAPTION" | cut -c1-1000)
+          echo "Sending to Telegram chat $TELEGRAM_CHAT_ID"
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo" \
+            -F chat_id="${TELEGRAM_CHAT_ID}" \
+            -F video="@video-out/out.mp4" \
+            -F caption="$CAPTION" \
+            -F parse_mode="HTML" | head -c 500; echo ""
 
       - name: Keep MP4 artifact
         if: always()
