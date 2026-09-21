@@ -1132,7 +1132,7 @@ export function Details() {
           // damage estimate.
           intensity: extractMaxIntensity(details?.instrumentalIntensities),
           tsunamiThreat: tsunamiInfo?.label ?? '',
-          shakes: extractShakeRows(details?.reportedIntensities),
+          shakes: extractShakeRows(details?.instrumentalIntensities),
           usgsEventId: isUsgs ? (extractUsgsEventId(activeLink || earthquake.link) ?? undefined) : undefined,
         }),
       });
@@ -1914,7 +1914,7 @@ export function Details() {
           earthquake={earthquake}
           intensity={extractMaxIntensity(details?.instrumentalIntensities)}
           tsunamiThreat={tsunamiInfo?.label ?? ''}
-          shakes={extractShakeRows(details?.reportedIntensities)}
+          shakes={extractShakeRows(details?.instrumentalIntensities)}
           usgsEventId={isUsgs ? (extractUsgsEventId(earthquake.link) ?? undefined) : undefined}
           quakeSource={dataSource}
           onClose={() => setShowVideoReport(false)}
