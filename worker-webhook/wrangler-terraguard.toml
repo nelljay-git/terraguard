@@ -3,13 +3,14 @@ main = "src/terraguard.js"
 compatibility_date = "2026-09-07"
 compatibility_flags = ["nodejs_compat"]
 
-# ONE cron set for all three monitors (weather + volcano + haze).
+# ONE cron set for all four monitors (weather + volcano + haze + tsunami).
 # Monitor tick every 10 min + PAGASA daily summaries 07:00/18:00 PHT
 # (PHT = UTC+8: 07:00 PHT = 23:00 UTC, 18:00 PHT = 10:00 UTC)
+# Tsunami was previously */5 — now shares the 10m tick to save free-tier crons.
 [triggers]
 crons = ["*/10 * * * *", "0 23 * * *", "0 10 * * *"]
 
-# Bind ALL THREE existing namespaces to keep history (no re-baseline burst),
+# Bind ALL existing namespaces to keep history (no re-baseline burst),
 # or bind a single TERRAGUARD_KV to start fresh (one baseline burst).
 [[kv_namespaces]]
 binding = "PAGASA_KV"
@@ -24,6 +25,11 @@ preview_id = "REPLACE_WITH_PREVIEW_ID"
 [[kv_namespaces]]
 binding = "HAZE_KV"
 id = "REPLACE_WITH_HAZE_KV_ID"
+preview_id = "REPLACE_WITH_PREVIEW_ID"
+
+[[kv_namespaces]]
+binding = "TSUNAMI_KV"
+id = "REPLACE_WITH_TSUNAMI_KV_ID"
 preview_id = "REPLACE_WITH_PREVIEW_ID"
 
 [[kv_namespaces]]
@@ -45,5 +51,7 @@ MAX_EVENTS_INDEX = "100"
 # DISCORD_WEBHOOK_URL = weather + haze + fallback for all
 # VOLCANO_DISCORD_WEBHOOK_URL = volcano's OWN channel (falls back to default)
 # HAZE_DISCORD_WEBHOOK_URL = haze channel (falls back to default)
+# TSUNAMI_WEBHOOK_URL = tsunami channel (falls back to default, or WEBHOOK_KV legacy)
 # CRON_SECRET = master secret for /trigger + all API reads
-# PAGASA_API_SECRET / VOLCANO_API_SECRET / HAZE_API_SECRET = optional per-monitor read secrets
+# PAGASA_API_SECRET / VOLCANO_API_SECRET / HAZE_API_SECRET / TSUNAMI_API_SECRET = optional per-monitor read secrets
+# TSUNAMI_MIN_SEVERITY = "" (all), "advisory", or "warning" (filters Discord)
