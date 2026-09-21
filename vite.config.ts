@@ -59,7 +59,7 @@ export default defineConfig({
         // Don't let the SPA app-shell fallback intercept non-app files. Without
         // this, a navigation to /ads.txt or /robots.txt is served index.html by
         // the service worker instead of the real static file.
-        navigateFallbackDenylist: [/^\/ads\.txt$/, /^\/robots\.txt$/, /^\/tiktok.*\.txt$/, /^\/google.*\.html$/, /^\/maps\//],
+        navigateFallbackDenylist: [/^\/ads\.txt$/, /^\/robots\.txt$/, /^\/tiktok.*\.txt$/, /^\/google.*\.html$/, /^\/maps\//, /^\/bulletin\//],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
@@ -131,6 +131,44 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      // Hub: /api/volcano?page=hub -> wovodat hub (used as fallback when PHP 404)
+      // Detail (/api/volcano?detail=1&url=...) is handled server-side in production; in dev we bypass this proxy
+      // and use the /bulletin direct proxy instead (see fetchVolcanoDetail).
+      '/api/volcano': {
+        target: 'https://wovodat.phivolcs.dost.gov.ph',
+        changeOrigin: true,
+        secure: false,
+        bypass: (req) => {
+          // Don't proxy detail requests through the hub proxy — let them fall through and be handled by direct /bulletin fallback
+          if (req.url?.includes('detail=1')) return false as unknown as string;
+          return null;
+        },
+        rewrite: () => {
+          return '/bulletin/list-of-bulletin';
+        },
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      },
+      // Direct bulletin detail proxy: /bulletin/activity-mvo?bid=... -> wovodat bulletin page (CORS bypass for fetch)
+      // Navigation to /bulletin/... should NOT proxy to raw wovodat HTML — serve the SPA instead so the modal can handle it.
+      '/bulletin': {
+        target: 'https://wovodat.phivolcs.dost.gov.ph',
+        changeOrigin: true,
+        secure: false,
+        bypass: (req) => {
+          const accept = (req.headers as Record<string, string | undefined>)['accept'] || '';
+          // Browser navigation has text/html; fetch/XHR has */* or application/json — only proxy the latter
+          if (accept.includes('text/html') && !accept.includes('application/json')) {
+            // Let Vite serve index.html (SPA) — the app will handle /bulletin via router/modal
+            return '/index.html';
+          }
+          return null;
+        },
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      },
       '/api/phivolcs': {
         target: 'https://earthquake.phivolcs.dost.gov.ph',
         changeOrigin: true,

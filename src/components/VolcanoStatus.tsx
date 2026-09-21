@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { fetchVolcanoHub, alertColor, alertLabel, type VolcanoStatus } from '../api/volcano';
+import { VolcanoDetailModal } from './VolcanoDetailModal';
 import { Mountain, ExternalLink, RefreshCw } from 'lucide-react';
 import './VolcanoStatus.css';
 
@@ -9,6 +10,7 @@ export function VolcanoStatus() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [selected, setSelected] = useState<VolcanoStatus | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -75,29 +77,52 @@ export function VolcanoStatus() {
       </div>
 
       <div className="volcano-grid">
-        {data.map((v) => (
-          <a
-            key={v.volcano}
-            href={v.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="volcano-item"
-            style={{ borderLeftColor: alertColor(v.alertLevel) }}
-          >
-            <div className="volcano-item-top">
-              <span className="volcano-name">{v.volcano}</span>
-              <span className="volcano-level" style={{ background: alertColor(v.alertLevel) }}>
-                {alertLabel(v.alertLevel)}
+        {data.map((v) => {
+          const hasBulletin = v.bid !== null && v.url && !v.url.endsWith('/bulletin/list-of-bulletin');
+          if (!hasBulletin) {
+            return (
+              <div
+                key={v.volcano}
+                className="volcano-item"
+                style={{ borderLeftColor: alertColor(v.alertLevel), cursor: 'default', opacity: 0.85 }}
+                title="No bulletin available — showing latest alert level"
+              >
+                <div className="volcano-item-top">
+                  <span className="volcano-name">{v.volcano}</span>
+                  <span className="volcano-level" style={{ background: alertColor(v.alertLevel) }}>
+                    {alertLabel(v.alertLevel)}
+                  </span>
+                </div>
+                <div className="volcano-title text-muted">{v.title}</div>
+                <span className="volcano-link" style={{ opacity: 0.6 }}>
+                  No bulletin yet
+                </span>
+              </div>
+            );
+          }
+          return (
+            <button
+              key={v.volcano}
+              onClick={() => setSelected(v)}
+              className="volcano-item"
+              style={{ borderLeftColor: alertColor(v.alertLevel), textAlign: 'left', width: '100%', cursor: 'pointer' }}
+            >
+              <div className="volcano-item-top">
+                <span className="volcano-name">{v.volcano}</span>
+                <span className="volcano-level" style={{ background: alertColor(v.alertLevel) }}>
+                  {alertLabel(v.alertLevel)}
+                </span>
+              </div>
+              <div className="volcano-title text-muted">{v.title}</div>
+              <span className="volcano-link">
+                View bulletin <ExternalLink size={12} />
               </span>
-            </div>
-            <div className="volcano-title text-muted">{v.title}</div>
-            <span className="volcano-link">
-              View bulletin <ExternalLink size={12} />
-            </span>
-          </a>
-        ))}
+            </button>
+          );
+        })}
       </div>
       <p className="volcano-foot text-muted">Source: DOST-PHIVOLCS • Updates every ~10 min</p>
+      {selected && <VolcanoDetailModal volcano={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

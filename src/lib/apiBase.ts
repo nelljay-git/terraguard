@@ -93,9 +93,9 @@ export function phivolcsBulletinsUrl(url: string): string {
 }
 
 export function volcanoListUrl(): string {
-  return usePhpApi ? phpApi('volcano.php?page=hub') : apiUrl('/api/volcano?page=hub');
+  return usePhpApi ? phpApi('api/volcano.php?page=hub') : apiUrl('/api/volcano?page=hub');
 }
 export function volcanoDetailUrl(url: string): string {
   const qs = encodeURIComponent(url);
-  return usePhpApi ? phpApi(`volcano.php?detail=1&url=${qs}`) : apiUrl(`/api/volcano?detail=1&url=${qs}`);
+  return usePhpApi ? phpApi(`api/volcano.php?detail=1&url=${qs}`) : apiUrl(`/api/volcano?detail=1&url=${qs}`);
 }

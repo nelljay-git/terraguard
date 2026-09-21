@@ -23,6 +23,7 @@ import { ForumEdit } from './pages/ForumEdit';
 import { TikTokCallback } from './pages/TikTokCallback';
 import { Blog } from './pages/Blog';
 import { BlogPost } from './pages/BlogPost';
+import { VolcanoBulletin } from './pages/VolcanoBulletin';
 import './App.css';
 
 // Keyed wrapper so navigating between two /details/:id URLs remounts the
@@ -69,6 +70,7 @@ function App() {
             <Route path="/forum/:id/edit" element={<ForumEdit />} />
             <Route path="/blog" element={<Blog />} />
             <Route path="/blog/:slug" element={<BlogPost />} />
+            <Route path="/bulletin/*" element={<VolcanoBulletin />} />
             <Route path="/tiktok-callback" element={<TikTokCallback />} />
           </Routes>
         </main>

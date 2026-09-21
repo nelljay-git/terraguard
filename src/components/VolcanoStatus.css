@@ -85,6 +85,12 @@
   text-decoration: none;
   color: inherit;
   transition: transform 0.15s, background 0.15s;
+  font-family: inherit;
+}
+button.volcano-item {
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
 }
 .volcano-item:hover {
   transform: translateY(-2px);

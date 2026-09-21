@@ -356,31 +356,41 @@ function extractVolcanoDetail(string $html, string $pageUrl): array {
     elseif (preg_match('/\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December|Enero|Pebrero|Marso|Abril|Mayo|Hunyo|Hulyo|Agosto|Setyembre|Oktubre|Nobyembre|Disyembre)\s+\d{4}\b/i', $text, $m)) $issued = trim($m[0]);
 
     // MGA PARAMETRO — extract each row so frontend can render them as a table, not just raw text
+    // Isolate PARAMETERS section to avoid matching the header "Volcano Activity"
+    $paramsText = $text;
+    if (preg_match('/PARAMETERS/i', $text, $pm, PREG_OFFSET_CAPTURE)) {
+        $paramsText = substr($text, $pm[0][1]);
+    }
     $parametros = [];
     $labels = [
-        'eruption' => '/Eruption\s*([^\n]+?)(?=\s*(?:Activity|Aktibidad|Seismicity|Banaag|Sulfur|Plume|Ground|Rekomendasyon|Paalala|$))/is',
-        'activity' => '/Activity\s*([^\n]+?)(?=\s*(?:Seismicity|Banaag|Sulfur|Plume|Ground|Rekomendasyon|Paalala|$))/is',
-        'seismicity' => '/Seismicity\s*([^\n]+?)(?=\s*(?:Banaag|Crater glow|Sulfur|Plume|Ground|Rekomendasyon|Paalala|$))/is',
-        'craterGlow' => '/(?:Banaag|Crater glow)\s*([^\n]+?)(?=\s*(?:Sulfur|Plume|Ground|Rekomendasyon|Paalala|$))/is',
-        'so2' => '/Sulfur Dioxide Flux\s*([^\n]+?)(?=\s*(?:Plume|Ground|Rekomendasyon|Paalala|$))/is',
-        'plume' => '/Plume\s*([^\n]+?)(?=\s*(?:Ground Deformation|Ground|Rekomendasyon|Paalala|$))/is',
-        'groundDeformation' => '/Ground Deformation\s*([^\n]+?)(?=\s*(?:Rekomendasyon|Paalala|Lokasyon|$))/is',
-    ];
-    // Fallback for Filipino labels
-    $labelsFil = [
-        'eruption' => '/Eruption\s*([^\n]+?)(?=\s*(?:Activity|Seismicity|Banaag|Sulfur|Plume|Ground|Rekomendasyon|$))/is',
-        'seismicity_fil' => '/Seismicity[^:]*\s*([^\n]+?)(?=\s*(?:Banaag|Sulfur|Plume|Ground|$))/is',
+        'seismicity' => '/Seismicity\s*([^\n]+?)(?=\s*(?:Banaag|Crater glow|Sulfur|Plume|Ground|Earthquake Location|Total no\.|Rekomendasyon|RECOMMENDATION|Paalala|$))/is',
+        'craterGlow' => '/(?:Banaag|Crater glow)\s*([^\n]+?)(?=\s*(?:Sulfur|Plume|Ground|Earthquake Location|Rekomendasyon|RECOMMENDATION|Paalala|$))/is',
+        'so2' => '/Sulfur Dioxide Flux\s*([^\n]+?)(?=\s*(?:Plume|Ground|Earthquake Location|Rekomendasyon|RECOMMENDATION|Paalala|$))/is',
+        'plume' => '/Plume\s*([^\n]+?)(?=\s*(?:Ground Deformation|Ground|Earthquake Location|Rekomendasyon|RECOMMENDATION|Paalala|$))/is',
+        'groundDeformation' => '/Ground Deformation\s*([^\n]+?)(?=\s*(?:Earthquake Location|Total no\.|Rekomendasyon|RECOMMENDATION|Paalala|Lokasyon|Additional information|Department of Science|$))/is',
+        'eruption' => '/Eruption\s*([^\n]+?)(?=\s*(?:Activity|Aktibidad|Seismicity|Banaag|Sulfur|Plume|Ground|Rekomendasyon|RECOMMENDATION|Paalala|$))/is',
+        'activity' => '/Activity\s*([^\n]+?)(?=\s*(?:Seismicity|Banaag|Sulfur|Plume|Ground|Earthquake Location|Rekomendasyon|RECOMMENDATION|Paalala|$))/is',
     ];
     foreach ($labels as $k => $pat) {
-        if (preg_match($pat, $text, $mm)) {
-            $parametros[$k] = trim(preg_replace('/\s+/', ' ', $mm[1]));
+        $src = in_array($k, ['eruption','activity'], true) ? $text : $paramsText;
+        if (preg_match($pat, $src, $mm)) {
+            $val = trim(preg_replace('/\s+/', ' ', $mm[1]));
+            // Strip leaked legend/footer
+            $val = trim(preg_split('/Earthquake Location:/i', $val)[0]);
+            $val = trim(preg_split('/Total no\. of volcanic earthquake/i', $val)[0]);
+            $val = trim(preg_split('/RECOMMENDATION\/COMMENT/i', $val)[0]);
+            $val = trim(preg_split('/Rekomendasyon/i', $val)[0]);
+            if ($k === 'activity' && preg_match('/Volcano Activity|Summary of 24Hr/i', $val) && strlen($val) > 80) continue;
+            if ($k === 'eruption' && strlen($val) > 400) continue;
+            if (strlen($val) < 2) continue;
+            if (strlen($val) > 240) $val = trim(substr($val, 0, 240)) . '…';
+            $parametros[$k] = $val;
         }
     }
-    // Ensure Filipino activity line also captured when labeled slightly differently
-    if (!isset($parametros['activity']) && preg_match('/2 pagbuga[^\n]+/i', $text, $mm)) {
+    if (!isset($parametros['activity']) && preg_match('/2 pagbuga[^\n]+/i', $paramsText, $mm)) {
         $parametros['activity'] = trim($mm[0]);
     }
-    if (!isset($parametros['seismicity']) && preg_match('/23 volcanic[^\n]+/i', $text, $mm)) {
+    if (!isset($parametros['seismicity']) && preg_match('/23 volcanic[^\n]+/i', $paramsText, $mm)) {
         $parametros['seismicity'] = trim($mm[0]);
     }
 

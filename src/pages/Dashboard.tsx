@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { parse, isValid, isSameMonth } from 'date-fns';
 import { fetchEarthquakeData, getSignificantEarthquakes, getCachedData, normalizeEarthquakes, type NormalizedEarthquake } from '../api/phivolcs';
-import { getPreferredApi } from '../lib/apiPreference';
+import { getPreferredApi, PREFERRED_API_CHANGE_EVENT } from '../lib/apiPreference';
 import { SummaryCards } from '../components/SummaryCards';
 import { LatestEarthquake } from '../components/LatestEarthquake';
 import { InteractiveMap } from '../components/InteractiveMap';
@@ -78,7 +78,19 @@ export function Dashboard() {
   }, [loadData]);
 
   const currentMonth = new Date();
-  const prefDash = getPreferredApi();
+  const [preferredApi, setPreferredApi] = useState(() => getPreferredApi());
+
+  useEffect(() => {
+    const handler = () => setPreferredApi(getPreferredApi());
+    window.addEventListener(PREFERRED_API_CHANGE_EVENT, handler);
+    window.addEventListener('storage', handler);
+    return () => {
+      window.removeEventListener(PREFERRED_API_CHANGE_EVENT, handler);
+      window.removeEventListener('storage', handler);
+    };
+  }, []);
+
+  const prefDash = preferredApi;
   const sourceName = prefDash === 'usgs' ? 'USGS' : prefDash === 'emsc' ? 'EMSC' : 'PHIVOLCS';
   const monthlyEarthquakes = earthquakes.filter(eq => {
     const datePart = eq.datetime.split(' - ')[0]?.trim();
@@ -152,8 +164,8 @@ export function Dashboard() {
       {/* ── Summary Cards + Chart ── */}
       <SummaryCards recent={earthquakes} significant={sigEarthquakes} />
 
-      {/* ── Volcano Status (PHIVOLCS-LAVA) ── */}
-      <VolcanoStatus />
+      {/* ── Volcano Status (PHIVOLCS-LAVA) — only for PHIVOLCS feed ── */}
+      {prefDash === 'phivolcs' && <VolcanoStatus />}
 
       {/* ── Activity Feed (full-width below) ── */}
       <ActivityFeed earthquakes={earthquakes.slice(0, 5)} />
