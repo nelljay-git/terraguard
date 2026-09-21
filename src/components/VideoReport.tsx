@@ -579,7 +579,7 @@ export function drawFrame(
     // rows were parsed; with neither, a muted line holds the slot.
     const shakeList: ShakeRow[] =
       shakes.length > 0
-        ? shakes.slice(0, 4)
+        ? shakes.slice(0, 5)
         : intensity
           ? [{ area: (eq.location || '').slice(0, 30) || 'Epicenter area', intensity }]
           : [];

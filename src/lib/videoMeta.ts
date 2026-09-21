@@ -89,7 +89,7 @@ export interface ShakeRow {
 // "Intensity V - Laoag City, Ilocos Norte; Intensity III - Batac, ..." ->
 // [{ area, intensity }] sorted strongest-first. Anything unparseable is
 // skipped, so callers only ever render real felt reports.
-export function extractShakeRows(text: string | undefined | null, maxRows = 4): ShakeRow[] {
+export function extractShakeRows(text: string | undefined | null, maxRows = 5): ShakeRow[] {
   if (!text) return [];
   const rows: ShakeRow[] = [];
   const seen = new Set<string>();

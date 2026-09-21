@@ -329,48 +329,21 @@ async function fetchUsgsIntensityStatus(usgsId, timeoutMs = 8000) {
                 hasInstrumentalData = true;
             }
         }
-        // Reported: dyfi geo / cdi
+        // Reported is intentionally NOT used for video (user wants instrumental only).
+        // We still fetch it for logging but do not treat it as ready for FINAL FLASH.
         let reportedIntensity = "";
         let hasReportedData = false;
-        const dyfi = products.dyfi?.[0];
-        if (dyfi) {
-            const geo = await fetchUsgsProductJson(dyfi.contents?.["dyfi_geo_10km.geojson"]?.url, timeoutMs);
-            if (geo?.features?.length) {
-                let maxCdi = -Infinity;
-                for (const f of geo.features) {
-                    const cdi = f?.properties?.cdi;
-                    const n = Number(cdi);
-                    if (cdi != null && !isNaN(n) && n > maxCdi) maxCdi = n;
-                }
-                if (maxCdi !== -Infinity) {
-                    reportedIntensity = mmiToRoman(maxCdi);
-                    hasReportedData = true;
-                } else if (geo.features.some((f) => f?.properties?.cdi != null && f.properties.name)) {
-                    hasReportedData = true;
-                }
-            }
-            if (!reportedIntensity && !hasReportedData && props.cdi != null) {
-                reportedIntensity = mmiToRoman(props.cdi);
-                hasReportedData = true;
-            }
-        } else if (props.cdi != null) {
-            reportedIntensity = mmiToRoman(props.cdi);
-            hasReportedData = true;
-        }
-        // Prefer instrumental per spec, fallback to reported
+        // Keep hasReportedData false so that isReady = hasInstrumentalData only
+        // Instrumental ONLY per user request (no fallback to reported/cdi)
         let intensity = "";
         if (hasInstrumentalData && instrumentalIntensity) {
             intensity = instrumentalIntensity;
         } else if (hasInstrumentalData && props.mmi != null) {
             intensity = mmiToRoman(props.mmi);
-        } else if (hasReportedData && reportedIntensity) {
-            intensity = reportedIntensity;
-        } else if (hasReportedData && props.cdi != null) {
-            intensity = mmiToRoman(props.cdi);
-        } else if (hasInstrumentalData || hasReportedData) {
+        } else if (hasInstrumentalData) {
             intensity = "";
         }
-        return { hasInstrumental: hasInstrumentalData, hasReported: hasReportedData, intensity };
+        return { hasInstrumental: hasInstrumentalData, hasReported: false, intensity };
     } catch {
         return { hasInstrumental: false, hasReported: false, intensity: "" };
     }
@@ -417,7 +390,7 @@ async function processPendingVideos(env) {
         }
         // Time to check or final fallback
         const status = await fetchUsgsIntensityStatus(usgsId);
-        const isReady = status.hasInstrumental || status.hasReported;
+        const isReady = status.hasInstrumental;
         const intensityForVideo = status.intensity || "";
         const isFinalAttempt = pending.nextIndex >= VIDEO_RETRY_DELAYS.length - 1;
         if (isReady || isFinalAttempt) {
@@ -623,8 +596,8 @@ async function handleUsgs(env) {
             return "video dispatched (manual, immediate)";
         }
         const status = await fetchUsgsIntensityStatus(latest.usgsId);
-        const hasIntensity = status.hasInstrumental || status.hasReported;
-        const intensityVal = status.hasInstrumental ? status.intensity : (status.hasReported ? status.intensity : "");
+        const hasIntensity = status.hasInstrumental;
+        const intensityVal = status.intensity || "";
         if (hasIntensity) {
             await dispatchVideoRender(env, {
                 source: "usgs", latitude: latest.latitude, longitude: latest.longitude,
@@ -632,7 +605,7 @@ async function handleUsgs(env) {
                 datetime: latest.datetime, fbPostId: "",
                 extra: { usgsEventId: latest.usgsId, threat: usgsTsunamiLabel(latest.tsunami), tsunamiThreat: usgsTsunamiLabel(latest.tsunami), intensity: intensityVal || mmiToRoman(latest.mmi), finalReport: true },
             });
-            return `video dispatched (FINAL FLASH REPORT, ${status.hasInstrumental ? "instrumental" : "reported"})`;
+            return `video dispatched (FINAL FLASH REPORT, instrumental)`;
         }
         // Not ready - schedule retries from first check
         const pending = {
