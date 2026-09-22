@@ -49,8 +49,21 @@ export async function fetchEmscData(): Promise<EmscEarthquake[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    // Live: latest 100 global, minmag 1.0 to match USGS global M1.0 behavior; ordered newest first
-    const url = `${EMSC_BASE}?format=json&limit=100&orderby=time&minmag=1.0`;
+    // Live: full UTC day (no 100 cap) — if today is 00:05 Sept 23 UTC, shows Sept 22; otherwise today
+    const now = new Date();
+    const target = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    if (now.getUTCHours() < 3) target.setUTCDate(target.getUTCDate() - 1);
+    const dayStart = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate(),0,0,0,0));
+    const dayEnd = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate(),23,59,59,999));
+    const params = new URLSearchParams({
+      format: 'json',
+      limit: '20000',
+      orderby: 'time',
+      minmag: '1.0',
+      starttime: dayStart.toISOString(),
+      endtime: dayEnd.toISOString(),
+    });
+    const url = `${EMSC_BASE}?${params}`;
     const res = await fetch(url, { signal: controller.signal });
     if (res.status === 204) return [];
     if (!res.ok) throw new Error(`EMSC ${res.status}`);

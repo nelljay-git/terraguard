@@ -686,24 +686,35 @@ export function DailyEarthReportModal({
       return;
     }
     let cancelled = false;
-    fetchEmscData().then((fetched) => {
-      if (cancelled) return;
-      // Day filter: if run 00:05 Sept 23 UTC → whole Sept 22 UTC (00:00-23:59:59.999 UTC), no limit
-      const now = new Date();
-      const target = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-      // 00:05 run belongs to previous calendar day
-      if (now.getUTCHours() < 3) target.setUTCDate(target.getUTCDate() - 1);
-      const dayStart = Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate());
-      const dayEnd = dayStart + 24*3600*1000 - 1;
-      let daily = fetched.filter((e)=>{
-        const ms = Date.parse(e.properties.time);
-        return !isNaN(ms) && ms >= dayStart && ms <= dayEnd;
-      });
-      if (daily.length === 0) daily = fetched; // fallback to all fetched if day empty (e.g. manual mid-day)
-      // no cap — show all of that UTC day
-      setEvents(daily);
-      eventsRef.current = daily;
-    }).catch(()=>{});
+    (async()=>{
+      try{
+        const now = new Date();
+        const target = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+        if (now.getUTCHours() < 3) target.setUTCDate(target.getUTCDate() - 1);
+        const dayStart = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate(),0,0,0,0));
+        const dayEnd = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate(),23,59,59,999));
+        const params = new URLSearchParams({
+          format: 'json', limit: '20000', orderby: 'time', minmag: '1.0',
+          starttime: dayStart.toISOString(), endtime: dayEnd.toISOString(),
+        });
+        const res = await fetch(`https://www.seismicportal.eu/fdsnws/event/1/query?${params}`);
+        if (!res.ok) throw new Error(`EMSC ${res.status}`);
+        const j = await res.json() as { features: Array<{ id:string; properties: EmscEarthquake['properties']; geometry: EmscEarthquake['geometry']; type:string }> };
+        let daily: EmscEarthquake[] = (j.features??[]).map((f)=> ({ id:f.id, properties:f.properties, geometry:f.geometry, type:f.type } as EmscEarthquake));
+        if (daily.length===0) {
+          const fb = await fetchEmscData();
+          daily = fb;
+        }
+        if (cancelled) return;
+        setEvents(daily);
+        eventsRef.current = daily;
+      }catch{
+        try{
+          const fb2 = await fetchEmscData();
+          if (!cancelled) { setEvents(fb2); eventsRef.current = fb2; }
+        }catch{}
+      }
+    })();
     return ()=>{ cancelled=true; };
   }, [externalEvents]);
 
