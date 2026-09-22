@@ -507,9 +507,11 @@ function drawHighestModal(
   const ease = easeOutCubic(a);
   ctx.save();
   ctx.globalAlpha = ease;
-  // connector line from circle to modal — offset 16px left of wipe to stay visible, plus white outer glow
-  const mx = DAILY_W/2, my = 210;
+  // modal just above bottom panel so it doesn't cover Japan-area circles
   const mw = 760, mh = 220;
+  const panelTop = DAILY_H - 470 - 20; // 950
+  const my = panelTop - mh/2 - 24; // 816 centered above panel
+  const mx = DAILY_W/2;
   const mx0 = mx - mw/2, my0 = my - mh/2;
   const lineX = Math.max(12, Math.min(DAILY_W - 12, circle.x - 16)); // offset west of wipe line (wipe is at circle.x)
   // outer glow for visibility over red wipe
@@ -1100,14 +1102,8 @@ export function DailyEarthReportModal({
         } else if (wP >= 1) {
           for (const ev of eventsRef.current) if (!playedRef.current.has(ev.id)) { playedRef.current.add(ev.id); newly.push(ev); }
         }
-        // throttle to max 5/sec (200ms) — one pop per batch of close circles to avoid spam
-        if (newly.length>0) {
-          const nowMs = performance.now();
-          if (nowMs - lastCircleAtRef.current > 200) {
-            playCircleNow();
-            lastCircleAtRef.current = nowMs;
-          }
-        }
+        // no throttle — every circle pops (close clusters stagger 30ms to stay audible)
+        newly.forEach((_, idx)=> setTimeout(()=> playCircleNow(), idx * 30));
         if (isHighNow && !prevHighlightRef.current && !highestPlayedRef.current) {
           highestPlayedRef.current = true;
           playHighestNow();
