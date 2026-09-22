@@ -822,6 +822,7 @@ export function DailyEarthReportModal({
   const highestPlayedRef = useRef<boolean>(false);
   const prevHighlightRef = useRef<boolean>(false);
   const lastLoopTRef = useRef<number>(0);
+  const lastCircleAtRef = useRef<number>(0);
   const eventsRef = useRef<EmscEarthquake[]>(externalEvents ?? []);
   const [events, setEvents] = useState<EmscEarthquake[]>(externalEvents ?? []);
   const [phase, setPhase] = useState<Phase>('loading');
@@ -1080,7 +1081,7 @@ export function DailyEarthReportModal({
       drawDailyFrame(ctx as unknown as CanvasRenderingContext2D, viewRef.current, eventsRef.current, loopT, Date.now());
       // per-circle + daily + highest sounds in preview — highlight-aware wipe
       if (phase==='preview') {
-        if (loopT < lastLoopTRef.current - 0.5) { playedRef.current.clear(); dailyPlayedRef.current=false; highestPlayedRef.current=false; prevHighlightRef.current=false; }
+        if (loopT < lastLoopTRef.current - 0.5) { playedRef.current.clear(); dailyPlayedRef.current=false; highestPlayedRef.current=false; prevHighlightRef.current=false; lastCircleAtRef.current=0; }
         lastLoopTRef.current = loopT;
         let wP: number, curLng: number, isHighNow=false;
         if (eventsRef.current.length>0) {
@@ -1110,7 +1111,14 @@ export function DailyEarthReportModal({
         } else if (wP >= 1) {
           for (const ev of eventsRef.current) if (!playedRef.current.has(ev.id)) { playedRef.current.add(ev.id); newly.push(ev); }
         }
-        newly.forEach((_, idx)=> setTimeout(()=> playCircleNow(), idx * 200));
+        // throttle to max 5/sec (200ms) — one pop per batch of close circles to avoid spam
+        if (newly.length>0) {
+          const nowMs = performance.now();
+          if (nowMs - lastCircleAtRef.current > 200) {
+            playCircleNow();
+            lastCircleAtRef.current = nowMs;
+          }
+        }
         if (isHighNow && !prevHighlightRef.current && !highestPlayedRef.current) {
           highestPlayedRef.current = true;
           playHighestNow();
