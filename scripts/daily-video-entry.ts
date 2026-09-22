@@ -82,22 +82,34 @@ interface EmscEvent {
 
 const EMSC_BASE = 'https://www.seismicportal.eu/fdsnws/event/1/query';
 
-async function fetchDailyEmsc(limit = 100): Promise<EmscEvent[]> {
-  const url = `${EMSC_BASE}?format=json&limit=${limit}&orderby=time&minmag=1.0`;
+async function fetchDailyEmsc(): Promise<EmscEvent[]> {
+  // Day filter: 00:05 Sept 23 UTC → query Sept 22 00:00-23:59:59 UTC, no limit
+  const now = new Date();
+  const target = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  if (now.getUTCHours() < 3) target.setUTCDate(target.getUTCDate() - 1);
+  const dayStart = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate(), 0,0,0,0));
+  const dayEnd = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate(), 23,59,59,999));
+  const params = new URLSearchParams({
+    format: 'json',
+    limit: '20000',
+    orderby: 'time',
+    minmag: '1.0',
+    starttime: dayStart.toISOString(),
+    endtime: dayEnd.toISOString(),
+  });
+  const url = `${EMSC_BASE}?${params}`;
   const res = await fetch(url);
   if (res.status === 204) return [];
   if (!res.ok) throw new Error(`EMSC ${res.status}`);
   const data: any = await res.json();
   const feats: any[] = data.features ?? [];
-  // filter to last 24h UTC and cap
-  const now = Date.now();
-  const dayAgo = now - 24*3600*1000;
-  let filtered = feats.filter((f:any)=>{
-    const ms = Date.parse(f.properties.time);
-    return !isNaN(ms) && ms >= dayAgo && ms <= now;
-  }).map((f:any)=>({ id:f.id, properties:f.properties, geometry:f.geometry, type:f.type } as EmscEvent));
-  if (filtered.length === 0) filtered = feats.slice(0, Math.min(30, feats.length)).map((f:any)=>({ id:f.id, properties:f.properties, geometry:f.geometry, type:f.type }));
-  return filtered.slice(0, 50);
+  let out = feats.map((f:any)=>({ id:f.id, properties:f.properties, geometry:f.geometry, type:f.type } as EmscEvent));
+  if (out.length===0) {
+    // fallback: last 100 if day empty (e.g. manual mid-day before events)
+    const fb = await fetch(`${EMSC_BASE}?format=json&limit=100&orderby=time&minmag=1.0`).then(r=> r.json().catch(()=>({features:[]})) as Promise<any>).catch(()=>({features:[]}));
+    out = (fb.features??[]).map((f:any)=>({ id:f.id, properties:f.properties, geometry:f.geometry, type:f.type } as EmscEvent));
+  }
+  return out; // no cap
 }
 
 function buildDailyCaption(events: EmscEvent[]): string {
@@ -148,8 +160,7 @@ async function main(): Promise<void> {
     console.log('No DAILY_JSON env — fetching live EMSC (last 24h)');
     events = await fetchDailyEmsc();
   }
-  console.log(`daily events: ${events.length}`);
-  if (events.length > 50) events = events.slice(0, 50);
+  console.log(`daily events: ${events.length} (full UTC day, no cap)`);
 
   // Persist for caption/debug
   fs.writeFileSync(path.join(outDir, 'daily.json'), JSON.stringify(events, null, 2));
@@ -202,7 +213,7 @@ async function main(): Promise<void> {
   const hasDaily = fs.existsSync(dailyFile);
   if (!hasCircle) console.error('circle-appear.mp3 missing — circles silent');
   if (!hasDaily) console.error('daily-report.mp3 missing — panel silent');
-  const circlePlan = hasCircle ? (()=>{ const sorted=[...events].sort((a,b)=> a.properties.lon - b.properties.lon); let lastAt=-1000; return sorted.map(ev=>{ let at=Math.round((DAILY_WIPE_START + ((ev.properties.lon+180)/360)*DAILY_WIPE_DUR)*1000); if(lastAt>=0 && at - lastAt <70) at=lastAt+70; lastAt=at; return { file: circleFile, at, vol: 0.92 }; }).filter(s=> s.at >=0 && s.at <= DAILY_DUR*1000).slice(0,50); })() : [];
+  const circlePlan = hasCircle ? (()=>{ const sorted=[...events].sort((a,b)=> a.properties.lon - b.properties.lon); let lastAt=-1000; return sorted.map(ev=>{ let at=Math.round((DAILY_WIPE_START + ((ev.properties.lon+180)/360)*DAILY_WIPE_DUR)*1000); if(lastAt>=0 && at - lastAt <70) at=lastAt+70; lastAt=at; return { file: circleFile, at, vol: 0.92 }; }).filter(s=> s.at >=0 && s.at <= DAILY_DUR*1000); })() : [];
   const dailyPlan = hasDaily ? [{ file: dailyFile, at: Math.round(DAILY_INFO_START * 1000), vol: 0.95 }] : [];
   const sfxPlan = [...circlePlan, ...dailyPlan];
 

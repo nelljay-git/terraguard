@@ -688,15 +688,19 @@ export function DailyEarthReportModal({
     let cancelled = false;
     fetchEmscData().then((fetched) => {
       if (cancelled) return;
-      // Filter to last 24h UTC and cap for readability (max 50)
-      const now = Date.now();
-      const dayAgo = now - 24*3600*1000;
+      // Day filter: if run 00:05 Sept 23 UTC → whole Sept 22 UTC (00:00-23:59:59.999 UTC), no limit
+      const now = new Date();
+      const target = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      // 00:05 run belongs to previous calendar day
+      if (now.getUTCHours() < 3) target.setUTCDate(target.getUTCDate() - 1);
+      const dayStart = Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate());
+      const dayEnd = dayStart + 24*3600*1000 - 1;
       let daily = fetched.filter((e)=>{
         const ms = Date.parse(e.properties.time);
-        return !isNaN(ms) && ms >= dayAgo && ms <= now;
+        return !isNaN(ms) && ms >= dayStart && ms <= dayEnd;
       });
-      if (daily.length === 0) daily = fetched.slice(0, 20);
-      daily = daily.slice(0, 50);
+      if (daily.length === 0) daily = fetched; // fallback to all fetched if day empty (e.g. manual mid-day)
+      // no cap — show all of that UTC day
       setEvents(daily);
       eventsRef.current = daily;
     }).catch(()=>{});
