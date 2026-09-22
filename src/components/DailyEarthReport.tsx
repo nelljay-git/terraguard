@@ -12,7 +12,7 @@ import './VideoReport.css';
 export const DAILY_W = 1080;
 export const DAILY_H = 1440;
 export const DAILY_FPS = 60;
-export const DAILY_DUR = 26; // 1 delay +12 wipe +5 highlight +3 hold +5 panel
+export const DAILY_DUR = 30; // 1 delay +12 wipe +5 highlight +3 hold +5 panel
 export const DAILY_INTRO = 0;
 export const DAILY_FADE = 0;
 export const DAILY_PAUSE = 0;
