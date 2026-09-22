@@ -260,9 +260,10 @@ export function drawDailyFrame(
     }
     const wipeX = dailyLonToDisplayX(currentLng);
 
-    // Processed area + gradient + line — all fade 1s after job done (17→18s)
+    // Processed area + gradient + line — all fade 1s after job done (17→18s), dim during highlight so connector pops
     const wipeEnd = DAILY_WIPE_START + DAILY_WIPE_DUR + DAILY_HIGHLIGHT_DUR;
-    const wipeFade = t >= wipeEnd ? 1 - Math.min(Math.max((t - wipeEnd) / 1, 0), 1) : 1;
+    let wipeFade = t >= wipeEnd ? 1 - Math.min(Math.max((t - wipeEnd) / 1, 0), 1) : 1;
+    if (isHighlight) wipeFade *= 0.32;
     if (wipeFade > 0.01) {
       ctx.save();
       ctx.globalAlpha = wipeFade;
@@ -340,7 +341,7 @@ export function drawDailyFrame(
         ctx.ellipse(x, y + r*0.9 + popY*0.3, r*1.05, r*0.42, 0, 0, Math.PI*2);
         ctx.fill();
       }
-      // pulsing outer glow (breathes for 1.4s then settles)
+      // outer glow — strong breathe 1.4s then gentle continuous pulse so freeze doesn't look dead
       if (dt < 1.4) {
         const pulse = 0.5 + 0.5 * Math.sin(dt * 12);
         const glowA = (1 - dt / 1.4) * 0.28 + 0.08;
@@ -351,10 +352,17 @@ export function drawDailyFrame(
         ctx.fill();
         ctx.globalAlpha = alpha;
       } else {
+        const pulse2 = 0.5 + 0.5 * Math.sin(dt * 2.2);
         ctx.beginPath();
-        ctx.arc(x, y, r + 4, 0, Math.PI * 2);
+        ctx.arc(x, y, r + 4 + pulse2 * 1.8, 0, Math.PI * 2);
         ctx.fillStyle = severityColor(mag) + '22';
+        ctx.globalAlpha = alpha * 0.9;
         ctx.fill();
+        ctx.globalAlpha = alpha;
+        // subtle breathing scale
+        const breathe = 1 + Math.sin(dt * 2.0) * 0.035;
+        // apply via r already includes scale, add tiny extra via shadow? just keep glow pulsing
+        void breathe;
       }
       // main circle with pop-up lift + scale
       ctx.translate(0, -popY);
@@ -501,29 +509,44 @@ function drawHighestModal(
   const ease = easeOutCubic(a);
   ctx.save();
   ctx.globalAlpha = ease;
-  // connector line from circle to modal
+  // connector line from circle to modal — offset 16px left of wipe to stay visible, plus white outer glow
   const mx = DAILY_W/2, my = 210;
   const mw = 760, mh = 220;
   const mx0 = mx - mw/2, my0 = my - mh/2;
-  ctx.strokeStyle = 'rgba(239,68,68,0.9)';
-  ctx.lineWidth = 2;
+  const lineX = Math.max(12, Math.min(DAILY_W - 12, circle.x - 16)); // offset west of wipe line (wipe is at circle.x)
+  // outer glow for visibility over red wipe
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+  ctx.lineWidth = 4.5;
   ctx.setLineDash([6,4]);
   ctx.beginPath();
-  ctx.moveTo(circle.x, circle.y);
-  // elbow
+  ctx.moveTo(lineX, circle.y);
   const midY = my0 + mh + 12;
-  ctx.lineTo(circle.x, midY);
+  ctx.lineTo(lineX, midY);
+  ctx.lineTo(mx, midY);
+  ctx.lineTo(mx, my0);
+  ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle = '#facc15'; // yellow stands out over red
+  ctx.lineWidth = 2.4;
+  ctx.setLineDash([6,4]);
+  ctx.beginPath();
+  ctx.moveTo(lineX, circle.y);
+  ctx.lineTo(lineX, midY);
   ctx.lineTo(mx, midY);
   ctx.lineTo(mx, my0);
   ctx.stroke();
   ctx.setLineDash([]);
   // glow at circle end
-  ctx.fillStyle = '#ef4444';
+  ctx.fillStyle = '#facc15';
+  ctx.shadowColor = 'rgba(250,204,21,0.9)';
+  ctx.shadowBlur = 10;
   ctx.beginPath();
-  ctx.arc(circle.x, circle.y, 4, 0, Math.PI*2);
+  ctx.arc(circle.x, circle.y, 5, 0, Math.PI*2);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-  ctx.lineWidth = 1.2;
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+  ctx.lineWidth = 1.4;
   ctx.stroke();
   // modal bg
   ctx.fillStyle = 'rgba(16,20,32,0.97)';
