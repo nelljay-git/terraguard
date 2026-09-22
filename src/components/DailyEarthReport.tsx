@@ -513,7 +513,7 @@ function drawHighestModal(
   const my = panelTop - mh/2 - 24; // 816 centered above panel
   const mx = DAILY_W/2;
   const mx0 = mx - mw/2, my0 = my - mh/2;
-  const lineX = Math.max(12, Math.min(DAILY_W - 12, circle.x - 16)); // offset west of wipe line (wipe is at circle.x)
+  const lineX = Math.max(12, Math.min(DAILY_W - 12, circle.x - 40)); // offset west of wipe line (wipe is at circle.x)
   // outer glow for visibility over red wipe
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,0.95)';
