@@ -156,15 +156,28 @@ export function Dashboard() {
             <RefreshCw size={16} className={syncing ? 'spin' : ''} />
           </button>
           {isDailyAllowed && (
-            <button
-              className="dash-refresh-btn"
-              onClick={() => setShowDaily(true)}
-              title="Daily Earth Report (EMSC • UTC) — cinematic global scan"
-              style={{ gap: '6px', padding: '8px 14px', fontSize: '0.82rem', fontWeight: 600 }}
-            >
-              <Clapperboard size={14} />
-              <span>Daily Report</span>
-            </button>
+            <>
+              <button
+                className="dash-refresh-btn"
+                onClick={() => setShowDaily(true)}
+                title="Daily Earth Report (EMSC • UTC) — cinematic global scan"
+                style={{ gap: '6px', padding: '8px 14px', fontSize: '0.82rem', fontWeight: 600 }}
+              >
+                <Clapperboard size={14} />
+                <span>Daily Report</span>
+              </button>
+              <a
+                className="dash-refresh-btn"
+                href="https://github.com/nelljay-git/terraguard/actions/workflows/daily-earth-report.yml"
+                target="_blank"
+                rel="noreferrer"
+                title="Trigger auto post now (GitHub → Run workflow)"
+                style={{ gap: '6px', padding: '8px 14px', fontSize: '0.82rem', fontWeight: 600, textDecoration: 'none' }}
+              >
+                <Clapperboard size={14} />
+                <span>Test Auto Post</span>
+              </a>
+            </>
           )}
         </div>
       </div>
