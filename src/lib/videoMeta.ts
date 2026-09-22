@@ -87,8 +87,9 @@ export interface ShakeRow {
 }
 
 // "Intensity V - Laoag City, Ilocos Norte; Intensity III - Batac, ..." ->
-// [{ area, intensity }] sorted strongest-first. Anything unparseable is
-// skipped, so callers only ever render real felt reports.
+// [{ area, intensity }] sorted strongest-first. Handles grouped locations like
+// "Intensity IV - Ruteng (54k), Pajo (13k), Jaong (2k)" by splitting on commas.
+// Anything unparseable is skipped, so callers only ever render real felt reports.
 export function extractShakeRows(text: string | undefined | null, maxRows = 5): ShakeRow[] {
   if (!text) return [];
   const rows: ShakeRow[] = [];
@@ -98,10 +99,21 @@ export function extractShakeRows(text: string | undefined | null, maxRows = 5): 
     if (!m) continue;
     const n = romanToInt(m[1].toUpperCase());
     if (n < 1 || n > 10) continue;
-    const area = m[2].trim().replace(/\s+/g, ' ').slice(0, 40);
-    if (!area || seen.has(area.toLowerCase())) continue;
-    seen.add(area.toLowerCase());
-    rows.push({ area, intensity: ROMAN_1_TO_10[n] });
+    const intensity = ROMAN_1_TO_10[n];
+    // Split multiple locations sharing the same intensity (e.g. "Ruteng (54k), Pajo (13k)")
+    const areasPart = m[2].trim();
+    // Remove trailing " and X more" count before splitting
+    const cleanPart = areasPart.replace(/\s+and\s+\d+\s+more\s*$/i, '').trim();
+    const areaTokens = cleanPart.split(',').map((s) => s.trim()).filter(Boolean);
+    for (const rawArea of areaTokens) {
+      if (/^and\s+\d+\s+more$/i.test(rawArea)) continue;
+      const area = rawArea.replace(/\s+/g, ' ').slice(0, 40).trim();
+      if (!area || seen.has(area.toLowerCase())) continue;
+      seen.add(area.toLowerCase());
+      rows.push({ area, intensity });
+      if (rows.length >= maxRows) break;
+    }
+    if (rows.length >= maxRows) break;
   }
   rows.sort((a, b) => romanToInt(b.intensity) - romanToInt(a.intensity));
   return rows.slice(0, maxRows);
