@@ -511,29 +511,40 @@ function drawHighestModal(
   const my = panelTop - mh/2 - 24; // 816 centered above panel
   const mx = DAILY_W/2;
   const mx0 = mx - mw/2, my0 = my - mh/2;
-  const lineX = Math.max(12, Math.min(DAILY_W - 12, circle.x - 40)); // offset west of wipe line (wipe is at circle.x)
-  // outer glow for visibility over red wipe
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-  ctx.lineWidth = 4.5;
-  ctx.setLineDash([6,4]);
-  ctx.beginPath();
-  ctx.moveTo(lineX, circle.y);
-  const midY = my0 + mh + 12;
-  ctx.lineTo(lineX, midY);
-  ctx.lineTo(mx, midY);
-  ctx.lineTo(mx, my0);
-  ctx.stroke();
-  ctx.restore();
-  ctx.strokeStyle = '#facc15'; // yellow stands out over red
-  ctx.lineWidth = 2.4;
-  ctx.setLineDash([6,4]);
-  ctx.beginPath();
-  ctx.moveTo(lineX, circle.y);
-  ctx.lineTo(lineX, midY);
-  ctx.lineTo(mx, midY);
-  ctx.lineTo(mx, my0);
-  ctx.stroke();
+  // connector — nearest edge of modal to circle, offset 12px out, with elbow so it never sits on wipe line
+  const mx0b = mx - mw/2, my0b = my - mh/2, mx1b = mx + mw/2, my1b = my + mh/2;
+  let ex: number, ey: number;
+  if (circle.x > mx1b) { ex = mx1b; ey = Math.max(my0b, Math.min(my1b, circle.y)); }
+  else if (circle.x < mx0b) { ex = mx0b; ey = Math.max(my0b, Math.min(my1b, circle.y)); }
+  else if (circle.y < my0b) { ex = Math.max(mx0b, Math.min(mx1b, circle.x)); ey = my0b; }
+  else { ex = Math.max(mx0b, Math.min(mx1b, circle.x)); ey = my1b; }
+  const off = 14;
+  const sx = circle.x + (circle.x > ex ? -off : circle.x < ex ? off : 0);
+  const sy = circle.y + (circle.y > ey ? -off : circle.y < ey ? off : 0);
+  const bendX = ex + (ex===mx1b ? off : ex===mx0b ? -off : 0);
+  const bendY = ey + (ey===my0b ? -off : ey===my1b ? off : 0);
+  // outer white glow + yellow dashed core
+  for (const [col, w] of [['rgba(255,255,255,0.95)', 4.8], ['#facc15', 2.6]] as const) {
+    ctx.save();
+    ctx.strokeStyle = col as string;
+    ctx.lineWidth = w as number;
+    ctx.setLineDash([6,4]);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    // elbow via bend
+    if (ex===mx1b || ex===mx0b) {
+      ctx.lineTo(bendX, sy);
+      ctx.lineTo(bendX, ey);
+    } else {
+      ctx.lineTo(sx, bendY);
+      ctx.lineTo(ex, bendY);
+    }
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.setLineDash([]);
   // glow at circle end
   ctx.fillStyle = '#facc15';
