@@ -63,10 +63,10 @@ function easeOutBack(t: number): number {
 }
 
 function severityColor(mag: number): string {
-  if (mag < 3) return '#10b981';
-  if (mag < 4) return '#3b82f6';
-  if (mag < 5) return '#f97316'; // 4.0-4.9 orange
-  if (mag < 6) return '#eab308'; // 5.0-5.9 yellow (request)
+  if (mag < 3) return '#10b981'; // <3.0 green
+  if (mag < 4) return '#3b82f6'; // 3.0-3.9 blue
+  if (mag < 5) return '#eab308'; // 4.0-4.9 yellow
+  if (mag < 6) return '#f97316'; // 5.0-5.9 orange
   if (mag < 7) return '#ef4444'; // 6.0-6.9 red
   return '#8b5cf6'; // 7.0+ violet
 }
