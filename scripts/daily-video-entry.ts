@@ -202,11 +202,7 @@ async function main(): Promise<void> {
   const hasDaily = fs.existsSync(dailyFile);
   if (!hasCircle) console.error('circle-appear.mp3 missing — circles silent');
   if (!hasDaily) console.error('daily-report.mp3 missing — panel silent');
-  const circlePlan = hasCircle ? events.map(ev=>{
-    const lon = ev.properties.lon;
-    const revealT = DAILY_WIPE_START + ((lon + 180) / 360) * DAILY_WIPE_DUR;
-    return { file: circleFile, at: Math.round(revealT * 1000), vol: 0.92 };
-  }).filter(s=> s.at >=0 && s.at <= DAILY_DUR*1000).slice(0, 50) : [];
+  const circlePlan = hasCircle ? (()=>{ const sorted=[...events].sort((a,b)=> a.properties.lon - b.properties.lon); let lastAt=-1000; return sorted.map(ev=>{ let at=Math.round((DAILY_WIPE_START + ((ev.properties.lon+180)/360)*DAILY_WIPE_DUR)*1000); if(lastAt>=0 && at - lastAt <70) at=lastAt+70; lastAt=at; return { file: circleFile, at, vol: 0.92 }; }).filter(s=> s.at >=0 && s.at <= DAILY_DUR*1000).slice(0,50); })() : [];
   const dailyPlan = hasDaily ? [{ file: dailyFile, at: Math.round(DAILY_INFO_START * 1000), vol: 0.95 }] : [];
   const sfxPlan = [...circlePlan, ...dailyPlan];
 
