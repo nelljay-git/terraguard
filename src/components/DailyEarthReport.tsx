@@ -170,6 +170,9 @@ export function drawDailyFrame(
     const { mosaic, offsetX, offsetY, D } = view;
     const sw = DAILY_COLS * DAILY_TILE * D;
     const sh = DAILY_ROWS * DAILY_TILE * D;
+    const infoShift = t >= DAILY_INFO_START ? easeOutCubic(Math.min((t - DAILY_INFO_START) / 0.7, 1)) * DAILY_H * 0.20 : 0;
+    const doShift = infoShift > 0.5;
+    if (doShift) { ctx.save(); ctx.translate(0, -infoShift); }
     // Blurred scaled background fills black bars (letterbox)
     {
       const D_bg = Math.max(DAILY_W / (DAILY_COLS * DAILY_TILE), DAILY_H / (DAILY_ROWS * DAILY_TILE));
@@ -402,6 +405,8 @@ export function drawDailyFrame(
     if (isHighlight && top1 && topPos) {
       drawHighestModal(ctx, top1, topPos, highlightT);
     }
+    // restore map shift before UI panels (panel/modal should stay fixed)
+    if (doShift) { try{ ctx.restore(); }catch{} }
     // Info panel fade-in
     if (t >= DAILY_INFO_START) {
       const q = easeOutCubic(Math.min((t - DAILY_INFO_START) / 0.7, 1));
