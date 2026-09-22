@@ -170,7 +170,7 @@ export function drawDailyFrame(
     const { mosaic, offsetX, offsetY, D } = view;
     const sw = DAILY_COLS * DAILY_TILE * D;
     const sh = DAILY_ROWS * DAILY_TILE * D;
-    const infoShift = t >= DAILY_INFO_START ? easeOutCubic(Math.min((t - DAILY_INFO_START) / 0.7, 1)) * DAILY_H * 0.20 : 0;
+    const infoShift = t >= DAILY_INFO_START ? easeOutCubic(Math.min((t - DAILY_INFO_START) / 0.7, 1)) * DAILY_H * 0.05 : 0;
     const doShift = infoShift > 0.5;
     if (doShift) { ctx.save(); ctx.translate(0, -infoShift); }
     // Blurred scaled background fills black bars (letterbox)
