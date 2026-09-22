@@ -12,15 +12,15 @@ import './VideoReport.css';
 export const DAILY_W = 1080;
 export const DAILY_H = 1440;
 export const DAILY_FPS = 60;
-export const DAILY_DUR = 25; // 12 wipe +5 highlight +3 hold +5 panel
+export const DAILY_DUR = 26; // 1 delay +12 wipe +5 highlight +3 hold +5 panel
 export const DAILY_INTRO = 0;
 export const DAILY_FADE = 0;
 export const DAILY_PAUSE = 0;
-export const DAILY_WIPE_START = 0;
+export const DAILY_WIPE_START = 1; // 1s start delay
 export const DAILY_WIPE_DUR = 12; // slower left->right scan (base)
 export const DAILY_HIGHLIGHT_DUR = 5; // freeze on top1 for 5s with modal
 export const DAILY_INFO_DELAY = 3; // wipe done → 3s hold before panel
-export const DAILY_INFO_START = DAILY_WIPE_START + DAILY_WIPE_DUR + DAILY_HIGHLIGHT_DUR + DAILY_INFO_DELAY; // 20
+export const DAILY_INFO_START = DAILY_WIPE_START + DAILY_WIPE_DUR + DAILY_HIGHLIGHT_DUR + DAILY_INFO_DELAY; // 21
 export const DAILY_PANEL_VISIBLE = 5;
 
 export const DAILY_COLS = 4;
@@ -210,18 +210,12 @@ export function drawDailyFrame(
       return;
     }
     if (t < DAILY_WIPE_START) {
-      // 5-7s pause: dark, map hidden, keep watermark faint
-      ctx.fillStyle = '#0a0d12';
-      ctx.fillRect(0,0,DAILY_W, DAILY_H);
-      drawWatermark(ctx);
-      // subtle pulse dot in center to indicate waiting
-      const pulse = 0.6 + 0.4 * Math.sin(t * 3);
-      ctx.globalAlpha = 0.35 * pulse;
-      ctx.fillStyle = '#ef4444';
-      ctx.beginPath();
-      ctx.arc(DAILY_W/2, DAILY_H/2, 6, 0, Math.PI*2);
-      ctx.fill();
+      // 1s start delay — clean global map, no markers
       ctx.globalAlpha = 1;
+      ctx.drawImage(mosaic, offsetX, offsetY, sw, sh);
+      drawVignette(ctx);
+      drawWatermark(ctx);
+      drawTopLabel(ctx, 0.9);
       return;
     }
     // WIPE phase onward: map visible
@@ -817,8 +811,11 @@ export function DailyEarthReportModal({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const circleBufRef = useRef<AudioBuffer | null>(null);
   const dailyBufRef = useRef<AudioBuffer | null>(null);
+  const highestBufRef = useRef<AudioBuffer | null>(null);
   const playedRef = useRef<Set<string>>(new Set());
   const dailyPlayedRef = useRef<boolean>(false);
+  const highestPlayedRef = useRef<boolean>(false);
+  const prevHighlightRef = useRef<boolean>(false);
   const lastLoopTRef = useRef<number>(0);
   const eventsRef = useRef<EmscEarthquake[]>(externalEvents ?? []);
   const [events, setEvents] = useState<EmscEarthquake[]>(externalEvents ?? []);
@@ -934,6 +931,17 @@ export function DailyEarthReportModal({
           }finally{ tmp2.close().catch(()=>{}); }
         }
       }catch{}
+      try{
+        const res3 = await fetch('/sounds/highest-recorded.mp3');
+        if (res3.ok && AC) {
+          const arr3 = await res3.arrayBuffer();
+          const tmp3 = new AC();
+          try{
+            const buf3 = await tmp3.decodeAudioData(arr3.slice(0));
+            if (!cancelled) highestBufRef.current = buf3;
+          }finally{ tmp3.close().catch(()=>{}); }
+        }
+      }catch{}
     })();
     return ()=>{ cancelled=true; };
   },[]);
@@ -981,6 +989,37 @@ export function DailyEarthReportModal({
       src.buffer = buf;
       const g = ac.createGain();
       g.gain.value = 0.92;
+      src.connect(g);
+      g.connect(ac.destination);
+      try{ src.start(); }catch{}
+    }
+  }
+  function playHighestNow(){
+    try{
+      const a = new Audio('/sounds/highest-recorded.mp3');
+      a.volume = 0.95;
+      a.play().catch(()=>{
+        const ac = getAudioCtx();
+        const buf = highestBufRef.current;
+        if (!ac || !buf) return;
+        if (ac.state === 'suspended') ac.resume().catch(()=>{});
+        const src = ac.createBufferSource();
+        src.buffer = buf;
+        const g = ac.createGain();
+        g.gain.value = 0.95;
+        src.connect(g);
+        g.connect(ac.destination);
+        try{ src.start(); }catch{}
+      });
+    }catch{
+      const ac = getAudioCtx();
+      const buf = highestBufRef.current;
+      if (!ac || !buf) return;
+      if (ac.state === 'suspended') ac.resume().catch(()=>{});
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      const g = ac.createGain();
+      g.gain.value = 0.95;
       src.connect(g);
       g.connect(ac.destination);
       try{ src.start(); }catch{}
@@ -1034,25 +1073,26 @@ export function DailyEarthReportModal({
       }
       const loopT = phase==='preview' ? t % (DAILY_DUR+1) : t;
       drawDailyFrame(ctx as unknown as CanvasRenderingContext2D, viewRef.current, eventsRef.current, loopT, Date.now());
-      // per-circle + daily-report sounds in preview — highlight-aware wipe
+      // per-circle + daily + highest sounds in preview — highlight-aware wipe
       if (phase==='preview') {
-        if (loopT < lastLoopTRef.current - 0.5) { playedRef.current.clear(); dailyPlayedRef.current=false; }
+        if (loopT < lastLoopTRef.current - 0.5) { playedRef.current.clear(); dailyPlayedRef.current=false; highestPlayedRef.current=false; prevHighlightRef.current=false; }
         lastLoopTRef.current = loopT;
-        let wP: number, curLng: number;
+        let wP: number, curLng: number, isHighNow=false;
         if (eventsRef.current.length>0) {
           const topP = [...eventsRef.current].sort((a,b)=> b.properties.mag - a.properties.mag)[0];
           const tLon = topP.properties.lon;
           const rF = (tLon+180)/360;
           const rT = DAILY_WIPE_START + rF*DAILY_WIPE_DUR;
           const hEnd = rT + DAILY_HIGHLIGHT_DUR;
-          if (loopT < rT) wP = (loopT - DAILY_WIPE_START)/DAILY_WIPE_DUR;
-          else if (loopT < hEnd) wP = rF;
-          else wP = (loopT - DAILY_HIGHLIGHT_DUR - DAILY_WIPE_START)/DAILY_WIPE_DUR;
+          if (loopT < rT) { wP = (loopT - DAILY_WIPE_START)/DAILY_WIPE_DUR; isHighNow=false; }
+          else if (loopT < hEnd) { wP = rF; isHighNow=true; }
+          else { wP = (loopT - DAILY_HIGHLIGHT_DUR - DAILY_WIPE_START)/DAILY_WIPE_DUR; isHighNow=false; }
           wP = Math.min(Math.max(wP,0),1);
           curLng = -180 + wP*360;
         } else {
           wP = Math.min(Math.max((loopT - DAILY_WIPE_START)/DAILY_WIPE_DUR,0),1);
           curLng = -180 + wP*360;
+          isHighNow=false;
         }
         let newly: typeof eventsRef.current = [];
         if (wP > 0 && wP < 1) {
@@ -1065,10 +1105,12 @@ export function DailyEarthReportModal({
         } else if (wP >= 1) {
           for (const ev of eventsRef.current) if (!playedRef.current.has(ev.id)) { playedRef.current.add(ev.id); newly.push(ev); }
         }
-        // stagger 70ms apart so simultaneous reveals are heard as distinct pops
-        newly.forEach((_, idx)=>{
-          setTimeout(()=> playCircleNow(), idx * 70);
-        });
+        newly.forEach((_, idx)=> setTimeout(()=> playCircleNow(), idx * 200));
+        if (isHighNow && !prevHighlightRef.current && !highestPlayedRef.current) {
+          highestPlayedRef.current = true;
+          playHighestNow();
+        }
+        prevHighlightRef.current = isHighNow;
         if (!dailyPlayedRef.current && loopT >= DAILY_INFO_START) {
           dailyPlayedRef.current = true;
           playDailyNow();
@@ -1140,9 +1182,25 @@ export function DailyEarthReportModal({
           }
         }catch{}
       }
+      if (!highestBufRef.current) {
+        try{
+          const resH = await fetch('/sounds/highest-recorded.mp3');
+          if (resH.ok) {
+            const arrH = await resH.arrayBuffer();
+            const ACH = (window as unknown as { AudioContext?: typeof AudioContext, webkitAudioContext?: typeof AudioContext }).AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+            if (ACH) {
+              const tmpH = new ACH();
+              const decodedH = await tmpH.decodeAudioData(arrH.slice(0));
+              highestBufRef.current = decodedH;
+              tmpH.close().catch(()=>{});
+            }
+          }
+        }catch{}
+      }
       const finalCircle = circleBufRef.current;
       const finalDaily = dailyBufRef.current;
-      if (finalCircle || finalDaily) {
+      const finalHighest = highestBufRef.current;
+      if (finalCircle || finalDaily || finalHighest) {
         const AC = (window as unknown as { AudioContext?: typeof AudioContext, webkitAudioContext?: typeof AudioContext }).AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (AC) {
           recAc = new AC({ sampleRate: 48000 } as AudioContextOptions);
@@ -1165,6 +1223,21 @@ export function DailyEarthReportModal({
               g.connect(dest);
               g.connect(recAc.destination);
               try{ src.start(t0 + revealT); }catch{}
+            }
+          }
+          if (finalHighest) {
+            const topH = [...eventsRef.current].sort((a,b)=> b.properties.mag - a.properties.mag)[0];
+            if (topH) {
+              const tLon = topH.properties.lon;
+              const revealTH = DAILY_WIPE_START + ((tLon+180)/360)*DAILY_WIPE_DUR;
+              const srcH = recAc.createBufferSource();
+              srcH.buffer = finalHighest;
+              const gH = recAc.createGain();
+              gH.gain.value = 0.96;
+              srcH.connect(gH);
+              gH.connect(dest);
+              gH.connect(recAc.destination);
+              try{ srcH.start(t0 + revealTH); }catch{}
             }
           }
           if (finalDaily) {

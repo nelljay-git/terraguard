@@ -211,13 +211,19 @@ async function main(): Promise<void> {
   const mp4 = path.join(outDir, 'out.mp4');
   const circleFile = path.join(process.cwd(), 'public', 'sounds', 'circle-appear.mp3');
   const dailyFile = path.join(process.cwd(), 'public', 'sounds', 'daily-report.mp3');
+  const highestFile = path.join(process.cwd(), 'public', 'sounds', 'highest-recorded.mp3');
   const hasCircle = fs.existsSync(circleFile);
   const hasDaily = fs.existsSync(dailyFile);
+  const hasHighest = fs.existsSync(highestFile);
   if (!hasCircle) console.error('circle-appear.mp3 missing — circles silent');
   if (!hasDaily) console.error('daily-report.mp3 missing — panel silent');
-  const circlePlan = hasCircle ? (()=>{ const sorted=[...events].sort((a,b)=> a.properties.lon - b.properties.lon); const top1 = [...events].sort((a,b)=> b.properties.mag - a.properties.mag)[0] ?? null; const topLon = top1?.properties.lon ?? 180; const revealFTop = (topLon+180)/360; const revealTTop = DAILY_WIPE_START + revealFTop*DAILY_WIPE_DUR; let lastAt=-1000; return sorted.map(ev=>{ let baseAt = DAILY_WIPE_START + ((ev.properties.lon+180)/360)*DAILY_WIPE_DUR; let at = Math.round((ev.properties.lon > topLon ? baseAt + DAILY_HIGHLIGHT_DUR : baseAt)*1000); if(lastAt>=0 && at - lastAt <70) at=lastAt+70; lastAt=at; return { file: circleFile, at, vol: 0.92 }; }).filter(s=> s.at >=0 && s.at <= DAILY_DUR*1000); })() : [];
+  if (!hasHighest) console.error('highest-recorded.mp3 missing — highlight silent');
+  const circlePlan = hasCircle ? (()=>{ const sorted=[...events].sort((a,b)=> a.properties.lon - b.properties.lon); const top1 = [...events].sort((a,b)=> b.properties.mag - a.properties.mag)[0] ?? null; const topLon = top1?.properties.lon ?? 180; const revealFTop = (topLon+180)/360; const revealTTop = DAILY_WIPE_START + revealFTop*DAILY_WIPE_DUR; let lastAt=-1000; return sorted.map(ev=>{ let baseAt = DAILY_WIPE_START + ((ev.properties.lon+180)/360)*DAILY_WIPE_DUR; let at = Math.round((ev.properties.lon > topLon ? baseAt + DAILY_HIGHLIGHT_DUR : baseAt)*1000); if(lastAt>=0 && at - lastAt <200) at=lastAt+200; lastAt=at; return { file: circleFile, at, vol: 0.92 }; }).filter(s=> s.at >=0 && s.at <= DAILY_DUR*1000); })() : [];
+  const topForHighest = [...events].sort((a,b)=> b.properties.mag - a.properties.mag)[0];
+  const highestAt = topForHighest ? Math.round((DAILY_WIPE_START + ((topForHighest.properties.lon+180)/360)*DAILY_WIPE_DUR)*1000) : -1;
+  const highestPlan = hasHighest && highestAt>=0 ? [{ file: highestFile, at: highestAt, vol: 0.96 }] : [];
   const dailyPlan = hasDaily ? [{ file: dailyFile, at: Math.round(DAILY_INFO_START * 1000), vol: 0.95 }] : [];
-  const sfxPlan = [...circlePlan, ...dailyPlan];
+  const sfxPlan = [...circlePlan, ...highestPlan, ...dailyPlan];
 
   const ffmpegArgs = ['-y','-framerate',String(DAILY_FPS),'-i', path.join(outDir,'frame%04d.png')];
   for (const s of sfxPlan) ffmpegArgs.push('-i', s.file);
