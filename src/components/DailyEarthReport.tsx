@@ -779,31 +779,76 @@ export function DailyEarthReportModal({
     audioCtxRef.current = ac;
     return ac;
   }
+  // unlock audio on first user gesture (preview starts without click otherwise blocked)
+  useEffect(()=>{
+    const unlock = ()=>{ if (audioCtxRef.current?.state==='suspended') audioCtxRef.current.resume().catch(()=>{}); };
+    window.addEventListener('click', unlock, { once:true });
+    window.addEventListener('keydown', unlock, { once:true });
+    return ()=>{ window.removeEventListener('click', unlock); window.removeEventListener('keydown', unlock); };
+  },[]);
   function playCircleNow(){
-    const ac = getAudioCtx();
-    const buf = circleBufRef.current;
-    if (!ac || !buf) return;
-    if (ac.state === 'suspended') ac.resume().catch(()=>{});
-    const src = ac.createBufferSource();
-    src.buffer = buf;
-    const g = ac.createGain();
-    g.gain.value = 0.92;
-    src.connect(g);
-    g.connect(ac.destination);
-    try{ src.start(); }catch{}
+    // Use HTMLAudio clone for overlapping per-circle pops (more reliable than buffer resume timing)
+    try{
+      const a = new Audio('/sounds/circle-appear.mp3');
+      a.volume = 0.92;
+      a.play().catch(()=>{
+        // fallback to buffer
+        const ac = getAudioCtx();
+        const buf = circleBufRef.current;
+        if (!ac || !buf) return;
+        if (ac.state === 'suspended') ac.resume().catch(()=>{});
+        const src = ac.createBufferSource();
+        src.buffer = buf;
+        const g = ac.createGain();
+        g.gain.value = 0.92;
+        src.connect(g);
+        g.connect(ac.destination);
+        try{ src.start(); }catch{}
+      });
+    }catch{
+      const ac = getAudioCtx();
+      const buf = circleBufRef.current;
+      if (!ac || !buf) return;
+      if (ac.state === 'suspended') ac.resume().catch(()=>{});
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      const g = ac.createGain();
+      g.gain.value = 0.92;
+      src.connect(g);
+      g.connect(ac.destination);
+      try{ src.start(); }catch{}
+    }
   }
   function playDailyNow(){
-    const ac = getAudioCtx();
-    const buf = dailyBufRef.current;
-    if (!ac || !buf) return;
-    if (ac.state === 'suspended') ac.resume().catch(()=>{});
-    const src = ac.createBufferSource();
-    src.buffer = buf;
-    const g = ac.createGain();
-    g.gain.value = 0.95;
-    src.connect(g);
-    g.connect(ac.destination);
-    try{ src.start(); }catch{}
+    try{
+      const a = new Audio('/sounds/daily-report.mp3');
+      a.volume = 0.95;
+      a.play().catch(()=>{
+        const ac = getAudioCtx();
+        const buf = dailyBufRef.current;
+        if (!ac || !buf) return;
+        if (ac.state === 'suspended') ac.resume().catch(()=>{});
+        const src = ac.createBufferSource();
+        src.buffer = buf;
+        const g = ac.createGain();
+        g.gain.value = 0.95;
+        src.connect(g);
+        g.connect(ac.destination);
+        try{ src.start(); }catch{}
+      });
+    }catch{
+      const ac = getAudioCtx();
+      const buf = dailyBufRef.current;
+      if (!ac || !buf) return;
+      if (ac.state === 'suspended') ac.resume().catch(()=>{});
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      const g = ac.createGain();
+      g.gain.value = 0.95;
+      src.connect(g);
+      g.connect(ac.destination);
+      try{ src.start(); }catch{}
+    }
   }
 
   // render loop — also triggers per-circle pop sound when wipe passes lon
@@ -822,25 +867,30 @@ export function DailyEarthReportModal({
       }
       const loopT = phase==='preview' ? t % (DAILY_DUR+1) : t;
       drawDailyFrame(ctx as unknown as CanvasRenderingContext2D, viewRef.current, eventsRef.current, loopT, Date.now());
-      // per-circle + daily-report sounds in preview
-      if (phase==='preview' && (circleBufRef.current || dailyBufRef.current)) {
-        if (loopT < lastLoopTRef.current - 0.5) { playedRef.current.clear(); dailyPlayedRef.current=false; } // loop wrapped
+      // per-circle + daily-report sounds in preview — staggered so clustered circles each pop
+      if (phase==='preview') {
+        if (loopT < lastLoopTRef.current - 0.5) { playedRef.current.clear(); dailyPlayedRef.current=false; }
         lastLoopTRef.current = loopT;
         const wP = Math.min(Math.max((loopT - DAILY_WIPE_START) / DAILY_WIPE_DUR, 0), 1);
+        let newly: typeof eventsRef.current = [];
         if (wP > 0 && wP < 1) {
           const curLng = -180 + wP * 360;
           for (const ev of eventsRef.current) {
             if (ev.properties.lon <= curLng && !playedRef.current.has(ev.id)) {
               playedRef.current.add(ev.id);
-              if (circleBufRef.current) playCircleNow();
+              newly.push(ev);
             }
           }
         } else if (wP >= 1) {
-          for (const ev of eventsRef.current) if (!playedRef.current.has(ev.id)) { playedRef.current.add(ev.id); if (circleBufRef.current) playCircleNow(); }
+          for (const ev of eventsRef.current) if (!playedRef.current.has(ev.id)) { playedRef.current.add(ev.id); newly.push(ev); }
         }
+        // stagger 70ms apart so simultaneous reveals are heard as distinct pops
+        newly.forEach((_, idx)=>{
+          setTimeout(()=> playCircleNow(), idx * 70);
+        });
         if (!dailyPlayedRef.current && loopT >= DAILY_INFO_START) {
           dailyPlayedRef.current = true;
-          if (dailyBufRef.current) playDailyNow();
+          playDailyNow();
         }
       }
       rafRef.current = requestAnimationFrame(tick);
