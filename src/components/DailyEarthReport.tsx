@@ -296,20 +296,26 @@ export function drawDailyFrame(
       if (lon > currentLng) continue;
       const { x, y } = dailyLatLngToDisplayPx(lat, lon);
       if (x < -30 || y < -30 || x > DAILY_W + 30 || y > DAILY_H + 30) continue;
-      const revealT = DAILY_WIPE_START + ((lon + 180) / 360) * DAILY_WIPE_DUR;
-      const dt = t - revealT;
-      const animP = Math.min(Math.max(dt / 0.38, 0), 1); // snappier 0.38s pop
-      const pop = easeOutBack(animP); // 0 -> ~1.22 -> 1.0 strong bounce
-      const scale = pop;
+      // reveal time accounts for 5s freeze on top1 (east of top1 delayed)
+      let baseReveal = DAILY_WIPE_START + ((lon + 180) / 360) * DAILY_WIPE_DUR;
+      if (top1 && lon > top1.properties.lon) baseReveal += DAILY_HIGHLIGHT_DUR;
+      const dt = t - baseReveal;
+      if (dt < 0) continue;
+      const animP = Math.min(Math.max(dt / 0.38, 0), 1);
+      const pop0 = easeOutBack(animP);
+      // keep pop visible after freeze: gentle looping breathe so freeze doesn't look dead
+      const loopScale = 1 + Math.sin(dt * 1.9) * 0.045;
+      const scale = pop0 < 1 ? pop0 : loopScale;
       const alpha = easeOutCubic(Math.min(Math.max(dt / 0.22, 0), 1));
       const mag = ev.properties.mag;
       const rBase = magnitudeRadius(mag);
       const r = rBase * Math.max(scale, 0.01);
-      const popY = (1 - pop) * 28; // higher lift for obvious pop-up
+      const popY = (1 - pop0) * 28;
 
-      // Expanding shock ripple for 0.9s after reveal (lively scan)
-      if (dt >= 0 && dt < 0.9) {
-        const rp = dt / 0.9;
+      // Expanding shock ripple — loops every 2.2s so pops stay alive through 5s freeze
+      const cycle = dt % 2.2;
+      if (cycle < 0.9) {
+        const rp = cycle / 0.9;
         const ringR = r + 8 + rp * 38;
         const ringA = (1 - rp) * 0.55;
         ctx.save();
