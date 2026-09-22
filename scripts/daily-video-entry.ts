@@ -236,13 +236,15 @@ async function main(): Promise<void> {
   await execFileAsync('ffmpeg', ffmpegArgs);
   console.log('mp4:', mp4, fs.statSync(mp4).size, 'bytes');
 
-  // Optional Facebook upload
+  // Always write caption for Telegram/artifact (even when FB posts)
+  const caption = process.env.DAILY_CAPTION || buildDailyCaption(events);
+  fs.writeFileSync(path.join(outDir,'caption.txt'), caption);
+  // Optional Facebook upload (uses same caption)
   const pageId = process.env.FB_PAGE_ID || '';
   const token = process.env.FB_UPLOAD_TOKEN || '';
   if (pageId && token) {
     const form = new FormData();
     form.append('access_token', token);
-    const caption = process.env.DAILY_CAPTION || buildDailyCaption(events);
     form.append('description', caption);
     form.append('source', new Blob([fs.readFileSync(mp4)], { type:'video/mp4' }), 'daily-report.mp4');
     const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/videos`, { method:'POST', body: form });
@@ -251,8 +253,6 @@ async function main(): Promise<void> {
     console.log('FB video id:', data.id);
   } else {
     console.log('FB upload skipped (FB_PAGE_ID / FB_UPLOAD_TOKEN not set)');
-    // also write caption for Telegram/artifact
-    fs.writeFileSync(path.join(outDir,'caption.txt'), buildDailyCaption(events));
   }
 }
 
