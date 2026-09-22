@@ -237,23 +237,28 @@ function fbPassesFilters(eq, env) {
     return null;
 }
 
-// Warm a designed card URL before handing it to Facebook (cold WASM +
-// tiles/fonts make FB's scraper time out). Returns true when renderable.
-async function warmCardUrl(url, tag, timeoutMs = 6000) {
-    for (let attempt = 1; attempt <= 2; attempt++) {
+// Warm a designed card URL before handing it to Facebook (cold PHP-GD +
+// Yandex tiles make FB's scraper time out on first hit). Returns true when renderable.
+async function warmCardUrl(url, tag, timeoutMs = 18000) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
         try {
             const ctrl = new AbortController();
             const t = setTimeout(() => ctrl.abort(), timeoutMs);
             const r = await fetch(url, { method: "GET", signal: ctrl.signal, headers: { "User-Agent": "TerraGuard-FB-Warmup/1.0" } });
             clearTimeout(t);
-            if (r.ok)
-                return true;
-            console.error(`[fb][${tag}] card warmup ${r.status} (attempt ${attempt}): ${url.slice(0, 120)}`);
+            if (r.ok) {
+                // Also ensure it's actually an image, not a 500 text error
+                const ct = r.headers.get("content-type") || "";
+                if (ct.includes("image/")) return true;
+                console.error(`[fb][${tag}] card warmup bad content-type ${ct} (attempt ${attempt})`);
+            } else {
+                console.error(`[fb][${tag}] card warmup ${r.status} (attempt ${attempt}): ${url.slice(0, 120)}`);
+            }
         }
         catch (e) {
             console.error(`[fb][${tag}] card warmup failed (attempt ${attempt}): ${e instanceof Error ? e.message : String(e)}`);
         }
-        await new Promise((r) => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, 2000));
     }
     return false;
 }
@@ -772,9 +777,9 @@ async function postUsgsToFacebook(eq, env) {
         return params;
     };
     for (const photoUrl of photoUrls) {
-        if (String(photoUrl).includes("/api/quake-card") && !(await warmCardUrl(photoUrl, "usgs"))) {
-            console.error("[fb][usgs] card not renderable, using Yandex backup");
-            continue;
+        if (String(photoUrl).includes("/api/quake-card")) {
+            const ok = await warmCardUrl(photoUrl, "usgs");
+            if (!ok) console.error("[fb][usgs] card warmup failed, still trying photo post");
         }
         try {
             const body = withProof({ access_token: pageToken, caption: message, url: photoUrl });
@@ -1200,9 +1205,9 @@ async function postEmscToFacebook(eq, env) {
     const isCard = (u) => String(u).includes("/api/quake-card");
     // 1) Preferred: photo post so the designed card shows inline.
     for (const photoUrl of photoUrls) {
-        if (isCard(photoUrl) && !(await warmCardUrl(photoUrl, "emsc"))) {
-            console.error("[fb][emsc] card not renderable, using Yandex backup");
-            continue;
+        if (isCard(photoUrl)) {
+            const ok = await warmCardUrl(photoUrl, "emsc");
+            if (!ok) console.error("[fb][emsc] card warmup failed, still trying photo post");
         }
         try {
             const body = withProof({ access_token: pageToken, caption: message, url: photoUrl });
@@ -1397,9 +1402,9 @@ async function postPhivolcsToFacebook(eq, env) {
         return params;
     };
     for (const photoUrl of photoUrls) {
-        if (String(photoUrl).includes("/api/quake-card") && !(await warmCardUrl(photoUrl, "phivolcs"))) {
-            console.error("[fb][phivolcs] card not renderable, using Yandex backup");
-            continue;
+        if (String(photoUrl).includes("/api/quake-card")) {
+            const ok = await warmCardUrl(photoUrl, "phivolcs");
+            if (!ok) console.error("[fb][phivolcs] card warmup failed, still trying photo post");
         }
         try {
             const body = withProof({ access_token: pageToken, caption: message, url: photoUrl });
