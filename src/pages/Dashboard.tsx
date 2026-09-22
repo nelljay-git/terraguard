@@ -8,9 +8,11 @@ import { InteractiveMap } from '../components/InteractiveMap';
 import { ActivityFeed } from '../components/ActivityFeed';
 import { NewsFeed } from '../components/NewsFeed';
 import { VolcanoStatus } from '../components/VolcanoStatus';
-import { Radio, RefreshCw, Shield } from 'lucide-react';
+import { Radio, RefreshCw, Shield, Clapperboard } from 'lucide-react';
 import { FunFactLoader } from '../components/FunFactLoader';
 import { checkAlerts } from '../lib/alertSystem';
+import { DailyEarthReportModal } from '../components/DailyEarthReport';
+import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
 
 export function Dashboard() {
@@ -78,6 +80,9 @@ export function Dashboard() {
   }, [loadData]);
 
   const currentMonth = new Date();
+  const [showDaily, setShowDaily] = useState(false);
+  const { user } = useAuth();
+  const isDailyAllowed = (user?.email?.toLowerCase() ?? '') === 'gianganwneljae@gmail.com';
   const [preferredApi, setPreferredApi] = useState(() => getPreferredApi());
 
   useEffect(() => {
@@ -150,8 +155,20 @@ export function Dashboard() {
           <button className="dash-refresh-btn" onClick={loadData} disabled={syncing} title="Refresh data">
             <RefreshCw size={16} className={syncing ? 'spin' : ''} />
           </button>
+          {isDailyAllowed && (
+            <button
+              className="dash-refresh-btn"
+              onClick={() => setShowDaily(true)}
+              title="Daily Earth Report (EMSC • UTC) — cinematic global scan"
+              style={{ gap: '6px', padding: '8px 14px', fontSize: '0.82rem', fontWeight: 600 }}
+            >
+              <Clapperboard size={14} />
+              <span>Daily Report</span>
+            </button>
+          )}
         </div>
       </div>
+      {showDaily && isDailyAllowed && <DailyEarthReportModal onClose={() => setShowDaily(false)} />}
 
 
 
