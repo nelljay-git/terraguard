@@ -170,10 +170,7 @@ export function drawDailyFrame(
     const { mosaic, offsetX, offsetY, D } = view;
     const sw = DAILY_COLS * DAILY_TILE * D;
     const sh = DAILY_ROWS * DAILY_TILE * D;
-    const infoShift = t >= DAILY_INFO_START ? easeOutCubic(Math.min((t - DAILY_INFO_START) / 0.7, 1)) * DAILY_H * 0.13 : 0;
-    const doShift = infoShift > 0.5;
-    if (doShift) { ctx.save(); ctx.translate(0, -infoShift); }
-    // Blurred scaled background fills black bars (letterbox)
+    // Blurred scaled background fills black bars (letterbox) — stays still, not shifted
     {
       const D_bg = Math.max(DAILY_W / (DAILY_COLS * DAILY_TILE), DAILY_H / (DAILY_ROWS * DAILY_TILE));
       const sw_bg = DAILY_COLS * DAILY_TILE * D_bg;
@@ -188,6 +185,9 @@ export function drawDailyFrame(
       ctx.fillRect(0, 0, DAILY_W, DAILY_H);
       ctx.restore();
     }
+    const infoShift = t >= DAILY_INFO_START ? easeOutCubic(Math.min((t - DAILY_INFO_START) / 0.7, 1)) * DAILY_H * 0.15 : 0;
+    const doShift = infoShift > 0.5;
+    if (doShift) { ctx.save(); ctx.translate(0, -infoShift); }
 
     if (t < DAILY_INTRO) {
       // 0-4s clean global map, no markers
