@@ -167,6 +167,21 @@ export function drawDailyFrame(
     const { mosaic, offsetX, offsetY, D } = view;
     const sw = DAILY_COLS * DAILY_TILE * D;
     const sh = DAILY_ROWS * DAILY_TILE * D;
+    // Blurred scaled background fills black bars (letterbox)
+    {
+      const D_bg = Math.max(DAILY_W / (DAILY_COLS * DAILY_TILE), DAILY_H / (DAILY_ROWS * DAILY_TILE));
+      const sw_bg = DAILY_COLS * DAILY_TILE * D_bg;
+      const sh_bg = DAILY_ROWS * DAILY_TILE * D_bg;
+      const offX_bg = (DAILY_W - sw_bg) / 2;
+      const offY_bg = (DAILY_H - sh_bg) / 2;
+      ctx.save();
+      try { (ctx as unknown as { filter: string }).filter = 'blur(18px) brightness(0.72) saturate(1.05)'; } catch {}
+      ctx.drawImage(mosaic, offX_bg, offY_bg, sw_bg, sh_bg);
+      try { (ctx as unknown as { filter: string }).filter = 'none'; } catch {}
+      ctx.fillStyle = 'rgba(0,0,0,0.24)';
+      ctx.fillRect(0, 0, DAILY_W, DAILY_H);
+      ctx.restore();
+    }
 
     if (t < DAILY_INTRO) {
       // 0-4s clean global map, no markers
@@ -218,20 +233,20 @@ export function drawDailyFrame(
     const currentLng = -180 + wP * 360;
     const wipeX = dailyLonToDisplayX(currentLng);
 
-    // Processed area behind the line (subtle red tint)
-    ctx.fillStyle = 'rgba(239,68,68,0.08)';
-    ctx.fillRect(0, 0, wipeX, DAILY_H);
-    // faint edge gradient at the wipe front
-    const grad = ctx.createLinearGradient(Math.max(0, wipeX - 120), 0, wipeX, 0);
-    grad.addColorStop(0, 'rgba(239,68,68,0)');
-    grad.addColorStop(1, 'rgba(239,68,68,0.18)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(Math.max(0, wipeX - 120), 0, Math.min(120, wipeX), DAILY_H);
-
-    // Red scanner line with glow — fades 1s after job done (12→13s)
+    // Processed area + gradient + line — all fade 1s after job done (12→13s)
     const wipeEnd = DAILY_WIPE_START + DAILY_WIPE_DUR;
     const wipeFade = t >= wipeEnd ? 1 - Math.min(Math.max((t - wipeEnd) / 1, 0), 1) : 1;
     if (wipeFade > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = wipeFade;
+      ctx.fillStyle = 'rgba(239,68,68,0.08)';
+      ctx.fillRect(0, 0, wipeX, DAILY_H);
+      const grad = ctx.createLinearGradient(Math.max(0, wipeX - 120), 0, wipeX, 0);
+      grad.addColorStop(0, 'rgba(239,68,68,0)');
+      grad.addColorStop(1, 'rgba(239,68,68,0.18)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(Math.max(0, wipeX - 120), 0, Math.min(120, wipeX), DAILY_H);
+      ctx.restore();
       ctx.save();
       ctx.globalAlpha = wipeFade;
       ctx.shadowColor = 'rgba(239,68,68,0.95)';
@@ -455,9 +470,9 @@ function drawInfoPanel(
   ctx.save();
   ctx.globalAlpha = alpha;
 
-  // Panel background — tight (no extra blank) and flush to bottom edge
-  const panelH = 440;
-  const panelY = DAILY_H - panelH;
+  // Panel background — 20px bottom margin, extra room so footer rows aren't squished
+  const panelH = 470;
+  const panelY = DAILY_H - panelH - 20;
   ctx.fillStyle = 'rgba(12,16,24,0.96)';
   if (typeof ctx.roundRect === 'function') {
     ctx.beginPath();
