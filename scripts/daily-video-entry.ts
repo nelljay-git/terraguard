@@ -210,7 +210,7 @@ async function main(): Promise<void> {
   for (const s of sfxPlan) ffmpegArgs.push('-i', s.file);
   if (sfxPlan.length>0) {
     const mix = sfxPlan.map((s,i)=>`[${i+1}:a]adelay=delays=${s.at}:all=1,volume=${s.vol}[a${i}]`).join(';');
-    const mixed = sfxPlan.map((_,i)=>`[a${i}]`).join('') + `amix=inputs=${sfxPlan.length}:duration=longest:dropout_transition=0,volume=1.0[aout]`;
+    const mixed = sfxPlan.map((_,i)=>`[a${i}]`).join('') + `amix=inputs=${sfxPlan.length}:duration=longest:dropout_transition=0:normalize=0,volume=0.95[aout]`;
     ffmpegArgs.push('-filter_complex', `${mix};${mixed}`, '-map','0:v','-map','[aout]','-c:a','aac');
   }
   ffmpegArgs.push('-c:v','libx264','-pix_fmt','yuv420p','-colorspace','bt709','-color_primaries','bt709','-color_trc','bt709','-color_range','pc','-crf','20','-t',String(DAILY_DUR), mp4);
