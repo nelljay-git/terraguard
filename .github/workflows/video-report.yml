@@ -125,18 +125,29 @@ jobs:
             echo "Telegram skipped (no video-out/out.mp4)"
             exit 0
           fi
-          # Reuse the same FINAL FLASH / fallback caption the FB upload used
-          CAPTION=$(node -e "
+          # Full buildFinalCaption like FB (FINAL FLASH when finalReport, else FLASH)
+          CAPTION=$(node --input-type=module -e "
+            import fs from 'fs';
             try {
-              const fs=require('fs');
-              const q=JSON.parse(fs.readFileSync(process.env.QUAKE_FILE,'utf8'));
-              // Use the same caption builders as the renderer (via dist-video)
-              // Fallback to a simple caption if the module isn't available
-              const mag=q.magnitude||'?';
-              const place=q.location||q.place||'';
-              const date=(q.datetime||'').split(' - ')[0]||q.datetime||'';
-              console.log(\`\${date} | Mag \${mag} - \${place} | TerraGuard\`);
-            } catch(e){ console.log('TerraGuard USGS Video Report'); }
+              const q = JSON.parse(fs.readFileSync(process.env.QUAKE_FILE,'utf8'));
+              const mod = await import('file://' + process.cwd() + '/dist-video/video-entry.mjs');
+              const isFinal = !!(q.finalReport || q.extra?.finalReport);
+              // Flatten extra for builders that expect top-level fields
+              const flat = { ...q, ...(q.extra||{}) };
+              let caption = '';
+              if (isFinal && mod.buildFinalCaption) caption = mod.buildFinalCaption(flat);
+              else if (mod.buildVideoCaption) caption = mod.buildVideoCaption(flat);
+              if (!caption || !String(caption).trim()) throw new Error('empty');
+              console.log(String(caption).trim());
+            } catch(e) {
+              try {
+                const q2 = JSON.parse(require('fs').readFileSync(process.env.QUAKE_FILE,'utf8'));
+                const mag=q2.magnitude||'?';
+                const place=q2.location||q2.place||'';
+                const date=(q2.datetime||'').split(' - ')[0]||'';
+                console.log(\`\${date} | Mag \${mag} - \${place} | TerraGuard\`);
+              } catch { console.log('TerraGuard USGS Video Report'); }
+            }
           " 2>/dev/null || echo "TerraGuard USGS Video Report")
           # Telegram caption limit is 1024 chars
           CAPTION=$(echo "$CAPTION" | cut -c1-1000)
