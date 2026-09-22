@@ -17,10 +17,10 @@ export const DAILY_INTRO = 0;
 export const DAILY_FADE = 0;
 export const DAILY_PAUSE = 0;
 export const DAILY_WIPE_START = 1; // 1s start delay
-export const DAILY_WIPE_DUR = 12; // slower left->right scan (base)
-export const DAILY_HIGHLIGHT_DUR = 5; // freeze on top1 for 5s with modal
+export const DAILY_WIPE_DUR = 12; // slower left->right scan
+export const DAILY_HIGHLIGHT_DUR = 5; // modal visible 5s after top1, no freeze
 export const DAILY_INFO_DELAY = 3; // wipe done → 3s hold before panel
-export const DAILY_INFO_START = DAILY_WIPE_START + DAILY_WIPE_DUR + DAILY_HIGHLIGHT_DUR + DAILY_INFO_DELAY; // 21
+export const DAILY_INFO_START = DAILY_WIPE_START + DAILY_WIPE_DUR + DAILY_INFO_DELAY; // 16
 export const DAILY_PANEL_VISIBLE = 5;
 
 export const DAILY_COLS = 4;
@@ -228,7 +228,7 @@ export function drawDailyFrame(
     drawWatermark(ctx);
     drawTopLabel(ctx, 1);
 
-    // Compute wipe progress with 5s freeze on top1 strongest
+    // Compute wipe progress — no freeze, just linear
     let wP: number, currentLng: number, isHighlight = false, highlightT = 0;
     let top1: EmscEarthquake | null = null;
     let topPos: { x:number; y:number } | null = null;
@@ -239,17 +239,11 @@ export function drawDailyFrame(
       topPos = dailyLatLngToDisplayPx(topLat, topLon);
       const revealF = (topLon + 180) / 360;
       const revealT = DAILY_WIPE_START + revealF * DAILY_WIPE_DUR;
-      const holdEnd = revealT + DAILY_HIGHLIGHT_DUR;
-      if (t < revealT) {
-        wP = (t - DAILY_WIPE_START) / DAILY_WIPE_DUR;
-      } else if (t < holdEnd) {
-        wP = revealF;
+      if (t >= revealT && t < revealT + DAILY_HIGHLIGHT_DUR) {
         isHighlight = true;
         highlightT = t - revealT;
-      } else {
-        wP = (t - DAILY_HIGHLIGHT_DUR - DAILY_WIPE_START) / DAILY_WIPE_DUR;
       }
-      wP = Math.min(Math.max(wP, 0), 1);
+      wP = Math.min(Math.max((t - DAILY_WIPE_START) / DAILY_WIPE_DUR, 0), 1);
       currentLng = -180 + wP * 360;
     } else {
       wP = Math.min(Math.max((t - DAILY_WIPE_START) / DAILY_WIPE_DUR, 0), 1);
@@ -257,10 +251,9 @@ export function drawDailyFrame(
     }
     const wipeX = dailyLonToDisplayX(currentLng);
 
-    // Processed area + gradient + line — all fade 1s after job done (17→18s), dim during highlight so connector pops
-    const wipeEnd = DAILY_WIPE_START + DAILY_WIPE_DUR + DAILY_HIGHLIGHT_DUR;
+    // Processed area + gradient + line — fade 1s after wipe done (13→14s)
+    const wipeEnd = DAILY_WIPE_START + DAILY_WIPE_DUR;
     let wipeFade = t >= wipeEnd ? 1 - Math.min(Math.max((t - wipeEnd) / 1, 0), 1) : 1;
-    if (isHighlight) wipeFade *= 0.32;
     if (wipeFade > 0.01) {
       ctx.save();
       ctx.globalAlpha = wipeFade;
@@ -1087,14 +1080,10 @@ export function DailyEarthReportModal({
         if (eventsRef.current.length>0) {
           const topP = [...eventsRef.current].sort((a,b)=> b.properties.mag - a.properties.mag)[0];
           const tLon = topP.properties.lon;
-          const rF = (tLon+180)/360;
-          const rT = DAILY_WIPE_START + rF*DAILY_WIPE_DUR;
-          const hEnd = rT + DAILY_HIGHLIGHT_DUR;
-          if (loopT < rT) { wP = (loopT - DAILY_WIPE_START)/DAILY_WIPE_DUR; isHighNow=false; }
-          else if (loopT < hEnd) { wP = rF; isHighNow=true; }
-          else { wP = (loopT - DAILY_HIGHLIGHT_DUR - DAILY_WIPE_START)/DAILY_WIPE_DUR; isHighNow=false; }
-          wP = Math.min(Math.max(wP,0),1);
+          const rT = DAILY_WIPE_START + ((tLon+180)/360)*DAILY_WIPE_DUR;
+          wP = Math.min(Math.max((loopT - DAILY_WIPE_START)/DAILY_WIPE_DUR,0),1);
           curLng = -180 + wP*360;
+          isHighNow = loopT >= rT && loopT < rT + DAILY_HIGHLIGHT_DUR;
         } else {
           wP = Math.min(Math.max((loopT - DAILY_WIPE_START)/DAILY_WIPE_DUR,0),1);
           curLng = -180 + wP*360;
@@ -1222,11 +1211,8 @@ export function DailyEarthReportModal({
           const dest = recAc.createMediaStreamDestination();
           const t0 = recAc.currentTime + 0.06;
           if (finalCircle) {
-            const topRec = [...eventsRef.current].sort((a,b)=> b.properties.mag - a.properties.mag)[0];
-            const topLonRec = topRec?.properties.lon ?? 180;
             for (const ev of eventsRef.current) {
-              let revealT = DAILY_WIPE_START + ((ev.properties.lon + 180) / 360) * DAILY_WIPE_DUR;
-              if (ev.properties.lon > topLonRec) revealT += DAILY_HIGHLIGHT_DUR;
+              const revealT = DAILY_WIPE_START + ((ev.properties.lon + 180) / 360) * DAILY_WIPE_DUR;
               if (revealT < 0 || revealT > DAILY_DUR) continue;
               const src = recAc.createBufferSource();
               src.buffer = finalCircle;
