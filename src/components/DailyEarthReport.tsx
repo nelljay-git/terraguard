@@ -185,7 +185,7 @@ export function drawDailyFrame(
       ctx.fillRect(0, 0, DAILY_W, DAILY_H);
       ctx.restore();
     }
-    const infoShift = t >= DAILY_INFO_START ? easeOutCubic(Math.min((t - DAILY_INFO_START) / 0.7, 1)) * DAILY_H * 0.15 : 0;
+    const infoShift = t >= DAILY_INFO_START ? easeOutCubic(Math.min((t - DAILY_INFO_START) / 0.7, 1)) * DAILY_H * 0.12 : 0;
     const doShift = infoShift > 0.5;
     if (doShift) { ctx.save(); ctx.translate(0, -infoShift); }
 
