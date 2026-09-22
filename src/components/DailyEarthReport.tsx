@@ -12,14 +12,16 @@ import './VideoReport.css';
 export const DAILY_W = 1080;
 export const DAILY_H = 1440;
 export const DAILY_FPS = 60;
-export const DAILY_DUR = 20;
+export const DAILY_DUR = 25; // 12 wipe +5 highlight +3 hold +5 panel
 export const DAILY_INTRO = 0;
 export const DAILY_FADE = 0;
 export const DAILY_PAUSE = 0;
 export const DAILY_WIPE_START = 0;
-export const DAILY_WIPE_DUR = 12; // slower left->right scan
+export const DAILY_WIPE_DUR = 12; // slower left->right scan (base)
+export const DAILY_HIGHLIGHT_DUR = 5; // freeze on top1 for 5s with modal
 export const DAILY_INFO_DELAY = 3; // wipe done → 3s hold before panel
-export const DAILY_INFO_START = DAILY_WIPE_START + DAILY_WIPE_DUR + DAILY_INFO_DELAY; // 15
+export const DAILY_INFO_START = DAILY_WIPE_START + DAILY_WIPE_DUR + DAILY_HIGHLIGHT_DUR + DAILY_INFO_DELAY; // 20
+export const DAILY_PANEL_VISIBLE = 5;
 
 export const DAILY_COLS = 4;
 export const DAILY_ROWS = 4;
@@ -63,9 +65,10 @@ function easeOutBack(t: number): number {
 function severityColor(mag: number): string {
   if (mag < 3) return '#10b981';
   if (mag < 4) return '#3b82f6';
-  if (mag < 5) return '#f59e0b';
-  if (mag < 6) return '#ef4444';
-  return '#7f1d1d';
+  if (mag < 5) return '#f97316'; // 4.0-4.9 orange
+  if (mag < 6) return '#eab308'; // 5.0-5.9 yellow (request)
+  if (mag < 7) return '#ef4444'; // 6.0-6.9 red
+  return '#8b5cf6'; // 7.0+ violet
 }
 function magnitudeRadius(mag: number): number {
   if (mag < 2) return 6;
@@ -228,13 +231,37 @@ export function drawDailyFrame(
     drawWatermark(ctx);
     drawTopLabel(ctx, 1);
 
-    // Compute wipe progress
-    const wP = Math.min(Math.max((t - DAILY_WIPE_START) / DAILY_WIPE_DUR, 0), 1);
-    const currentLng = -180 + wP * 360;
+    // Compute wipe progress with 5s freeze on top1 strongest
+    let wP: number, currentLng: number, isHighlight = false, highlightT = 0;
+    let top1: EmscEarthquake | null = null;
+    let topPos: { x:number; y:number } | null = null;
+    if (events.length > 0) {
+      top1 = [...events].sort((a,b)=> b.properties.mag - a.properties.mag)[0];
+      const topLon = top1.properties.lon;
+      const topLat = top1.properties.lat;
+      topPos = dailyLatLngToDisplayPx(topLat, topLon);
+      const revealF = (topLon + 180) / 360;
+      const revealT = DAILY_WIPE_START + revealF * DAILY_WIPE_DUR;
+      const holdEnd = revealT + DAILY_HIGHLIGHT_DUR;
+      if (t < revealT) {
+        wP = (t - DAILY_WIPE_START) / DAILY_WIPE_DUR;
+      } else if (t < holdEnd) {
+        wP = revealF;
+        isHighlight = true;
+        highlightT = t - revealT;
+      } else {
+        wP = (t - DAILY_HIGHLIGHT_DUR - DAILY_WIPE_START) / DAILY_WIPE_DUR;
+      }
+      wP = Math.min(Math.max(wP, 0), 1);
+      currentLng = -180 + wP * 360;
+    } else {
+      wP = Math.min(Math.max((t - DAILY_WIPE_START) / DAILY_WIPE_DUR, 0), 1);
+      currentLng = -180 + wP * 360;
+    }
     const wipeX = dailyLonToDisplayX(currentLng);
 
-    // Processed area + gradient + line — all fade 1s after job done (12→13s)
-    const wipeEnd = DAILY_WIPE_START + DAILY_WIPE_DUR;
+    // Processed area + gradient + line — all fade 1s after job done (17→18s)
+    const wipeEnd = DAILY_WIPE_START + DAILY_WIPE_DUR + DAILY_HIGHLIGHT_DUR;
     const wipeFade = t >= wipeEnd ? 1 - Math.min(Math.max((t - wipeEnd) / 1, 0), 1) : 1;
     if (wipeFade > 0.01) {
       ctx.save();
@@ -363,13 +390,16 @@ export function drawDailyFrame(
       ctx.restore();
     }
 
-    // After wipe completes, keep all markers (loop above already covers, but ensure full alpha)
+    // Highest-recorded highlight (5s freeze on top1)
+    if (isHighlight && top1 && topPos) {
+      drawHighestModal(ctx, top1, topPos, highlightT);
+    }
     // Info panel fade-in
     if (t >= DAILY_INFO_START) {
       const q = easeOutCubic(Math.min((t - DAILY_INFO_START) / 0.7, 1));
       drawInfoPanel(ctx, events, reportDateMs, q);
-    } else if (wP > 0.02) {
-      // During wipe, show small progress header
+    } else if (wP > 0.02 && !isHighlight) {
+      // During wipe, show small progress header (hidden while highlight modal is up)
       drawWipeHeader(ctx, wP, events.filter(e => e.properties.lon <= currentLng).length, events.length);
     }
 
@@ -457,6 +487,99 @@ function drawWipeHeader(ctx: CanvasRenderingContext2D, progress: number, reveale
   ctx.font = '400 13px Inter, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(`SCANNING  ${revealed}/${total}  •  ${pct}%`, DAILY_W/2, 86);
+  ctx.restore();
+  ctx.textAlign = 'left';
+}
+
+function drawHighestModal(
+  ctx: CanvasRenderingContext2D,
+  ev: EmscEarthquake,
+  circle: { x:number; y:number },
+  t: number,
+) {
+  const a = Math.min(Math.max(t / 0.35, 0), 1) * (t > 4.65 ? 1 - Math.min((t-4.65)/0.35,1) : 1);
+  const ease = easeOutCubic(a);
+  ctx.save();
+  ctx.globalAlpha = ease;
+  // connector line from circle to modal
+  const mx = DAILY_W/2, my = 210;
+  const mw = 760, mh = 220;
+  const mx0 = mx - mw/2, my0 = my - mh/2;
+  ctx.strokeStyle = 'rgba(239,68,68,0.9)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6,4]);
+  ctx.beginPath();
+  ctx.moveTo(circle.x, circle.y);
+  // elbow
+  const midY = my0 + mh + 12;
+  ctx.lineTo(circle.x, midY);
+  ctx.lineTo(mx, midY);
+  ctx.lineTo(mx, my0);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // glow at circle end
+  ctx.fillStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.arc(circle.x, circle.y, 4, 0, Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  // modal bg
+  ctx.fillStyle = 'rgba(16,20,32,0.97)';
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    // @ts-ignore
+    ctx.roundRect(mx0, my0, mw, mh, 14);
+    ctx.fill();
+  } else ctx.fillRect(mx0, my0, mw, mh);
+  ctx.strokeStyle = 'rgba(239,68,68,0.45)';
+  ctx.lineWidth = 1.4;
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    // @ts-ignore
+    ctx.roundRect(mx0, my0, mw, mh, 14);
+    ctx.stroke();
+  } else ctx.strokeRect(mx0, my0, mw, mh);
+  // header
+  ctx.fillStyle = '#ef4444';
+  ctx.font = '700 13px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('★ HIGHEST RECORDED', mx, my0 + 26);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 22px Oswald, Inter, sans-serif';
+  ctx.fillText(`M${ev.properties.mag.toFixed(1)} — ${ev.properties.flynn_region.slice(0,38)}`, mx, my0 + 54);
+  // details grid
+  const d = new Date(ev.properties.time);
+  const dateStr = isNaN(d.getTime()) ? ev.properties.time : `${String(d.getUTCDate()).padStart(2,'0')} ${UTC_MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()} • ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}:${String(d.getUTCSeconds()).padStart(2,'0')} UTC`;
+  ctx.font = '500 12px Inter, sans-serif';
+  ctx.fillStyle = '#9ca3af';
+  ctx.textAlign = 'left';
+  const leftX = mx0 + 22;
+  const rightX = mx + 10;
+  const y1 = my0 + 84, y2 = my0 + 108, y3 = my0 + 132;
+  ctx.fillText('EPICENTER', leftX, y1);
+  ctx.fillText('TIME (UTC)', leftX, y2);
+  ctx.fillText('DEPTH', leftX, y3);
+  ctx.fillStyle = '#e5e7eb';
+  ctx.font = '600 13px Inter, sans-serif';
+  ctx.fillText(`${ev.properties.lat.toFixed(2)}°${ev.properties.lat>=0?'N':'S'}, ${ev.properties.lon.toFixed(2)}°${ev.properties.lon>=0?'E':'W'}`, leftX + 84, y1);
+  ctx.fillText(dateStr, leftX + 84, y2);
+  ctx.fillText(`${Math.round(ev.properties.depth)} km`, leftX + 84, y3);
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '500 12px Inter, sans-serif';
+  ctx.fillText('LOCATION', rightX, y1);
+  ctx.fillText('MAG', rightX, y2);
+  ctx.fillText('ID', rightX, y3);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '600 13px Inter, sans-serif';
+  ctx.fillText(ev.properties.flynn_region.slice(0,28), rightX + 62, y1);
+  ctx.fillStyle = severityColor(ev.properties.mag);
+  ctx.font = '700 13px Inter, sans-serif';
+  ctx.fillText(ev.properties.mag.toFixed(1), rightX + 62, y2);
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '500 11px Inter, sans-serif';
+  ctx.fillText(ev.properties.unid, rightX + 62, y3);
   ctx.restore();
   ctx.textAlign = 'left';
 }
@@ -882,14 +1005,28 @@ export function DailyEarthReportModal({
       }
       const loopT = phase==='preview' ? t % (DAILY_DUR+1) : t;
       drawDailyFrame(ctx as unknown as CanvasRenderingContext2D, viewRef.current, eventsRef.current, loopT, Date.now());
-      // per-circle + daily-report sounds in preview — staggered so clustered circles each pop
+      // per-circle + daily-report sounds in preview — highlight-aware wipe
       if (phase==='preview') {
         if (loopT < lastLoopTRef.current - 0.5) { playedRef.current.clear(); dailyPlayedRef.current=false; }
         lastLoopTRef.current = loopT;
-        const wP = Math.min(Math.max((loopT - DAILY_WIPE_START) / DAILY_WIPE_DUR, 0), 1);
+        let wP: number, curLng: number;
+        if (eventsRef.current.length>0) {
+          const topP = [...eventsRef.current].sort((a,b)=> b.properties.mag - a.properties.mag)[0];
+          const tLon = topP.properties.lon;
+          const rF = (tLon+180)/360;
+          const rT = DAILY_WIPE_START + rF*DAILY_WIPE_DUR;
+          const hEnd = rT + DAILY_HIGHLIGHT_DUR;
+          if (loopT < rT) wP = (loopT - DAILY_WIPE_START)/DAILY_WIPE_DUR;
+          else if (loopT < hEnd) wP = rF;
+          else wP = (loopT - DAILY_HIGHLIGHT_DUR - DAILY_WIPE_START)/DAILY_WIPE_DUR;
+          wP = Math.min(Math.max(wP,0),1);
+          curLng = -180 + wP*360;
+        } else {
+          wP = Math.min(Math.max((loopT - DAILY_WIPE_START)/DAILY_WIPE_DUR,0),1);
+          curLng = -180 + wP*360;
+        }
         let newly: typeof eventsRef.current = [];
         if (wP > 0 && wP < 1) {
-          const curLng = -180 + wP * 360;
           for (const ev of eventsRef.current) {
             if (ev.properties.lon <= curLng && !playedRef.current.has(ev.id)) {
               playedRef.current.add(ev.id);
@@ -985,8 +1122,11 @@ export function DailyEarthReportModal({
           const dest = recAc.createMediaStreamDestination();
           const t0 = recAc.currentTime + 0.06;
           if (finalCircle) {
+            const topRec = [...eventsRef.current].sort((a,b)=> b.properties.mag - a.properties.mag)[0];
+            const topLonRec = topRec?.properties.lon ?? 180;
             for (const ev of eventsRef.current) {
-              const revealT = DAILY_WIPE_START + ((ev.properties.lon + 180) / 360) * DAILY_WIPE_DUR;
+              let revealT = DAILY_WIPE_START + ((ev.properties.lon + 180) / 360) * DAILY_WIPE_DUR;
+              if (ev.properties.lon > topLonRec) revealT += DAILY_HIGHLIGHT_DUR;
               if (revealT < 0 || revealT > DAILY_DUR) continue;
               const src = recAc.createBufferSource();
               src.buffer = finalCircle;
