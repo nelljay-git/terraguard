@@ -286,9 +286,7 @@ export function drawDailyFrame(
       if (lon > currentLng) continue;
       const { x, y } = dailyLatLngToDisplayPx(lat, lon);
       if (x < -30 || y < -30 || x > DAILY_W + 30 || y > DAILY_H + 30) continue;
-      // reveal time accounts for 5s freeze on top1 (east of top1 delayed)
-      let baseReveal = DAILY_WIPE_START + ((lon + 180) / 360) * DAILY_WIPE_DUR;
-      if (top1 && lon > top1.properties.lon) baseReveal += DAILY_HIGHLIGHT_DUR;
+      const baseReveal = DAILY_WIPE_START + ((lon + 180) / 360) * DAILY_WIPE_DUR;
       const dt = t - baseReveal;
       if (dt < 0) continue;
       const animP = Math.min(Math.max(dt / 0.38, 0), 1);
