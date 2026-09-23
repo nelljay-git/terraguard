@@ -138,6 +138,7 @@ function ClusterManager({ earthquakes, activeFilter, compactMarkers, onSelect }:
 
 function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = false, compactMarkers = false, autoCenter = false, enableLegendFilter = false, disableDragging = false, pulseMarkers = true }: InteractiveMapProps) {
   const mapRef = useRef<L.Map | null>(null);
+  const fullscreenMapRef = useRef<L.Map | null>(null);
   const [selectedEarthquake, setSelectedEarthquake] = useState<PhivolcsEarthquake | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
@@ -159,7 +160,17 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
     if (autoCenter && hasLatestCoords && mapRef.current) {
       mapRef.current.setView([latestLat, latestLng], 8, { animate: true });
     }
+    if (autoCenter && hasLatestCoords && fullscreenMapRef.current) {
+      fullscreenMapRef.current.setView([latestLat, latestLng], 8, { animate: true });
+    }
   }, [autoCenter, hasLatestCoords, latestLat, latestLng]);
+
+  useEffect(() => {
+    if (isFullscreen) {
+      const t = window.setTimeout(() => fullscreenMapRef.current?.invalidateSize(), 100);
+      return () => window.clearTimeout(t);
+    }
+  }, [isFullscreen]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -350,16 +361,17 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
             </div>
             <div className="map-fullscreen-body">
               <MapContainer
-                ref={mapRef}
+                ref={fullscreenMapRef}
                 center={center}
                 zoom={hasLatestCoords ? 8 : 5}
                 scrollWheelZoom={true}
+                dragging={!disableDragging}
                 preferCanvas={true}
                 style={{ height: '100%', width: '100%', zIndex: 0 }}
               >
                 <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a> &copy; <a href="https://www.esri.com/">Esri</a>'
-                  url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a> &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics'
+                  url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                 />
                 <WMSTileLayer
                   url="https://gisweb.phivolcs.dost.gov.ph/arcgis/services/PHIVOLCSPublic/Trenches/MapServer/WMSServer"
