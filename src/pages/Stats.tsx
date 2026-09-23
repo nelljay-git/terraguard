@@ -108,18 +108,13 @@ export function Stats() {
         const r = await fetch(`https://www.seismicportal.eu/fdsnws/event/1/query?${params}`);
         if (r.ok) {
           const j = await r.json() as { features: Array<{ id:string; properties: { unid:string; source_id:string; source_catalog:string; time:string; lastupdate:string; lat:number; lon:number; depth:number; mag:number; magtype:string; flynn_region:string; auth:string; evtype:string }; geometry: { type:string; coordinates:[number,number,number]}; type:string }> };
-          const { normalizeEarthquakes: norm2 } = await import('../api/phivolcs');
-          // reuse EMSC->normalized via same shape as phivolcs normalize path: map to NormalizedEarthquake via EMSC properties
-          // Use the existing EMSC fetch path but with our features
-          const { fetchEmscData } = await import('../api/emsc');
-          // fallback to normal fetch if custom fails to parse
           if (j.features?.length) {
             const fakeRes = { data: j.features.map((f)=> ({
               id: f.id,
               properties: f.properties,
               geometry: f.geometry,
               type: f.type,
-            })) as unknown as typeof res.data, source: 'emsc' as const };
+            })) as unknown as Awaited<ReturnType<typeof fetchEarthquakeData>>['data'], source: 'emsc' as const };
             const normalized = normalizeEarthquakes(fakeRes.data as unknown as Parameters<typeof normalizeEarthquakes>[0]);
             for (const eq of normalized) parseEarthquakeDate(getEarthquakeDatetime(eq));
             setEarthquakes(normalized);
@@ -129,7 +124,7 @@ export function Stats() {
         }
       }
       res = await fetchEarthquakeData();
-      if (res.data.length > 0) {
+      if (res && res.data.length > 0) {
         const normalized = normalizeEarthquakes(res.data);
         for (const eq of normalized) {
           parseEarthquakeDate(getEarthquakeDatetime(eq));
