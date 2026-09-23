@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import './Auth.css';
 
 export function Auth() {
-  const { user, profile, signIn, signUp, signInWithGoogle, signOut } = useAuth();
+  const { user, profile, signIn, signUp, signInWithGoogle, signInWithFacebook, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? '/';
@@ -226,6 +226,22 @@ export function Auth() {
             <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.1-3.6 5.6-6.9 6.9l6.4 5.2c3.6-3.3 5.7-8.1 5.7-13.6 0-1.4-.1-2.7-.3-3.5z"/>
           </svg>
           Continue with Google
+        </button>
+
+        <button
+          type="button"
+          className="auth-submit"
+          style={{ background: '#1877F2', color: '#fff', border: '1px solid #1877F2', fontWeight: 600, marginTop: '10px' }}
+          onClick={async () => {
+            setError(null);
+            const err = await signInWithFacebook();
+            if (err) setError(err);
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+          </svg>
+          Continue with Facebook
         </button>
       </div>
     </div>
