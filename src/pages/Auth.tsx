@@ -227,9 +227,6 @@ export function Auth() {
           </svg>
           Continue with Google
         </button>
-        <p className="auth-note text-muted" style={{ marginTop: '10px', fontSize: '0.74rem' }}>
-          Google sign-in requires enabling the Google provider in Supabase Auth (Google Cloud OAuth client + authorized redirect: <code>https://qiszvooehbfjteyrfryk.supabase.co/auth/v1/callback</code>).
-        </p>
       </div>
     </div>
   );
