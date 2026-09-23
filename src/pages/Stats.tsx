@@ -103,7 +103,7 @@ export function Stats() {
         const start = new Date(Date.UTC(lower.getUTCFullYear(), lower.getUTCMonth(), lower.getUTCDate(), 0,0,0,0));
         const end = new Date();
         const params = new URLSearchParams({
-          format: 'json', limit: '2000', orderby: 'time', minmag: '1.0',
+          format: 'json', limit: '20000', orderby: 'time', minmag: '1.0',
           starttime: start.toISOString(), endtime: end.toISOString(),
         });
         const r = await fetch(`https://www.seismicportal.eu/fdsnws/event/1/query?${params}`);
