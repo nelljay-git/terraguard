@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, startTransition } from 'react';
-import { parse, isValid, startOfDay, subDays, subMonths, format } from 'date-fns';
+import { parse, isValid, startOfDay, startOfMonth, subDays, subMonths, format } from 'date-fns';
 import { fetchEarthquakeData, getCachedData, normalizeEarthquakes, type NormalizedEarthquake } from '../api/phivolcs';
 import { getSeverityLabel } from '../lib/utils';
 import { InteractiveMap } from '../components/InteractiveMap';
@@ -98,11 +98,11 @@ export function Stats() {
       let res: Awaited<ReturnType<typeof fetchEarthquakeData>> | null = null;
       if (pref === 'emsc') {
         const now = new Date();
-        const lower = timeRange === 'day' ? startOfDay(now) : timeRange === '3d' ? subDays(now, 2) : timeRange === '7d' ? subDays(now, 6) : subMonths(now, 1);
+        const lower = timeRange === 'day' ? startOfDay(now) : timeRange === '3d' ? subDays(now, 2) : timeRange === '7d' ? subDays(now, 6) : startOfMonth(now);
         const start = new Date(Date.UTC(lower.getUTCFullYear(), lower.getUTCMonth(), lower.getUTCDate(), 0,0,0,0));
         const end = new Date();
         const params = new URLSearchParams({
-          format: 'json', limit: '1000', orderby: 'time', minmag: '1.0',
+          format: 'json', limit: '2000', orderby: 'time', minmag: '1.0',
           starttime: start.toISOString(), endtime: end.toISOString(),
         });
         const r = await fetch(`https://www.seismicportal.eu/fdsnws/event/1/query?${params}`);
