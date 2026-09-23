@@ -49,8 +49,8 @@ export async function fetchEmscData(): Promise<EmscEarthquake[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    // Live: latest 100 global, minmag 1.0 to match USGS global M1.0 behavior; ordered newest first
-    const url = `${EMSC_BASE}?format=json&limit=100&orderby=time&minmag=1.0`;
+    // Live: latest global, raised to cover stats windows (This Month up to ~1000)
+    const url = `${EMSC_BASE}?format=json&limit=2000&orderby=time&minmag=1.0`;
     const res = await fetch(url, { signal: controller.signal });
     if (res.status === 204) return [];
     if (!res.ok) throw new Error(`EMSC ${res.status}`);

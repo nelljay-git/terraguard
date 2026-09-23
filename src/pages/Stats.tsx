@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, startTransition } from 'react';
 import { parse, isValid, startOfDay, startOfMonth, subDays, subMonths, format } from 'date-fns';
 import { fetchEarthquakeData, getCachedData, normalizeEarthquakes, type NormalizedEarthquake } from '../api/phivolcs';
+import { getPreferredApi } from '../lib/apiPreference';
 import { getSeverityLabel } from '../lib/utils';
 import { InteractiveMap } from '../components/InteractiveMap';
 import {
@@ -94,7 +95,7 @@ export function Stats() {
     setSyncing(true);
     try {
       // For EMSC, fetch the exact window the chart needs (otherwise 100/day cap makes 3d/7d/month inaccurate)
-      const pref = ((): string => { try { return localStorage.getItem('preferred_api') ?? 'phivolcs'; } catch { return 'phivolcs'; } })();
+      const pref = getPreferredApi();
       let res: Awaited<ReturnType<typeof fetchEarthquakeData>> | null = null;
       if (pref === 'emsc') {
         const now = new Date();
@@ -182,7 +183,7 @@ export function Stats() {
           ? subDays(now, 2)
           : timeRange === '7d'
             ? subDays(now, 6)
-            : subMonths(now, 1);
+            : startOfMonth(now);
 
     return earthquakes.filter(eq => {
       const parsedDate = parseEarthquakeDate(getEarthquakeDatetime(eq));
