@@ -13,6 +13,7 @@ import { FunFactLoader } from '../components/FunFactLoader';
 import { checkAlerts } from '../lib/alertSystem';
 import { DailyEarthReportModal } from '../components/DailyEarthReport';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import './Dashboard.css';
 
 export function Dashboard() {
@@ -81,8 +82,28 @@ export function Dashboard() {
 
   const currentMonth = new Date();
   const [showDaily, setShowDaily] = useState(false);
+  const [triggering, setTriggering] = useState(false);
   const { user } = useAuth();
   const isDailyAllowed = (user?.email?.toLowerCase() ?? '') === 'gianganwneljae@gmail.com';
+  const triggerDaily = async () => {
+    try {
+      setTriggering(true);
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token ?? '';
+      if (!token) throw new Error('Not logged in');
+      const res = await fetch('/api/trigger-daily', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!res.ok || !j.success) throw new Error(j.error || `HTTP ${res.status}`);
+      alert('Daily report triggered — check Actions in ~10s');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTriggering(false);
+    }
+  };
   const [preferredApi, setPreferredApi] = useState(() => getPreferredApi());
 
   useEffect(() => {
@@ -166,17 +187,16 @@ export function Dashboard() {
                 <Clapperboard size={14} />
                 <span>Daily Report</span>
               </button>
-              <a
+              <button
                 className="dash-refresh-btn"
-                href="https://github.com/nelljay-git/terraguard/actions/workflows/daily-earth-report.yml"
-                target="_blank"
-                rel="noreferrer"
-                title="Trigger auto post now (GitHub → Run workflow)"
-                style={{ gap: '6px', padding: '8px 14px', fontSize: '0.82rem', fontWeight: 600, textDecoration: 'none' }}
+                onClick={triggerDaily}
+                disabled={triggering}
+                title="Trigger auto post now (no GitHub login needed)"
+                style={{ gap: '6px', padding: '8px 14px', fontSize: '0.82rem', fontWeight: 600 }}
               >
                 <Clapperboard size={14} />
-                <span>Test Auto Post</span>
-              </a>
+                <span>{triggering ? 'Triggering…' : 'Test Auto Post'}</span>
+              </button>
             </>
           )}
         </div>
