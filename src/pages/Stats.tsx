@@ -93,7 +93,42 @@ export function Stats() {
   const loadData = useCallback(async () => {
     setSyncing(true);
     try {
-      const res = await fetchEarthquakeData();
+      // For EMSC, fetch the exact window the chart needs (otherwise 100/day cap makes 3d/7d/month inaccurate)
+      const pref = ((): string => { try { return localStorage.getItem('preferred_api') ?? 'phivolcs'; } catch { return 'phivolcs'; } })();
+      let res: Awaited<ReturnType<typeof fetchEarthquakeData>> | null = null;
+      if (pref === 'emsc') {
+        const now = new Date();
+        const lower = timeRange === 'day' ? startOfDay(now) : timeRange === '3d' ? subDays(now, 2) : timeRange === '7d' ? subDays(now, 6) : subMonths(now, 1);
+        const start = new Date(Date.UTC(lower.getUTCFullYear(), lower.getUTCMonth(), lower.getUTCDate(), 0,0,0,0));
+        const end = new Date();
+        const params = new URLSearchParams({
+          format: 'json', limit: '20000', orderby: 'time', minmag: '1.0',
+          starttime: start.toISOString(), endtime: end.toISOString(),
+        });
+        const r = await fetch(`https://www.seismicportal.eu/fdsnws/event/1/query?${params}`);
+        if (r.ok) {
+          const j = await r.json() as { features: Array<{ id:string; properties: { unid:string; source_id:string; source_catalog:string; time:string; lastupdate:string; lat:number; lon:number; depth:number; mag:number; magtype:string; flynn_region:string; auth:string; evtype:string }; geometry: { type:string; coordinates:[number,number,number]}; type:string }> };
+          const { normalizeEarthquakes: norm2 } = await import('../api/phivolcs');
+          // reuse EMSC->normalized via same shape as phivolcs normalize path: map to NormalizedEarthquake via EMSC properties
+          // Use the existing EMSC fetch path but with our features
+          const { fetchEmscData } = await import('../api/emsc');
+          // fallback to normal fetch if custom fails to parse
+          if (j.features?.length) {
+            const fakeRes = { data: j.features.map((f)=> ({
+              id: f.id,
+              properties: f.properties,
+              geometry: f.geometry,
+              type: f.type,
+            })) as unknown as typeof res.data, source: 'emsc' as const };
+            const normalized = normalizeEarthquakes(fakeRes.data as unknown as Parameters<typeof normalizeEarthquakes>[0]);
+            for (const eq of normalized) parseEarthquakeDate(getEarthquakeDatetime(eq));
+            setEarthquakes(normalized);
+            setLastSync(new Date());
+            return;
+          }
+        }
+      }
+      res = await fetchEarthquakeData();
       if (res.data.length > 0) {
         const normalized = normalizeEarthquakes(res.data);
         for (const eq of normalized) {
@@ -108,7 +143,7 @@ export function Stats() {
       setLoading(false);
       setSyncing(false);
     }
-  }, []);
+  }, [timeRange]);
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | undefined;
