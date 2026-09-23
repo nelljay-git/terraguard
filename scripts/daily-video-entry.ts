@@ -85,10 +85,9 @@ interface EmscEvent {
 const EMSC_BASE = 'https://www.seismicportal.eu/fdsnws/event/1/query';
 
 async function fetchDailyEmsc(): Promise<EmscEvent[]> {
-  // Day filter: 00:05 Sept 23 UTC → query Sept 22 00:00-23:59:59 UTC, no limit
+  // Daily is always previous full UTC day (00:05 Sept 23 → Sept 22)
   const now = new Date();
-  const target = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  if (now.getUTCHours() < 3) target.setUTCDate(target.getUTCDate() - 1);
+  const target = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
   const dayStart = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate(), 0,0,0,0));
   const dayEnd = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate(), 23,59,59,999));
   const params = new URLSearchParams({
@@ -115,10 +114,8 @@ async function fetchDailyEmsc(): Promise<EmscEvent[]> {
 }
 
 function buildDailyCaption(events: EmscEvent[]): string {
-  const utc = new Date().toUTCString().replace('GMT','UTC');
-  const total = events.length;
-  const strongest = events.length ? [...events].sort((a,b)=>b.properties.mag - a.properties.mag)[0] : null;
-  const dateStr = new Date().toISOString().slice(0,10);
+  const yest = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()-1));
+  const dateStr = yest.toISOString().slice(0,10);
   const lines = [
     `🌍 TERRA GUARD PH — DAILY EARTH REPORT — ${dateStr} (UTC)`,
     ``,
@@ -197,8 +194,8 @@ async function main(): Promise<void> {
   const canvas = createCanvas(DAILY_W, DAILY_H);
   const ctx = canvas.getContext('2d', { alpha:false } as unknown as Record<string,unknown>);
 
-  // Report date for the info panel (UTC now)
-  const reportDateMs = Date.now();
+  // Report date for the info panel — previous UTC day
+  const reportDateMs = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()-1);
 
   for (let i=0;i<total;i++) {
     const tt = i / DAILY_FPS;

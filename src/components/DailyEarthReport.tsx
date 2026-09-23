@@ -847,11 +847,11 @@ export function DailyEarthReportModal({
     let cancelled = false;
     (async()=>{
       try{
+        // Daily is always the previous full UTC day (00:05 Sept 23 → Sept 22)
         const now = new Date();
-        const target = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-        if (now.getUTCHours() < 3) target.setUTCDate(target.getUTCDate() - 1);
-        const dayStart = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate(),0,0,0,0));
-        const dayEnd = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate(),23,59,59,999));
+        const yesterday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+        const dayStart = new Date(Date.UTC(yesterday.getUTCFullYear(), yesterday.getUTCMonth(), yesterday.getUTCDate(),0,0,0,0));
+        const dayEnd = new Date(Date.UTC(yesterday.getUTCFullYear(), yesterday.getUTCMonth(), yesterday.getUTCDate(),23,59,59,999));
         const params = new URLSearchParams({
           format: 'json', limit: '20000', orderby: 'time', minmag: '1.0',
           starttime: dayStart.toISOString(), endtime: dayEnd.toISOString(),
@@ -1082,7 +1082,8 @@ export function DailyEarthReportModal({
         return;
       }
       const loopT = phase==='preview' ? t % (DAILY_DUR+1) : t;
-      drawDailyFrame(ctx as unknown as CanvasRenderingContext2D, viewRef.current, eventsRef.current, loopT, Date.now());
+      const yestMs = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()-1);
+      drawDailyFrame(ctx as unknown as CanvasRenderingContext2D, viewRef.current, eventsRef.current, loopT, yestMs);
       // per-circle + daily + highest sounds in preview — highlight-aware wipe
       if (phase==='preview') {
         if (loopT < lastLoopTRef.current - 0.5) { playedRef.current.clear(); dailyPlayedRef.current=false; highestPlayedRef.current=false; prevHighlightRef.current=false; lastCircleAtRef.current=0; }
