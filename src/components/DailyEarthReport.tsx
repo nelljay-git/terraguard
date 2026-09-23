@@ -505,10 +505,10 @@ function drawHighestModal(
   const ease = easeOutCubic(a);
   ctx.save();
   ctx.globalAlpha = ease;
-  // modal just above bottom panel so it doesn't cover Japan-area circles
-  const mw = 760, mh = 220;
+  // small, fixed bottom-center just above panel
+  const mw = 560, mh = 150;
   const panelTop = DAILY_H - 470 - 20; // 950
-  const my = panelTop - mh/2 - 24; // 816 centered above panel
+  const my = panelTop - mh/2 - 18; // ~855 fixed bottom-center
   const mx = DAILY_W/2;
   const mx0 = mx - mw/2, my0 = my - mh/2;
   // connector — nearest edge of modal to circle, offset 12px out, with elbow so it never sits on wipe line
@@ -579,39 +579,39 @@ function drawHighestModal(
   ctx.textAlign = 'center';
   ctx.fillText('★ HIGHEST RECORDED', mx, my0 + 26);
   ctx.fillStyle = '#ffffff';
-  ctx.font = '700 22px Oswald, Inter, sans-serif';
-  ctx.fillText(`M${ev.properties.mag.toFixed(1)} — ${ev.properties.flynn_region.slice(0,38)}`, mx, my0 + 54);
-  // details grid
+  ctx.font = '700 18px Oswald, Inter, sans-serif';
+  ctx.fillText(`M${ev.properties.mag.toFixed(1)} — ${ev.properties.flynn_region.slice(0,32)}`, mx, my0 + 48);
+  // details grid — compact for small modal
   const d = new Date(ev.properties.time);
   const dateStr = isNaN(d.getTime()) ? ev.properties.time : `${String(d.getUTCDate()).padStart(2,'0')} ${UTC_MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()} • ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}:${String(d.getUTCSeconds()).padStart(2,'0')} UTC`;
-  ctx.font = '500 12px Inter, sans-serif';
+  ctx.font = '500 11px Inter, sans-serif';
   ctx.fillStyle = '#9ca3af';
   ctx.textAlign = 'left';
-  const leftX = mx0 + 22;
-  const rightX = mx + 10;
-  const y1 = my0 + 84, y2 = my0 + 108, y3 = my0 + 132;
+  const leftX = mx0 + 18;
+  const rightX = mx + 8;
+  const y1 = my0 + 72, y2 = my0 + 92, y3 = my0 + 112;
   ctx.fillText('EPICENTER', leftX, y1);
   ctx.fillText('TIME (UTC)', leftX, y2);
   ctx.fillText('DEPTH', leftX, y3);
   ctx.fillStyle = '#e5e7eb';
-  ctx.font = '600 13px Inter, sans-serif';
-  ctx.fillText(`${ev.properties.lat.toFixed(2)}°${ev.properties.lat>=0?'N':'S'}, ${ev.properties.lon.toFixed(2)}°${ev.properties.lon>=0?'E':'W'}`, leftX + 84, y1);
-  ctx.fillText(dateStr, leftX + 84, y2);
-  ctx.fillText(`${Math.round(ev.properties.depth)} km`, leftX + 84, y3);
+  ctx.font = '600 11px Inter, sans-serif';
+  ctx.fillText(`${ev.properties.lat.toFixed(2)}°${ev.properties.lat>=0?'N':'S'}, ${ev.properties.lon.toFixed(2)}°${ev.properties.lon>=0?'E':'W'}`, leftX + 78, y1);
+  ctx.fillText(dateStr, leftX + 78, y2);
+  ctx.fillText(`${Math.round(ev.properties.depth)} km`, leftX + 78, y3);
   ctx.fillStyle = '#9ca3af';
-  ctx.font = '500 12px Inter, sans-serif';
+  ctx.font = '500 11px Inter, sans-serif';
   ctx.fillText('LOCATION', rightX, y1);
   ctx.fillText('MAG', rightX, y2);
   ctx.fillText('ID', rightX, y3);
   ctx.fillStyle = '#ffffff';
-  ctx.font = '600 13px Inter, sans-serif';
-  ctx.fillText(ev.properties.flynn_region.slice(0,28), rightX + 62, y1);
+  ctx.font = '600 11px Inter, sans-serif';
+  ctx.fillText(ev.properties.flynn_region.slice(0,24), rightX + 52, y1);
   ctx.fillStyle = severityColor(ev.properties.mag);
-  ctx.font = '700 13px Inter, sans-serif';
-  ctx.fillText(ev.properties.mag.toFixed(1), rightX + 62, y2);
+  ctx.font = '700 11px Inter, sans-serif';
+  ctx.fillText(ev.properties.mag.toFixed(1), rightX + 52, y2);
   ctx.fillStyle = '#9ca3af';
-  ctx.font = '500 11px Inter, sans-serif';
-  ctx.fillText(ev.properties.unid, rightX + 62, y3);
+  ctx.font = '500 10px Inter, sans-serif';
+  ctx.fillText(ev.properties.unid, rightX + 52, y3);
   ctx.restore();
   ctx.textAlign = 'left';
 }
