@@ -218,7 +218,7 @@ async function main(): Promise<void> {
   if (!hasCircle) console.error('circle-appear.mp3 missing — circles silent');
   if (!hasDaily) console.error('daily-report.mp3 missing — panel silent');
   if (!hasHighest) console.error('highest-recorded.mp3 missing — highlight silent');
-  const circlePlan = hasCircle ? (()=>{ const sorted=[...events].sort((a,b)=> a.properties.lon - b.properties.lon); let lastAt=-1000; return sorted.map(ev=>{ let at=Math.round((DAILY_WIPE_START + ((ev.properties.lon+180)/360)*DAILY_WIPE_DUR)*1000); if(lastAt>=0 && at - lastAt <30) at=lastAt+30; lastAt=at; return { file: circleFile, at, vol: 0.92 }; }).filter(s=> s.at >=0 && s.at <= DAILY_DUR*1000); })() : [];
+  const circlePlan = hasCircle ? [...events].sort((a,b)=> a.properties.lon - b.properties.lon).map(ev=> ({ file: circleFile, at: Math.round((DAILY_WIPE_START + ((ev.properties.lon+180)/360)*DAILY_WIPE_DUR)*1000), vol: 0.78 })).filter(s=> s.at >=0 && s.at <= DAILY_DUR*1000) : [];
   const topForHighest = [...events].sort((a,b)=> b.properties.mag - a.properties.mag)[0];
   const highestAt = topForHighest ? Math.round((DAILY_WIPE_START + ((topForHighest.properties.lon+180)/360)*DAILY_WIPE_DUR)*1000) : -1;
   const highestPlan = hasHighest && highestAt>=0 ? [{ file: highestFile, at: highestAt, vol: 0.96 }] : [];

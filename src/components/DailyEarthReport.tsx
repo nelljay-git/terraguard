@@ -1111,8 +1111,8 @@ export function DailyEarthReportModal({
         } else if (wP >= 1) {
           for (const ev of eventsRef.current) if (!playedRef.current.has(ev.id)) { playedRef.current.add(ev.id); newly.push(ev); }
         }
-        // no throttle — every circle pops (close clusters stagger 30ms to stay audible)
-        newly.forEach((_, idx)=> setTimeout(()=> playCircleNow(), idx * 30));
+        // every circle pops exactly when wipe hits it — no stagger, stays synced
+        newly.forEach(()=> playCircleNow());
         if (isHighNow && !prevHighlightRef.current && !highestPlayedRef.current) {
           highestPlayedRef.current = true;
           playHighestNow();
