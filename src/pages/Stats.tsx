@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, startTransition } from 'react';
-import { parse, isValid, startOfDay, startOfMonth, subDays, subMonths, format } from 'date-fns';
+import { parse, isValid, startOfDay, startOfMonth, subDays, format } from 'date-fns';
 import { fetchEarthquakeData, getCachedData, normalizeEarthquakes, type NormalizedEarthquake } from '../api/phivolcs';
 import { getPreferredApi } from '../lib/apiPreference';
 import { getSeverityLabel } from '../lib/utils';
