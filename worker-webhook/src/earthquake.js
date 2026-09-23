@@ -1567,6 +1567,23 @@ export default {
         // Mark as auto for video retry gate (manual trigger should dispatch immediately)
         env._isAuto = true;
         ctx.waitUntil((async () => {
+            // Daily Earth Report — precise Cloudflare cron (00:05 UTC sharp, GitHub schedule can slip 30-90m)
+            try {
+                const now = new Date();
+                if (now.getUTCHours() === 0 && now.getUTCMinutes() === 5) {
+                    const repo = (env.GH_REPO ?? "nelljay-git/terraguard").trim();
+                    const token = (env.GH_DISPATCH_TOKEN ?? "").trim();
+                    if (token && repo.includes("/")) {
+                        const r = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/daily-earth-report.yml/dispatches`, {
+                            method: "POST",
+                            headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "TerraGuard-Worker/1.0" },
+                            body: JSON.stringify({ ref: "main" }),
+                        });
+                        if (r.status === 204) console.log("[cron][daily-report] dispatched 00:05 UTC");
+                        else console.error(`[cron][daily-report] HTTP ${r.status}`);
+                    }
+                }
+            } catch (e) { console.error("[cron][daily-report] failed", e instanceof Error ? e.message : String(e)); }
             try {
                 console.log(`[cron][video-pending] ${await processPendingVideos(env)}`);
             } catch (e) {
