@@ -161,7 +161,7 @@ export function Dashboard() {
       <div className="dash-status-bar">
         <div className="dash-status-left">
           <h1 className="dash-page-title">Dashboard</h1>
-          <span className="dash-subtitle text-muted">{sourceName === 'USGS' ? 'Global earthquake monitoring — live data from USGS' : 'Philippine earthquake monitoring — live data from PHIVOLCS'}</span>
+          <span className="dash-subtitle text-muted">{sourceName === 'USGS' ? 'Global earthquake monitoring — live data from USGS' : sourceName === 'EMSC' ? 'Global earthquake monitoring — live data from EMSC' : 'Philippine earthquake monitoring — live data from PHIVOLCS'}</span>
         </div>
         <div className="dash-status-right">
           <div className={`dash-live-indicator ${syncing ? 'syncing' : ''}`}>
