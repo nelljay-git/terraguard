@@ -116,6 +116,8 @@ async function fetchDailyEmsc(): Promise<EmscEvent[]> {
 function buildDailyCaption(events: EmscEvent[]): string {
   const yest = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()-1));
   const dateStr = yest.toISOString().slice(0,10);
+  const total = events.length;
+  const strongest = events.length ? [...events].sort((a,b)=>b.properties.mag - a.properties.mag)[0] : null;
   const lines = [
     `🌍 TERRA GUARD PH — DAILY EARTH REPORT — ${dateStr} (UTC)`,
     ``,
