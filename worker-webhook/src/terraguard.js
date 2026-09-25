@@ -1382,8 +1382,45 @@ async function postWeatherToFacebook(event, source, env) {
     };
     const message = slot.kind === "cyclone" ? buildCycloneFbMessage(event, source) : buildWeatherFbMessage(event, source);
     // Prefer official PAGASA images straight from the bulletin; fallback to branded pubmat.
-    //  - Cyclone: track_*.png (pubfiles tamss)
-    //  - Daily forecast: surface_map.jpg / chart.png / we*.png / himawari gif
+    //  - Cyclone: track_*.png (pubfiles tamss) — single image
+    //  - Daily forecast: surface_map.jpg / chart.png / we*.png / himawari gif — up to 4 images
+    // For daily: try multi-photo post (unpublished upload + attached_media) first; fallback to single loops.
+    if (slot.kind === "weather") {
+        const wImgs = (event.parsed?.weatherImages ?? []).filter((u) => /^https?:\/\/(pubfiles\.pagasa\.dost\.gov\.ph|src\.meteopilipinas\.gov\.ph)\//i.test(u));
+        if (wImgs.length > 1) {
+            const uploadedIds = [];
+            for (const url of wImgs) {
+                try {
+                    const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(withProof({ access_token: pageToken, url, published: false })),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && data.id) uploadedIds.push(data.id);
+                    else console.error(`[fb][pagasa] unpublished upload failed (${url.slice(0, 80)}): ${String(data?.error?.message ?? `HTTP ${res.status}`).slice(0, 300)}`);
+                } catch (e) {
+                    console.error(`[fb][pagasa] unpublished upload exception (${url.slice(0, 80)})`, e instanceof Error ? e.message : String(e));
+                }
+            }
+            if (uploadedIds.length > 0) {
+                try {
+                    const attached = uploadedIds.map((id) => ({ media_fbid: id }));
+                    const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/feed`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(withProof({ access_token: pageToken, message, attached_media: attached })),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && data.id) return `posted multi ${data.id} with ${uploadedIds.length} bulletin images`;
+                    console.error(`[fb][pagasa] multi feed post failed: ${String(data?.error?.message ?? `HTTP ${res.status}`).slice(0, 400)}`);
+                } catch (e) {
+                    console.error("[fb][pagasa] multi feed exception", e instanceof Error ? e.message : String(e));
+                }
+            }
+        }
+    }
+    // Single-photo fallback (cyclone single track, or weather single + pubmat fallback chain)
     let photoUrls = [slot.image];
     if (slot.kind === "cyclone" && event.parsed?.trackImage && /^https?:\/\/pubfiles\.pagasa\.dost\.gov\.ph\//i.test(event.parsed.trackImage)) {
         photoUrls = [event.parsed.trackImage, slot.image];
@@ -1785,23 +1822,47 @@ async function runMonitor(env) {
                 catch (e) {
                     outcomes.push(`${source.key}: fb error ${e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120)}`);
                 }
-                // Discord mirror: same FB template; prefer official bulletin image (track for cyclone, surface_map/chart/we98/himawari for daily), else branded pubmat.
+                // Discord mirror: same FB template; prefer official bulletin images (all 4 for daily), else branded pubmat.
                 try {
                     const slot = weatherFbSlot(source.key);
                     if (slot && !event.parsed?.statesNoActive) {
                         const fbMessage = slot.kind === "cyclone" ? buildCycloneFbMessage(event, source) : buildWeatherFbMessage(event, source);
                         const fbTitle = slot.kind === "cyclone" ? "TerraGuard Cyclone Report" : "TerraGuard Weather Report";
-                        let discordMirrorImage = slot.image;
                         if (slot.kind === "cyclone" && event.parsed?.trackImage && /^https?:\/\/pubfiles\.pagasa\.dost\.gov\.ph\//i.test(event.parsed.trackImage)) {
-                            discordMirrorImage = event.parsed.trackImage;
+                            await sendDiscordReport(env.DISCORD_WEBHOOK_URL, fbTitle, fbMessage, risk.status, source.url, event.parsed.trackImage, "TerraGuard • DOST-PAGASA (authoritative source)");
+                            outcomes.push(`${source.key}: discord mirror sent via track`);
                         } else if (slot.kind === "weather") {
                             const wImgs = (event.parsed?.weatherImages ?? []).filter((u) => /^https?:\/\/(pubfiles\.pagasa\.dost\.gov\.ph|src\.meteopilipinas\.gov\.ph)\//i.test(u));
-                            if (wImgs.length > 0) discordMirrorImage = wImgs[0];
-                            else if (event.parsed?.weatherImage && /^https?:\/\/(pubfiles\.pagasa\.dost\.gov\.ph|src\.meteopilipinas\.gov\.ph)\//i.test(event.parsed.weatherImage)) discordMirrorImage = event.parsed.weatherImage;
+                            const allImgs = wImgs.length > 0 ? wImgs : (event.parsed?.weatherImage && /^https?:\/\/(pubfiles\.pagasa\.dost\.gov\.ph|src\.meteopilipinas\.gov\.ph)\//i.test(event.parsed.weatherImage) ? [event.parsed.weatherImage] : []);
+                            if (allImgs.length > 1) {
+                                const labelFor = (u) => {
+                                    if (/surface_map/i.test(u)) return "Surface Map Analysis";
+                                    if (/\/chart\.png/i.test(u)) return "Predicted Mean Sea Level Pressure Analysis";
+                                    if (/\/we\d+\.png/i.test(u)) return "Predicted Wind Analysis";
+                                    if (/meteopilipinas/i.test(u) || /1irsml/i.test(u)) return "Himawari Satellite Image";
+                                    if (/pubfiles/i.test(u)) return "PAGASA Bulletin Image";
+                                    return "Weather Chart";
+                                };
+                                // First image carries the full FB message
+                                await sendDiscordReport(env.DISCORD_WEBHOOK_URL, fbTitle, fbMessage, risk.status, source.url, allImgs[0], "TerraGuard • DOST-PAGASA (authoritative source)");
+                                outcomes.push(`${source.key}: discord mirror sent via bulletin (1/${allImgs.length})`);
+                                for (let i = 1; i < allImgs.length; i++) {
+                                    const url = allImgs[i];
+                                    const label = labelFor(url);
+                                    await new Promise((r) => setTimeout(r, 600));
+                                    await sendDiscordReport(env.DISCORD_WEBHOOK_URL, `${fbTitle} — ${label}`, `**${label}**\n${source.url}`, risk.status, source.url, url, "TerraGuard • DOST-PAGASA (authoritative source)");
+                                    outcomes.push(`${source.key}: discord mirror extra ${i + 1}/${allImgs.length} via ${/meteopilipinas/i.test(url) ? "satellite" : "bulletin"}`);
+                                }
+                            } else {
+                                const img = allImgs[0] || slot.image;
+                                await sendDiscordReport(env.DISCORD_WEBHOOK_URL, fbTitle, fbMessage, risk.status, source.url, img, "TerraGuard • DOST-PAGASA (authoritative source)");
+                                const via = /pubfiles/i.test(img) ? "bulletin" : /meteopilipinas/i.test(img) ? "satellite" : "pubmat";
+                                outcomes.push(`${source.key}: discord mirror sent via ${via}`);
+                            }
+                        } else {
+                            await sendDiscordReport(env.DISCORD_WEBHOOK_URL, fbTitle, fbMessage, risk.status, source.url, slot.image, "TerraGuard • DOST-PAGASA (authoritative source)");
+                            outcomes.push(`${source.key}: discord mirror sent via pubmat`);
                         }
-                        await sendDiscordReport(env.DISCORD_WEBHOOK_URL, fbTitle, fbMessage, risk.status, source.url, discordMirrorImage, "TerraGuard • DOST-PAGASA (authoritative source)");
-                        const via = /pubfiles/i.test(discordMirrorImage) ? "bulletin" : /meteopilipinas/i.test(discordMirrorImage) ? "satellite" : "pubmat";
-                        outcomes.push(`${source.key}: discord mirror sent via ${via}`);
                     }
                 }
                 catch (e) {
