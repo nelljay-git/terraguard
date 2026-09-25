@@ -591,6 +591,44 @@ function extractCycloneTrackImage(html) {
     return null;
 }
 // ---------------------------------------------------------------------------
+// PAGASA daily forecast images (e.g. surface_map.jpg, chart.png, we98.png, himawari gif)
+// Found on the /weather page bottom: 4 images (see screenshot). Used for DAILY WEATHER UPDATE.
+// Falls back to [] — caller uses branded pubmat instead.
+// ---------------------------------------------------------------------------
+function extractForecastImages(html) {
+    if (!html) return [];
+    const imgRe = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    const raw = [];
+    let m;
+    while ((m = imgRe.exec(html)) !== null) {
+        let url = (m[1] || "").trim();
+        if (!url) continue;
+        if (url.startsWith("//")) url = "https:" + url;
+        else if (url.startsWith("/")) url = "https://www.pagasa.dost.gov.ph" + url;
+        const isTamss = /pubfiles\.pagasa\.dost\.gov\.ph[^?]*\/tamss\/weather\//i.test(url);
+        const isMeteo = /src\.meteopilipinas\.gov\.ph/i.test(url);
+        if ((isTamss || isMeteo) && /\.(?:png|jpe?g|gif|webp)(?:[?#]|$)/i.test(url)) {
+            if (/\/track_/i.test(url)) continue; // cyclone track belongs to cyclone path, not daily
+            raw.push(url);
+        }
+    }
+    const uniq = [...new Set(raw)];
+    const score = (u) => {
+        if (/surface_map/i.test(u)) return 1;
+        if (/\/chart\.png/i.test(u)) return 2;
+        if (/\/we\d+\.png/i.test(u)) return 3;
+        if (/pubfiles.*tamss/i.test(u)) return 4;
+        if (/meteopilipinas/i.test(u)) return 5;
+        return 6;
+    };
+    uniq.sort((a, b) => score(a) - score(b));
+    return uniq;
+}
+function extractPrimaryWeatherImage(html) {
+    const arr = extractForecastImages(html);
+    return arr[0] || null;
+}
+// ---------------------------------------------------------------------------
 // Base builder + per-type parsers
 // ---------------------------------------------------------------------------
 function baseParse(result, text, fallbackTitle) {
@@ -613,6 +651,8 @@ function baseParse(result, text, fallbackTitle) {
         affectedAreas: [...new Set(signalAreas)].slice(0, 200),
         hazards: extractHazards(text),
         trackImage: extractCycloneTrackImage(result.html),
+        weatherImages: extractForecastImages(result.html),
+        weatherImage: extractPrimaryWeatherImage(result.html),
         text: text.slice(0, 20000),
         statesNoActive: detectNoActive(text, result.type),
     };
@@ -729,7 +769,7 @@ async function sha256Hex(input) {
     return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 async function buildNormalized(result, parsed) {
-    const normalizedBody = normalizeText([parsed.title, parsed.issuedAt, parsed.text, parsed.trackImage ?? ""].filter(Boolean).join("\n"));
+    const normalizedBody = normalizeText([parsed.title, parsed.issuedAt, parsed.text, parsed.trackImage ?? "", (parsed.weatherImages ?? []).join("\n"), parsed.weatherImage ?? ""].filter(Boolean).join("\n"));
     return {
         source: SOURCE_ATTRIBUTION,
         sourceKey: result.sourceKey,
@@ -1341,13 +1381,19 @@ async function postWeatherToFacebook(event, source, env) {
         return params;
     };
     const message = slot.kind === "cyclone" ? buildCycloneFbMessage(event, source) : buildWeatherFbMessage(event, source);
-    // Cyclone: prefer PAGASA's official track image (pubfiles .../tamss/weather/track_*.png) straight from the bulletin;
-    // falls back to branded cyclone pubmat if no track image or upload fails.
-    let fbImage = slot.image;
+    // Prefer official PAGASA images straight from the bulletin; fallback to branded pubmat.
+    //  - Cyclone: track_*.png (pubfiles tamss)
+    //  - Daily forecast: surface_map.jpg / chart.png / we*.png / himawari gif
+    let photoUrls = [slot.image];
     if (slot.kind === "cyclone" && event.parsed?.trackImage && /^https?:\/\/pubfiles\.pagasa\.dost\.gov\.ph\//i.test(event.parsed.trackImage)) {
-        fbImage = event.parsed.trackImage;
+        photoUrls = [event.parsed.trackImage, slot.image];
+    } else if (slot.kind === "weather") {
+        const wImgs = (event.parsed?.weatherImages ?? []).filter((u) => /^https?:\/\/(pubfiles\.pagasa\.dost\.gov\.ph|src\.meteopilipinas\.gov\.ph)\//i.test(u));
+        if (wImgs.length > 0) photoUrls = [...wImgs, slot.image];
+        else if (event.parsed?.weatherImage && /^https?:\/\/(pubfiles\.pagasa\.dost\.gov\.ph|src\.meteopilipinas\.gov\.ph)\//i.test(event.parsed.weatherImage)) {
+            photoUrls = [event.parsed.weatherImage, slot.image];
+        }
     }
-    const photoUrls = fbImage === slot.image ? [fbImage] : [fbImage, slot.image];
     for (const photoUrl of photoUrls) {
         try {
             const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`, {
@@ -1356,8 +1402,10 @@ async function postWeatherToFacebook(event, source, env) {
                 body: JSON.stringify(withProof({ access_token: pageToken, caption: message, url: photoUrl })),
             });
             const data = await res.json().catch(() => ({}));
-            if (res.ok && (data.post_id || data.id))
-                return `posted photo ${data.post_id ?? data.id} via ${photoUrl.includes("pubfiles") ? "track" : "pubmat"}`;
+            if (res.ok && (data.post_id || data.id)) {
+                const via = /pubfiles/i.test(photoUrl) ? (slot.kind === "cyclone" ? "track" : "bulletin") : /meteopilipinas/i.test(photoUrl) ? "satellite" : "pubmat";
+                return `posted photo ${data.post_id ?? data.id} via ${via}`;
+            }
             console.error(`[fb][pagasa] photo post failed (${photoUrl.slice(0, 90)}): ${String(data?.error?.message ?? `HTTP ${res.status}`).slice(0, 300)}`);
         }
         catch (e) {
@@ -1737,8 +1785,7 @@ async function runMonitor(env) {
                 catch (e) {
                     outcomes.push(`${source.key}: fb error ${e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120)}`);
                 }
-                // Discord mirror: same FB template; for cyclones prefer PAGASA track image, else branded pubmat.
-                // Addition to the technical report above. Same gate, same never-throw contract.
+                // Discord mirror: same FB template; prefer official bulletin image (track for cyclone, surface_map/chart/we98/himawari for daily), else branded pubmat.
                 try {
                     const slot = weatherFbSlot(source.key);
                     if (slot && !event.parsed?.statesNoActive) {
@@ -1747,9 +1794,14 @@ async function runMonitor(env) {
                         let discordMirrorImage = slot.image;
                         if (slot.kind === "cyclone" && event.parsed?.trackImage && /^https?:\/\/pubfiles\.pagasa\.dost\.gov\.ph\//i.test(event.parsed.trackImage)) {
                             discordMirrorImage = event.parsed.trackImage;
+                        } else if (slot.kind === "weather") {
+                            const wImgs = (event.parsed?.weatherImages ?? []).filter((u) => /^https?:\/\/(pubfiles\.pagasa\.dost\.gov\.ph|src\.meteopilipinas\.gov\.ph)\//i.test(u));
+                            if (wImgs.length > 0) discordMirrorImage = wImgs[0];
+                            else if (event.parsed?.weatherImage && /^https?:\/\/(pubfiles\.pagasa\.dost\.gov\.ph|src\.meteopilipinas\.gov\.ph)\//i.test(event.parsed.weatherImage)) discordMirrorImage = event.parsed.weatherImage;
                         }
                         await sendDiscordReport(env.DISCORD_WEBHOOK_URL, fbTitle, fbMessage, risk.status, source.url, discordMirrorImage, "TerraGuard • DOST-PAGASA (authoritative source)");
-                        outcomes.push(`${source.key}: discord mirror sent via ${discordMirrorImage.includes("pubfiles") ? "track" : "pubmat"}`);
+                        const via = /pubfiles/i.test(discordMirrorImage) ? "bulletin" : /meteopilipinas/i.test(discordMirrorImage) ? "satellite" : "pubmat";
+                        outcomes.push(`${source.key}: discord mirror sent via ${via}`);
                     }
                 }
                 catch (e) {
