@@ -1262,8 +1262,6 @@ function buildCycloneFbMessage(event, source) {
     const lines = [
         `${riskEmoji} TROPICAL CYCLONE BULLETIN${no ? ` NO. ${no}` : ""}: ${name} — ${issued} | TerraGuard PH`,
         "",
-        `Friendly update: Here's what PAGASA's latest bulletin says about ${name} — summarized in plain language so it's easier to follow, without changing any official detail.`,
-        "",
         `🕐 Issued: ${issued}`,
         `🏷️ TERRAGUARD RISK STATUS: ${risk?.status ?? "LOW"} ${riskEmoji}`,
     ];
@@ -1283,7 +1281,7 @@ function buildCycloneFbMessage(event, source) {
     if (parsed.hazards && parsed.hazards.length > 0) lines.push("", "⚠️ OTHER HAZARDS TO NOTE", ...parsed.hazards.map(h => `• ${titleCase(h)}`));
     const next = nextBulletinLine(parsed.text);
     if (next) lines.push("", `⏭️ NEXT UPDATE: ${next}`, "Tip: Set a reminder to check again around that time — conditions can change quickly.");
-    lines.push("", "—", "🤝 A calm reminder: No need to panic. Being informed and prepared is the best protection. Keep your emergency kit ready, charge your devices, and look out for neighbors.", "📚 PAGASA remains the authoritative source — TerraGuard only summarizes for easier reading.", `🔗 Official bulletin: ${source.url}`, "💬 Questions or want to share updates from your area? Join us: https://discord.gg/tdGrvnvehP", "", "#TropicalCyclonePH #PAGASA #BagyoPH #TerraGuardPH #StaySafe");
+    lines.push("", "—", "Reminder: No need to panic. Being informed and prepared is the best protection. Keep your emergency kit ready, charge your devices, and look out for neighbors.", "📚 PAGASA remains the authoritative source — TerraGuard only summarizes for easier reading.", `🔗 Official bulletin: ${source.url}`, "💬 Questions or want to share updates from your area? Join us: https://discord.gg/tdGrvnvehP", "", "#TropicalCyclonePH #PAGASA #BagyoPH #TerraGuardPH #StaySafe");
     return sanitizeReport(lines.join("\n"));
 }
 async function postWeatherToFacebook(event, source, env) {
