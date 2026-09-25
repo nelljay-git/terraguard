@@ -557,6 +557,40 @@ function detectNoActive(text, type) {
     return false;
 }
 // ---------------------------------------------------------------------------
+// PAGASA cyclone track image (e.g. https://pubfiles.pagasa.dost.gov.ph/tamss/weather/track_queenie.png)
+// Found in <img src="...tamss/weather/track_*.png"> on the severe-weather-bulletin page.
+// Falls back to null — caller uses branded pubmat instead.
+// ---------------------------------------------------------------------------
+function extractCycloneTrackImage(html) {
+    if (!html) return null;
+    // Primary: <img src="https://pubfiles...tamss/...track_*.png"> — only tamss/track images count, not sidebar icons.
+    const imgRe = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    const candidates = [];
+    let m;
+    while ((m = imgRe.exec(html)) !== null) {
+        let url = (m[1] || "").trim();
+        if (!url) continue;
+        if (url.startsWith("//")) url = "https:" + url;
+        else if (url.startsWith("/")) url = "https://www.pagasa.dost.gov.ph" + url;
+        if (/pubfiles\.pagasa\.dost\.gov\.ph/i.test(url) && /\.(?:png|jpe?g|gif|webp)(?:[?#]|$)/i.test(url)) {
+            if (/\/track_/i.test(url) || /\/tamss\//i.test(url)) candidates.push(url);
+        }
+    }
+    if (candidates.length > 0) {
+        const track = candidates.find((u) => /\/track_/i.test(u));
+        return track || candidates[0];
+    }
+    // Fallback: raw pubfiles URL outside an img tag — also require tamss/track.
+    const urlRe = /https?:\/\/pubfiles\.pagasa\.dost\.gov\.ph\/[^\s"'<>]+\.(?:png|jpe?g|gif|webp)/gi;
+    const rawAll = [...html.matchAll(urlRe)].map((x) => x[0]);
+    const raw = rawAll.filter((u) => /\/track_/i.test(u) || /\/tamss\//i.test(u));
+    if (raw.length > 0) {
+        const track = raw.find((u) => /\/track_/i.test(u));
+        return track || raw[0];
+    }
+    return null;
+}
+// ---------------------------------------------------------------------------
 // Base builder + per-type parsers
 // ---------------------------------------------------------------------------
 function baseParse(result, text, fallbackTitle) {
@@ -578,6 +612,7 @@ function baseParse(result, text, fallbackTitle) {
         systems: extractSystems(text),
         affectedAreas: [...new Set(signalAreas)].slice(0, 200),
         hazards: extractHazards(text),
+        trackImage: extractCycloneTrackImage(result.html),
         text: text.slice(0, 20000),
         statesNoActive: detectNoActive(text, result.type),
     };
@@ -694,7 +729,7 @@ async function sha256Hex(input) {
     return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 async function buildNormalized(result, parsed) {
-    const normalizedBody = normalizeText([parsed.title, parsed.issuedAt, parsed.text].filter(Boolean).join("\n"));
+    const normalizedBody = normalizeText([parsed.title, parsed.issuedAt, parsed.text, parsed.trackImage ?? ""].filter(Boolean).join("\n"));
     return {
         source: SOURCE_ATTRIBUTION,
         sourceKey: result.sourceKey,
@@ -1306,20 +1341,28 @@ async function postWeatherToFacebook(event, source, env) {
         return params;
     };
     const message = slot.kind === "cyclone" ? buildCycloneFbMessage(event, source) : buildWeatherFbMessage(event, source);
-    // Static branded image — plain file on Pages, no card warmup needed.
-    try {
-        const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(withProof({ access_token: pageToken, caption: message, url: slot.image })),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && (data.post_id || data.id))
-            return `posted photo ${data.post_id ?? data.id}`;
-        console.error(`[fb][pagasa] photo post failed: ${String(data?.error?.message ?? `HTTP ${res.status}`).slice(0, 300)}`);
+    // Cyclone: prefer PAGASA's official track image (pubfiles .../tamss/weather/track_*.png) straight from the bulletin;
+    // falls back to branded cyclone pubmat if no track image or upload fails.
+    let fbImage = slot.image;
+    if (slot.kind === "cyclone" && event.parsed?.trackImage && /^https?:\/\/pubfiles\.pagasa\.dost\.gov\.ph\//i.test(event.parsed.trackImage)) {
+        fbImage = event.parsed.trackImage;
     }
-    catch (e) {
-        console.error("[fb][pagasa] photo post exception", e instanceof Error ? e.message : String(e));
+    const photoUrls = fbImage === slot.image ? [fbImage] : [fbImage, slot.image];
+    for (const photoUrl of photoUrls) {
+        try {
+            const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(withProof({ access_token: pageToken, caption: message, url: photoUrl })),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && (data.post_id || data.id))
+                return `posted photo ${data.post_id ?? data.id} via ${photoUrl.includes("pubfiles") ? "track" : "pubmat"}`;
+            console.error(`[fb][pagasa] photo post failed (${photoUrl.slice(0, 90)}): ${String(data?.error?.message ?? `HTTP ${res.status}`).slice(0, 300)}`);
+        }
+        catch (e) {
+            console.error(`[fb][pagasa] photo post exception (${photoUrl.slice(0, 90)})`, e instanceof Error ? e.message : String(e));
+        }
     }
     try {
         const res = await fetch(`https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/feed`, {
@@ -1694,16 +1737,19 @@ async function runMonitor(env) {
                 catch (e) {
                     outcomes.push(`${source.key}: fb error ${e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120)}`);
                 }
-                // Discord mirror: the same FB template + branded image, in
-                // addition to the technical report above. Same gate, same
-                // never-throw contract.
+                // Discord mirror: same FB template; for cyclones prefer PAGASA track image, else branded pubmat.
+                // Addition to the technical report above. Same gate, same never-throw contract.
                 try {
                     const slot = weatherFbSlot(source.key);
                     if (slot && !event.parsed?.statesNoActive) {
                         const fbMessage = slot.kind === "cyclone" ? buildCycloneFbMessage(event, source) : buildWeatherFbMessage(event, source);
                         const fbTitle = slot.kind === "cyclone" ? "TerraGuard Cyclone Report" : "TerraGuard Weather Report";
-                        await sendDiscordReport(env.DISCORD_WEBHOOK_URL, fbTitle, fbMessage, risk.status, source.url, slot.image, "TerraGuard • DOST-PAGASA (authoritative source)");
-                        outcomes.push(`${source.key}: discord mirror sent`);
+                        let discordMirrorImage = slot.image;
+                        if (slot.kind === "cyclone" && event.parsed?.trackImage && /^https?:\/\/pubfiles\.pagasa\.dost\.gov\.ph\//i.test(event.parsed.trackImage)) {
+                            discordMirrorImage = event.parsed.trackImage;
+                        }
+                        await sendDiscordReport(env.DISCORD_WEBHOOK_URL, fbTitle, fbMessage, risk.status, source.url, discordMirrorImage, "TerraGuard • DOST-PAGASA (authoritative source)");
+                        outcomes.push(`${source.key}: discord mirror sent via ${discordMirrorImage.includes("pubfiles") ? "track" : "pubmat"}`);
                     }
                 }
                 catch (e) {
