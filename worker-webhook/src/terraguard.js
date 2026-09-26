@@ -1719,7 +1719,32 @@ const CORS = {
 // ---------------------------------------------------------------------------
 // Monitor tick — every ~5 minutes, notify ONLY on new/material changes.
 // ---------------------------------------------------------------------------
-async function runMonitor(env) {
+async function runMonitor(env, opts = {}) {
+    // Single-flight layer 1 (tick claim): Cloudflare may occasionally deliver
+    // the same cron twice, and two concurrent invocations would both pass the
+    // content-hash gate before either marks it — posting identical duplicates
+    // minutes apart. Claim the current 10-minute tick first; a YOUNG foreign
+    // claim means a sibling invocation is actively running this tick, so stand
+    // down. The window is deliberately short (120s, runs take seconds): a retry
+    // arriving minutes later after a crash proceeds, and the hash gate still
+    // dedupes anything the first run actually sent — so alerts are never lost.
+    // Manual triggers pass { manual: true } and always run. A missing /
+    // unreadable KV must never suppress a run; worst case is the status quo.
+    if (!opts?.manual && env.PAGASA_KV) {
+        const slot = Math.floor(Date.now() / 600000);
+        const tickToken = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+        try {
+            const raw = await env.PAGASA_KV.get(`pagasa:tickclaim:${slot}`);
+            if (raw) {
+                try {
+                    const c = JSON.parse(raw);
+                    if (c && c.token !== tickToken && Date.now() - c.at < 120000)
+                        return `tick ${slot}: duplicate invocation already running, stood down`;
+                } catch { /* corrupt claim: proceed below */ }
+            }
+            await env.PAGASA_KV.put(`pagasa:tickclaim:${slot}`, JSON.stringify({ token: tickToken, at: Date.now() }), { expirationTtl: 660 });
+        } catch { /* KV hiccup: proceed */ }
+    }
     const sources = resolveSources(env.PAGASA_SOURCES_JSON);
     const statusOn = new Map(sources.map((s) => [s.key, s.statusEnabled ?? s.notifyEnabled]));
     const countsTowardOverall = (key) => statusOn.get(key) ?? true;
@@ -1810,6 +1835,30 @@ async function runMonitor(env) {
             await pushIndex(env.PAGASA_KV, event, maxIndex);
             snapshot.bySource[source.key] = event;
             dirty = true;
+            // Single-flight layer 2 (send claim): backs up the tick claim for
+            // the residual case where two invocations start within the same
+            // millisecond. A fresh foreign claim for this exact content hash
+            // means a sibling is already sending it. Stale/missing claims and
+            // KV hiccups never suppress a send.
+            if (shouldNotify && event.reportText) {
+                const sendKey = `pagasa:sendclaim:${source.key}:${normalized.contentHash.slice(0, 12)}`;
+                const sendToken = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+                let stoodDown = false;
+                try {
+                    const raw = await env.PAGASA_KV.get(sendKey);
+                    if (raw) {
+                        try {
+                            const c = JSON.parse(raw);
+                            if (c && c.token !== sendToken && Date.now() - c.at < 120000) stoodDown = true;
+                        } catch { /* corrupt claim: proceed */ }
+                    }
+                    if (!stoodDown) await env.PAGASA_KV.put(sendKey, JSON.stringify({ token: sendToken, at: Date.now() }), { expirationTtl: 300 });
+                } catch { stoodDown = false; }
+                if (stoodDown) {
+                    outcomes.push(`${source.key}: duplicate invocation already sending (hash ${normalized.contentHash.slice(0, 8)}), stood down`);
+                    continue;
+                }
+            }
             if (shouldNotify && event.reportText) {
                 await sendDiscordReport(env.DISCORD_WEBHOOK_URL, `TerraGuard ${event.reportKind} — ${parsed.title || source.label}`, event.reportText, risk.status, source.url, env.PAGASA_SATELLITE === "0" ? null : undefined);
                 outcomes.push(`${source.key}: sent ${event.reportKind} (${risk.status})`);
@@ -5158,7 +5207,7 @@ export default {
             if (!secretsOk(request, masterSecrets(env)))
                 return new Response("Not Found", { status: 404, headers: CORS });
             const parts = [];
-            parts.push("weather: " + await runGuarded("weather", w.kv, () => Weather.runMonitor(w.env)));
+            parts.push("weather: " + await runGuarded("weather", w.kv, () => Weather.runMonitor(w.env, { manual: true })));
             parts.push("volcano: " + await runGuarded("volcano", v.kv, () => Volcano.runMonitor(v.env)));
             parts.push("haze: " + await runGuarded("haze", h.kv, () => Haze.runMonitor(h.env)));
             parts.push("tsunami: " + await runGuarded("tsunami", t.kv, () => Tsunami.runMonitor(t.env)));
@@ -5168,7 +5217,7 @@ export default {
             if (!secretsOk(request, weatherSecrets(env)))
                 return new Response("Not Found", { status: 404, headers: CORS });
             try {
-                return json({ success: true, message: await runGuarded("weather", w.kv, () => Weather.runMonitor(w.env)) });
+                return json({ success: true, message: await runGuarded("weather", w.kv, () => Weather.runMonitor(w.env, { manual: true })) });
             }
             catch (e) {
                 return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
