@@ -3714,9 +3714,16 @@ async function fetchTsunamiAlerts() {
 // tsunami.gov / NWS only covers the US Pacific + Atlantic/Caribbean basins, so it
 // is silent for the events a PH audience actually cares about. This reads the
 // in-repo PHP scraper, which normalises PHIVOLCS bulletins into JSON.
-// NB: the path is "terraguard" with a double r. The single-r "terragad" variant
+// NB: the host directory is "terraguard". A near-miss like "terragad" (one char off)
+  // is not a directory here and falls through to the SPA catch-all, which answers
+  // 200 text/html instead of failing loudly.
 // falls through to the host's SPA catch-all and returns the TrikeFare Gensan
 // index.html with a 404, which looks like a working host but is not.
+// Same endpoint without a query string. PHIVOLCS_TSUNAMI_API already carries
+// "?page=events", so appending "?detail=1" to it would fold detail into the page
+// parameter and silently return the list instead of the advisory.
+const PHIVOLCS_TSUNAMI_BASE =
+  "https://trikefare.x10.mx/terraguard/api/tsunami.php";
 const PHIVOLCS_TSUNAMI_API =
   "https://trikefare.x10.mx/terraguard/api/tsunami.php?page=events";
 
@@ -3807,6 +3814,77 @@ async function fetchPhivolcsTsunamiAlerts() {
 }
 
 // PHIVOLCS first, then the US basin sources as a supplement.
+/**
+ * The PHIVOLCS list endpoint carries no threat field, so every advisory would
+ * render as a neutral blue "TSUNAMI INFORMATION" banner — a real tsunami
+ * warning would look identical to a routine M6.5. The verdict ("NO TSUNAMI
+ * THREAT" / "TSUNAMI THREAT") lives only on the advisory's own page, which the
+ * scraper already parses via ?detail=1&url=...
+ *
+ * Called only for advisories that are about to be posted or previewed, so it
+ * costs about one request per new bulletin. Failure is non-fatal: the alert
+ * falls back to list data and keeps its neutral banner.
+ */
+async function enrichPhivolcsAlert(alert) {
+  if (alert.source !== "phivolcs" || !alert.link) return { ...alert, detailFetched: false };
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    const r = await fetch(
+      `${PHIVOLCS_TSUNAMI_BASE}?detail=1&url=${encodeURIComponent(alert.link)}`,
+      { headers: { "User-Agent": "TerraGuard-Detail/1.0" }, signal: ctrl.signal },
+    );
+    clearTimeout(timer);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    const d = j && j.success === true ? j.data : null;
+    // The list endpoint answers with success:true and a `data` ARRAY of events.
+    // Without this guard a malformed detail request (e.g. ?page=events?detail=1)
+    // looks like a success and silently merges nothing.
+    if (!d || Array.isArray(d) || typeof d !== "object")
+      throw new Error("response had no detail object");
+    if (!d.threat && !d.headline)
+      throw new Error("detail object carried no verdict");
+
+    const out = { ...alert, detailFetched: true };
+    if (d.threat) out.threat = d.threat;
+    if (d.headline) out.detailHeadline = d.headline;
+    if (d.evaluation) out.evaluation = d.evaluation;
+    if (d.recommendedAction) out.recommendedAction = d.recommendedAction;
+    if (d.important) out.important = d.important;
+    if (d.issuedBy) out.issuedBy = d.issuedBy;
+
+    // The detail page carries the authoritative quake parameters. Prefer them
+    // over the values scraped from the list row, and keep the coordinates in
+    // the latLon string too, since buildTsunamiMessage reads that field.
+    const q = { ...(alert.quake || {}) };
+    if (d.magnitude != null) q.magnitude = String(d.magnitude);
+    if (d.depth != null) q.depth = `${d.depth} km`;
+    if (d.location) q.location = d.location;
+    if (d.latitude != null && d.longitude != null) {
+      q.lat = d.latitude;
+      q.lng = d.longitude;
+      const fmt = (v, pos, neg) =>
+        `${Math.abs(v).toFixed(2)}° ${v >= 0 ? pos : neg}`;
+      q.latLon = `Lat: ${fmt(d.latitude, "N", "S")} Lon: ${fmt(d.longitude, "E", "W")}`;
+    }
+    if (Object.keys(q).length) out.quake = q;
+
+    // Reflect the verdict in the event string, because tsunamiColor(),
+    // tsunamiEmoji() and the @everyone gate all key off it. "none" keeps the
+    // original wording, which already reads as a no-threat information note.
+    const verdict = String(d.threat || "").toLowerCase();
+    if (verdict === "warning") out.event = `Tsunami Warning${d.number != null ? ` # ${d.number}` : ""}`;
+    else if (verdict === "threat") out.event = `Tsunami Threat${d.number != null ? ` # ${d.number}` : ""}`;
+    else if (verdict === "advisory") out.event = `Tsunami Advisory${d.number != null ? ` # ${d.number}` : ""}`;
+    return out;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[tsunami] detail fetch failed for ${alert.id}: ${msg}`);
+    return { ...alert, detailFetched: false, detailError: msg.slice(0, 160) };
+  }
+}
+
 async function fetchAllTsunamiAlerts() {
   const [phivolcs, us] = await Promise.all([
     fetchPhivolcsTsunamiAlerts(),
@@ -4008,9 +4086,19 @@ function buildTsunamiMessage(alert) {
     label === eventUp
       ? `${emoji} ${eventUp} ${emoji}`
       : `${emoji}${label}: ${eventUp} ${emoji}`;
+  // PHIVOLCS's own verdict, when the detail page was fetched. Without it the
+  // banner reads a neutral "TSUNAMI INFORMATION" and gives no indication of
+  // whether a destructive tsunami is actually possible.
+  const verdict = alert.detailHeadline ? [`Verdict: ${alert.detailHeadline}`] : [];
+  const evaluation = alert.evaluation ? [`Evaluation: ${alert.evaluation}`] : [];
+  const action = alert.recommendedAction ? [`Recommended action: ${alert.recommendedAction}`] : [];
   return [
     titleLine,
     ``,
+    ...verdict,
+    ...evaluation,
+    ...action,
+    ...(verdict.length || evaluation.length || action.length ? [``] : []),
     `Date & Time: ${dateTime}`,
     `Magnitude: ${q.magnitude || "N/A"}`,
     `Depth: ${q.depth || "N/A"}`,
@@ -4065,8 +4153,10 @@ function quakeCoords(alert) {
 function tsunamiCardUrl(alert, coords) {
   // Dedicated tsunami card (apiphp/tsunami-card.php): shows the PHIVOLCS
   // threat level as a colour-coded banner, which the generic quake card cannot.
-  // Host path must be "terraguard" (double r); the single-r "terragad" variant
-  // serves the SPA catch-all, not an image.
+  // Host directory must be exactly "terraguard". This shipped once as "terragad",
+  // which is not a directory here: the SPA catch-all answers 200 text/html, the
+  // Facebook photo post silently downgraded to /feed, and Discord got no image.
+  // ensureTsunamiCard() now blocks that, but keep the path right.
   const issuedStr = (() => {
     const d = new Date(alert.sent || alert.effective);
     if (isNaN(d.getTime())) return "";
@@ -4078,15 +4168,23 @@ function tsunamiCardUrl(alert, coords) {
   // NWS) only have an event string, so map its severity onto the card's
   // vocabulary — otherwise a real Tsunami Warning would render with a neutral
   // blue "TSUNAMI INFORMATION" banner.
+  //
+  // Order matters. "threat" is checked first because the card's most severe
+  // level is TSUNAMI THREAT (red); without that branch a destructive-tsunami
+  // bulletin fell through to "information" and rendered blue, i.e. harmless.
+  // "no ... threat" is excluded so a negated headline is never escalated.
   const eventStr = String(alert.event || "");
+  const negatedThreat = /no\s+(?:\w+\s+){0,3}?threat|not\s+a\s+threat/i.test(eventStr);
   const threatLevel =
     alert.threat ||
-    (/warning/i.test(eventStr) ? "warning"
-      : /advisory|watch/i.test(eventStr) ? "advisory"
-        : /cancel|all clear/i.test(eventStr) ? "cancelled"
-          : "information");
+    (negatedThreat ? "none"
+      : /\bthreat\b/i.test(eventStr) ? "threat"
+        : /warning/i.test(eventStr) ? "warning"
+          : /advisory|watch/i.test(eventStr) ? "advisory"
+            : /cancel|all clear/i.test(eventStr) ? "cancelled"
+              : "information");
   return (
-    `https://trikefare.x10.mx/terragrad/api/tsunami-card.php` +
+    `https://trikefare.x10.mx/terraguard/api/tsunami-card.php` +
     `?lat=${coords.lat}&lng=${coords.lng}` +
     `&mag=${encodeURIComponent(alert.quake?.magnitude ?? "")}` +
     // Keep the depth unit as-is: PHIVOLCS gives "18", NWS gives "12 mi". The card
@@ -4098,6 +4196,54 @@ function tsunamiCardUrl(alert, coords) {
     (alert.advisoryNumber != null ? `&info=${encodeURIComponent(alert.advisoryNumber)}` : "") +
     (issuedStr ? `&issued=${encodeURIComponent(issuedStr)}` : "")
   );
+}
+
+/**
+ * Confirm the card URL really renders a PNG, and memoise the result.
+ *
+ * Both the Facebook photo post and the Discord embed need this. Without the
+ * check a bad host path is invisible: Facebook quietly downgrades to a text
+ * /feed post and Discord shows an embed with no image, and neither reports a
+ * failure. The memo avoids fetching the same ~750 KB PNG twice per advisory.
+ */
+const tsunamiCardMemo = new Map();
+async function ensureTsunamiCard(alert) {
+  const coords = quakeCoords(alert);
+  if (!coords) return { url: "", ok: false, reason: "no epicenter" };
+  const url = tsunamiCardUrl(alert, coords);
+  if (tsunamiCardMemo.has(url)) return tsunamiCardMemo.get(url);
+  let ok = false, reason = "unknown";
+  for (let attempt = 1; attempt <= 2 && !ok; attempt++) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      const r = await fetch(url, {
+        method: "GET",
+        signal: ctrl.signal,
+        headers: { "User-Agent": "TerraGuard-CardCheck/1.0" },
+      });
+      clearTimeout(timer);
+      // Require an actual image. A 200 that is text/html means we hit the SPA
+      // catch-all (wrong host path) rather than a card.
+      const ctype = String(r.headers?.get?.("content-type") ?? "").toLowerCase();
+      if (r.ok && ctype.startsWith("image/")) ok = true;
+      else reason = `HTTP ${r.status} ${ctype || "(no content-type)"}`;
+    } catch (e) {
+      reason = e instanceof Error ? e.message : String(e);
+    }
+    if (!ok) await new Promise((r) => setTimeout(r, 800));
+  }
+  const out = { url, ok, reason: ok ? "" : reason };
+  if (ok) {
+    // Only successes are memoised. Caching a failure would suppress the card
+    // image for the remaining life of this isolate after a single transient
+    // 404, which is exactly the silent failure this check exists to prevent.
+    if (tsunamiCardMemo.size > 20) tsunamiCardMemo.clear();
+    tsunamiCardMemo.set(url, out);
+  } else {
+    console.error(`[tsunami] card not renderable (${reason}) url=${url}`);
+  }
+  return out;
 }
 
 async function postTsunamiToFacebook(alert, env) {
@@ -4141,33 +4287,12 @@ async function postTsunamiToFacebook(alert, env) {
   const coords = quakeCoords(alert);
   if (coords) {
     try {
-      const cardUrl = tsunamiCardUrl(alert, coords);
-      let cardOk = false;
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          const ctrl = new AbortController();
-          const t = setTimeout(() => ctrl.abort(), 12000);
-          const warm = await fetch(cardUrl, { method: "GET", signal: ctrl.signal, headers: { "User-Agent": "TerraGuard-FB-Warmup/1.0" } });
-          clearTimeout(t);
-          // Require an actual image. A 200 that is text/html means we hit a
-          // catch-all page rather than a card; treating that as success made
-          // every photo post fail later at the Facebook scraper, silently.
-          const ctype = String(warm.headers?.get?.("content-type") ?? "").toLowerCase();
-          if (warm.ok && ctype.startsWith("image/")) {
-            cardOk = true;
-            break;
-          }
-          console.error(`[fb][tsunami] card warmup ${warm.status} ${ctype || "(no content-type)"} (attempt ${attempt})`);
-        }
-        catch (e) {
-          console.error(`[fb][tsunami] card warmup failed (attempt ${attempt}): ${e instanceof Error ? e.message : String(e)}`);
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-      }
+      const card = await ensureTsunamiCard(alert);
+      const cardOk = card.ok;
       if (!cardOk) {
-        console.error("[fb][tsunami] card not renderable, using /feed fallback");
+        console.error(`[fb][tsunami] card unusable (${card.reason}), using /feed fallback`);
       } else {
-        const body = withProof({ access_token: pageToken, caption: message, url: cardUrl });
+        const body = withProof({ access_token: pageToken, caption: message, url: card.url });
       const res = await fetch(
         `https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`,
         {
@@ -4234,7 +4359,22 @@ async function sendTsunamiWebhook(alert, env) {
     alert.source === "phivolcs"
       ? "PHIVOLCS (tsunami.phivolcs.dost.gov.ph)"
       : "tsunami.gov / NWS";
-  const content = `${mention}${emoji} **TSUNAMI ${alert.event.toUpperCase()}** ${emoji}\n\n**${alert.headline}**\n\n📍 **Areas:** ${alert.areaDesc?.slice(0, 400) || "See details"}\n📅 **Issued:** ${dateStr} ${timeStr}\n🔗 **Details:** ${alert.link}\n\n${alert.description?.slice(0, 900) || ""}\n\n*Source: ${srcLine}*`;
+  // PHIVOLCS advisories already read "Tsunami Information # 1", so blindly
+  // prefixing TSUNAMI produced "TSUNAMI TSUNAMI INFORMATION # 1".
+  const eventUpper = String(alert.event || "").toUpperCase();
+  const heading = /^TSUNAMI\b/.test(eventUpper) ? eventUpper : `TSUNAMI ${eventUpper}`;
+  // PHIVOLCS's own verdict and evaluation, present only when the advisory's
+  // detail page was fetched. Without these a genuine tsunami warning reads the
+  // same as a routine information note.
+  const verdict = alert.detailHeadline ? `\n**Verdict: ${alert.detailHeadline}**` : "";
+  const evaluation = alert.evaluation ? `\n🧭 ${alert.evaluation}` : "";
+  const action = alert.recommendedAction ? `\n✅ ${alert.recommendedAction}` : "";
+  const content = `${mention}${emoji} **${heading}** ${emoji}\n\n**${alert.headline}**${verdict}${evaluation}${action}\n\n📍 **Areas:** ${alert.areaDesc?.slice(0, 400) || "See details"}\n📅 **Issued:** ${dateStr} ${timeStr}\n🔗 **Details:** ${alert.link}\n\n${alert.description?.slice(0, 900) || ""}\n\n*Source: ${srcLine}*`;
+  // Attach the world-view card to the embed. Verified first: a bad host path
+  // returns the SPA catch-all as text/html, and Discord would render an embed
+  // with a silently missing image rather than reporting anything.
+  const card = await ensureTsunamiCard(alert);
+  if (!card.ok) console.error(`[tsunami][discord] no card image: ${card.reason}`);
   const payload = {
     content,
     ...(isThreat ? { allowed_mentions: { parse: ["everyone"] } } : {}),
@@ -4243,6 +4383,7 @@ async function sendTsunamiWebhook(alert, env) {
         title: `${emoji} ${alert.event} — ${alert.headline.slice(0, 80)}`,
         description: `${alert.description?.slice(0, 1000) || ""}\n\n[View on tsunami.gov](${alert.tsunamiGovLink || alert.link})`,
         color,
+        ...(card.ok ? { image: { url: card.url } } : {}),
         footer: { text: `TerraGuard Tsunami • ${dateStr} ${timeStr}` },
         timestamp: sentDate.toISOString(),
       },
@@ -4339,19 +4480,27 @@ async function previewAlerts(env, limit) {
   const previews = [];
   for (const a of alerts) {
     if (previews.length >= limit) break;
-    const coords = quakeCoords(a);
     const isNewItem = await isNew(a);
+    // Only advisories that would actually be posted need their detail page, so
+    // a preview costs at most one extra request per pending bulletin.
+    const view =
+      a.source === "phivolcs" && isNewItem && seenSetPresent
+        ? await enrichPhivolcsAlert(a)
+        : a;
+    const coords = quakeCoords(view);
     previews.push({
-      source: a.source,
-      event: a.event,
-      isTest: isTestAlert(a),
+      source: view.source,
+      event: view.event,
+      isTest: isTestAlert(view),
       seenAlready: !isNewItem,
       // A real run only posts when the seen-set already exists; with no seen-set
       // the next run seeds and posts nothing.
       wouldPost: isNewItem && seenSetPresent,
+      threat: view.threat ?? null,
+      detailHeadline: view.detailHeadline ?? null,
       coords,
-      cardUrl: coords ? tsunamiCardUrl(a, coords) : "",
-      message: buildTsunamiMessage(a),
+      cardUrl: coords ? tsunamiCardUrl(view, coords) : "",
+      message: buildTsunamiMessage(view),
     });
   }
   return {
@@ -4365,6 +4514,279 @@ async function previewAlerts(env, limit) {
       ? "Preview only — nothing was posted and KV was not modified."
       : "No seen-set yet: the next real run would SEED and post nothing.",
     previews,
+  };
+}
+
+/**
+ * Synthetic tsunami.gov / NWS advisory for /admin?fixture=nws.
+ *
+ * There is rarely a live US-basin tsunami advisory, so the NWS branch of the
+ * pipeline (CAP parsing, miles-vs-km depth, world-view card, threat colours,
+ * Facebook threat gate) would otherwise go untested until the US basin actually
+ * issues something. This builds an alert shaped exactly like a real
+ * api.weather.gov CAP feature and feeds it through the same send path, so only
+ * the input is fake.
+ *
+ * The body uses the labelled form the parser expects, matching the tsunami.gov
+ * message layout: Magnitude / Origin Time / Depth / Lat / Lon / Location.
+ */
+const NWS_FIXTURES = {
+  warning: {
+    event: "Tsunami Warning",
+    lat: 19.2, lng: -155.6, mag: 7.8, depth: "12 mi.",
+    place: "290 km SE of Hilo, Hawaii",
+    area: "Hawaii; American Samoa; Guam",
+    headline: "Tsunami Warning for Hawaii and the South Pacific",
+  },
+  threat: {
+    event: "Tsunami Threat",
+    lat: -33.5, lng: -72.0, mag: 8.2, depth: "25 km",
+    place: "Coast of Chile",
+    area: "Chile; Peru",
+    headline: "Tsunami Threat for the Coast of Chile and Peru",
+  },
+  advisory: {
+    event: "Tsunami Advisory",
+    lat: 38.3, lng: 142.4, mag: 7.5, depth: "10 km",
+    place: "Off the coast of Japan",
+    area: "Japan; Kuril Islands",
+    headline: "Tsunami Advisory for Japan and the Kuril Islands",
+  },
+  watch: {
+    event: "Tsunami Watch",
+    lat: 47.9, lng: -125.0, mag: 7.1, depth: "20 km",
+    place: "Off the coast of Washington",
+    area: "Washington; Oregon; California; Alaska; British Columbia; Baja California",
+    headline: "Tsunami Watch for the Cascadia and Baja Coasts",
+  },
+  information: {
+    event: "Tsunami Information",
+    lat: -21.2, lng: 168.5, mag: 7.0, depth: "18 km",
+    place: "Loyalty Islands",
+    area: "New Caledonia; Vanuatu; Fiji",
+    headline: "Tsunami Information Bulletin",
+  },
+  cancelled: {
+    event: "Tsunami Cancellation",
+    lat: 51.2, lng: -178.5, mag: 7.8, depth: "12 mi.",
+    place: "Aleutian Islands, Alaska",
+    area: "Alaska; British Columbia; Washington; Oregon; California",
+    headline: "Tsunami Cancellation for the Coast of the Pacific Northwest",
+  },
+};
+
+function buildNwsFixture(level) {
+  const key = String(level || "warning").toLowerCase();
+  const p = NWS_FIXTURES[key];
+  if (!p)
+    return { error: `unknown fixture level "${level}". Use one of: ${Object.keys(NWS_FIXTURES).join(", ")}` };
+  const issued = new Date();
+  const body = [
+    `Magnitude: ${p.mag}`,
+    `Origin Time: ${issued.toISOString().slice(0, 16)} UTC`,
+    `Depth: ${p.depth}`,
+    `Lat: ${Math.abs(p.lat).toFixed(1)}° ${p.lat >= 0 ? "N" : "S"} Lon: ${Math.abs(p.lng).toFixed(1)}° ${p.lng >= 0 ? "E" : "W"}`,
+    `Location: ${p.place}`,
+  ].join("\n");
+  const description = [
+    `WWUS54 KWNH 261812`,
+    `TSUNAMI - TSUNAMI MESSAGE`,
+    `NATIONAL WEATHER SERVICE HONOLULU HI`,
+    ``,
+    `...${p.event.toUpperCase()} FOR ${p.area.toUpperCase()}...`,
+    ``,
+    `THE ${p.event.toUpperCase()} FOR ${p.area.toUpperCase()} IS IN EFFECT.`,
+    ``,
+    `An earthquake has been detected. Preliminary tsunami arrival times follow.`,
+    ``,
+    body,
+    ``,
+    `This message is a SYNTHETIC FIXTURE generated by TerraGuard for pipeline`,
+    `testing. It is not a real bulletin and describes no real earthquake.`,
+  ].join("\n");
+  return {
+    id: `fixture-nws-${key}`,
+    source: "us",
+    fixture: true,
+    fixtureLevel: key,
+    event: p.event,
+    headline: p.headline,
+    description,
+    areaDesc: p.area,
+    sent: issued.toISOString(),
+    effective: issued.toISOString(),
+    expires: new Date(issued.getTime() + 3600000).toISOString(),
+    status: "Actual",
+    messageType: "Alert",
+    link: "https://www.tsunami.gov/?p=fixture-nws",
+    tsunamiGovLink: "https://www.tsunami.gov/",
+    isPdf: false,
+    // Parsed with the same routine the live NWS path uses.
+    quake: parseQuakeFromText(body),
+  };
+}
+
+/** One result row for a manual post, including what the card would show. */
+function resultRow(view, alert, discord, fb) {
+  const coords = quakeCoords(view);
+  return {
+    id: alert.id,
+    source: view.source,
+    event: view.event,
+    fixture: Boolean(view.fixture),
+    threat: view.threat ?? null,
+    detailHeadline: view.detailHeadline ?? null,
+    detailFetched: Boolean(view.detailFetched),
+    detailError: view.detailError ?? null,
+    quake: view.quake ?? null,
+    cardUrl: coords ? tsunamiCardUrl(view, coords) : "",
+    discord,
+    facebook: fb,
+  };
+}
+
+/**
+ * Manual post for /admin — bypasses the dedup gate so a real Discord/Facebook
+ * post can be exercised on demand. Marks what it posted as seen, so the next
+ * cron tick will not re-announce it (a manual test should not leave a duplicate
+ * trap). Refuses within COOLDOWN of the last manual post.
+ */
+const MANUAL_COOLDOWN_S = 45;
+const MANUAL_MAX_POSTS = 3;
+const ADMIN_LASTPOST_KEY = "tsunami:admin:lastpost";
+
+async function forcePost(env, limit, opts) {
+  const now = () => Math.floor(Date.now() / 1000);
+  // Clamp here as well as in the route, so no caller can flood the channel.
+  limit = Math.max(1, Math.min(MANUAL_MAX_POSTS, Number(limit) || 1));
+
+  // Cooldown gates real posts only. A dry run must stay completely inert, so it
+  // neither reads the gate nor writes it.
+  if (!opts.dryRunOnly) {
+    const last = parseInt((await env.WEBHOOK_KV.get(ADMIN_LASTPOST_KEY)) || "0", 10);
+    const wait = last ? MANUAL_COOLDOWN_S - (now() - last) : 0;
+    if (wait > 0) {
+      return {
+        manual: true,
+        refused: true,
+        reason: `cooldown — a manual tsunami post ran ${now() - last}s ago; wait ${wait}s`,
+        cooldown: { secondsRemaining: wait },
+        posted: 0,
+        results: [],
+      };
+    }
+  }
+
+  const fetched = await fetchAllTsunamiAlerts();
+  const seen = (await loadPhivolcsSeen(env)) ?? [];
+  const results = [];
+
+  // A fixture replaces the live list entirely: there is usually no US advisory
+  // to post, and the point is to exercise the NWS branch of the pipeline. It is
+  // never written to the seen-set, so it cannot suppress or impersonate a real
+  // bulletin later.
+  let fixture = null;
+  let alerts = fetched.alerts;
+  if (opts.fixture) {
+    fixture = opts.fixture === "nws" ? buildNwsFixture(opts.level) : { error: `unknown fixture "${opts.fixture}"` };
+    if (fixture.error) {
+      return { manual: true, refused: true, reason: fixture.error, posted: 0, results: [] };
+    }
+    alerts = [fixture];
+  }
+
+  for (const a of alerts) {
+    if (results.length >= limit) break;
+    const isPhivolcs = a.source === "phivolcs";
+    if (!fixture) {
+      if (opts.source === "phivolcs" && !isPhivolcs) continue;
+      if (opts.source === "us" && isPhivolcs) continue;
+      const already = isPhivolcs
+        ? seen.includes(a.id)
+        : Boolean(await env.WEBHOOK_KV.get(`tsunami:${a.id}`));
+      // Default re-posts something already announced (so you can re-test); &fresh=1
+      // instead targets something never announced, simulating a brand-new event.
+      if (opts.fresh) { if (already) continue; }
+      else if (!already) continue;
+    }
+    if (isTestAlert(a)) { results.push({ id: a.id, event: a.event, skipped: "test/exercise" }); continue; }
+
+    // Same enrichment the cron path uses, so a manual post shows the real
+    // verdict rather than a neutral "TSUNAMI INFORMATION" banner.
+    const view = isPhivolcs ? await enrichPhivolcsAlert(a) : a;
+
+    let discord = "skipped", fb = "skipped";
+    if (opts.dryRunOnly) {
+      discord = "would-send"; fb = "would-post";
+    } else {
+      if (opts.skipDiscord) {
+        discord = "skipped (skipDiscord=1)";
+      } else {
+        try { await sendTsunamiWebhook(view, env); discord = "sent"; }
+        catch (e) { discord = `error ${e instanceof Error ? e.message : String(e)}`.slice(0, 160); }
+      }
+      if (opts.skipFacebook) {
+        fb = "skipped (skipFacebook=1)";
+      } else {
+        try { fb = await postTsunamiToFacebook(view, env); }
+        catch (e) { fb = `error ${e instanceof Error ? e.message : String(e)}`.slice(0, 160); }
+      }
+    }
+    if (opts.dryRunOnly) {
+      results.push({ ...resultRow(view, a, "would-send", "would-post"), markedSeen: false });
+      continue;
+    }
+    // A fixture is never recorded as announced: it must not suppress a real
+    // bulletin, and it must not linger in the dedup set.
+    if (!fixture) {
+      if (isPhivolcs) {
+        seen.push(a.id);
+        await savePhivolcsSeen(env, seen);
+      } else {
+        await env.WEBHOOK_KV.put(`tsunami:${a.id}`, JSON.stringify({ ...view, manual: true, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 7 });
+      }
+    }
+    results.push({ ...resultRow(view, a, discord, fb), markedSeen: !fixture });
+  }
+
+  // Only a real post arms the cooldown. results.length counts dry-run selections
+  // too, so the guard has to exclude them explicitly.
+  if (!opts.dryRunOnly && results.length > 0) {
+    await env.WEBHOOK_KV.put(ADMIN_LASTPOST_KEY, String(now()));
+  }
+  return {
+    manual: true,
+    refused: false,
+    dryRun: Boolean(opts.dryRunOnly),
+    fixture: fixture ? { kind: "nws", level: fixture.fixtureLevel, synthetic: true } : null,
+    fetched: { phivolcs: fetched.phivolcsCount, tsunamiGov: fetched.usCount },
+    requested: limit,
+    posted: results.length,
+    results,
+  };
+}
+
+/** Reports the remaining cooldown without posting anything. */
+async function adminStatus(env) {
+  const { alerts, phivolcsCount, usCount } = await fetchAllTsunamiAlerts();
+  const seen = (await loadPhivolcsSeen(env)) ?? null;
+  const last = parseInt((await env.WEBHOOK_KV.get(ADMIN_LASTPOST_KEY)) || "0", 10);
+  const since = last ? Math.floor(Date.now() / 1000) - last : null;
+  return {
+    fetched: { phivolcs: phivolcsCount, tsunamiGov: usCount, total: alerts.length },
+    seenSetPresent: seen !== null,
+    seenSetSize: seen === null ? 0 : seen.length,
+    cooldownSecondsRemaining: since === null ? 0 : Math.max(0, MANUAL_COOLDOWN_S - since),
+    usage: {
+      status: "/admin?key=...",
+      preview: "/admin?key=...&post=1&confirm=1&dryrun=1",
+      post: "/admin?key=...&post=1&confirm=1",
+      options: "post=<1..3>  source=phivolcs|us|both  fresh=1  skipDiscord=1  skipFacebook=1",
+      nwsFixture: "/admin?key=...&post=1&confirm=1&fixture=nws&level=warning",
+      fixtureLevels: Object.keys(NWS_FIXTURES).join("|"),
+      note: "fixture=nws injects a SYNTHETIC tsunami.gov/NWS advisory (there is rarely a live one) and never marks it seen.",
+      cooldown: `${MANUAL_COOLDOWN_S}s between real manual posts`,
+    },
   };
 }
 
@@ -4421,11 +4843,17 @@ async function handleCron(env) {
       )
         continue;
     }
-    await sendTsunamiWebhook(a, env);
+    // Fetch the advisory's own page for the real verdict before posting, so the
+    // card shows the correct banner instead of a neutral "TSUNAMI INFORMATION".
+    const enriched = isPhivolcs ? await enrichPhivolcsAlert(a) : a;
+    if (isPhivolcs && enriched.detailFetched) {
+      console.log(`[tsunami] ${enriched.id}: threat=${enriched.threat} "${enriched.detailHeadline}"`);
+    }
+    await sendTsunamiWebhook(enriched, env);
     // Facebook auto-post — best-effort: never blocks or throws.
     let fbStatus = "skipped";
     try {
-      fbStatus = await postTsunamiToFacebook(a, env);
+      fbStatus = await postTsunamiToFacebook(enriched, env);
     } catch (e) {
       fbStatus = `error ${e instanceof Error ? e.message : String(e)}`.slice(0, 200);
     }
@@ -4460,6 +4888,15 @@ async function handleCron(env) {
   return {
     runMonitor: handleCron,
     preview: previewAlerts,
+    forcePost,
+    adminStatus,
+    ensureCard: ensureTsunamiCard,
+    buildCardUrl: tsunamiCardUrl,
+    enrich: enrichPhivolcsAlert,
+    buildNwsFixture,
+    NWS_FIXTURES,
+    quakeCoords,
+    MANUAL_COOLDOWN_S,
     fetchAlerts: fetchTsunamiAlerts,
     fetchPhivolcsAlerts: fetchPhivolcsTsunamiAlerts,
     fetchAllAlerts: fetchAllTsunamiAlerts,
@@ -4592,6 +5029,44 @@ export default {
                     return json(await runGuarded("tsunami", t.kv, () => Tsunami.preview(t.env, limit)));
                 }
                 return json({ success: true, message: await runGuarded("tsunami", t.kv, () => Tsunami.runMonitor(t.env)) });
+            }
+            catch (e) {
+                return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
+            }
+        }
+        if (path === "/admin") {
+            if (!secretsOk(request, tsunamiSecrets(env)) && !secretsOk(request, masterSecrets(env)))
+                return new Response("Not Found", { status: 404, headers: CORS });
+            try {
+                const qs = new URL(request.url).searchParams;
+                if (!qs.get("post")) {
+                    return json(await runGuarded("tsunami", t.kv, () => Tsunami.adminStatus(t.env)));
+                }
+                const limit = Math.max(1, Math.min(3, parseInt(qs.get("post"), 10) || 1));
+                const opts = {
+                    fresh: qs.get("fresh") === "1",
+                    source: qs.get("source") || "both",
+                    skipDiscord: qs.get("skipDiscord") === "1",
+                    skipFacebook: qs.get("skipFacebook") === "1",
+                    fixture: qs.get("fixture") || "",
+                    level: qs.get("level") || "warning",
+                };
+                // Two-step: without confirm=1 this only reports what it would do,
+                // so a stray browser hit or prefetch cannot fire a real post.
+                if (qs.get("confirm") !== "1") {
+                    const st = await runGuarded("tsunami", t.kv, () => Tsunami.adminStatus(t.env));
+                    return json({
+                        ...st,
+                        confirmRequired: true,
+                        wouldPost: limit,
+                        options: opts,
+                        message: "Nothing was posted. Re-run with &confirm=1 to actually post.",
+                    });
+                }
+                if (qs.get("dryrun") === "1") {
+                    return json(await runGuarded("tsunami", t.kv, () => Tsunami.forcePost(t.env, limit, { ...opts, dryRunOnly: true })));
+                }
+                return json(await runGuarded("tsunami", t.kv, () => Tsunami.forcePost(t.env, limit, opts)));
             }
             catch (e) {
                 return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
