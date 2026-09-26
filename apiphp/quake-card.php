@@ -9,6 +9,8 @@
  * Query: ?lat=&lng=&mag=&place=&date=&time=&depth=&source=&info=&sat=
  *   (lat/lng/mag required; source defaults to PHIVOLCS; info = PHIVOLCS
  *   bulletin number, shows an "INFORMATION NO." pill when present)
+ *   title / title2  banner headline halves (default EARTHQUAKE / DETECTED;
+ *                   the tsunami monitor passes TSUNAMI / INFORMATION)
  * Output: image/png (720x900), cached to disk per query (24h).
  *
  * Requirements: PHP 8+ with GD + FreeType (imagettftext), cURL (or
@@ -85,6 +87,14 @@ $source = safeSubstr((string)($_GET['source'] ?? 'PHIVOLCS'), 24);
 // PHIVOLCS bulletin number (digits only): renders the INFORMATION pill.
 // Absent for EMSC/USGS cards, which simply omit the pill.
 $infoNo = safeSubstr(preg_replace('/\D+/', '', (string)($_GET['info'] ?? '')), 4);
+// Banner headline, two parts: part 1 renders white, part 2 in the alert colour.
+// Defaults keep the original "EARTHQUAKE DETECTED" card byte-identical; the
+// tsunami monitor reuses this generator with title=TSUNAMI INFORMATION so it
+// does not need its own 24 KB copy.
+$titleA = safeUpper(safeSubstr((string)($_GET['title'] ?? 'EARTHQUAKE'), 20));
+$titleB = safeUpper(safeSubstr((string)($_GET['title2'] ?? 'DETECTED'), 20));
+if ($titleA === '') $titleA = 'EARTHQUAKE';
+if ($titleB === '') $titleB = 'DETECTED';
 // Event hour (24h) from the card's time string ("09:22 PM", "14:30", ...).
 function eventHour24(string $t): ?int {
     if (preg_match('/(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP])\.?\s*M\.?/i', $t, $m)) {
@@ -108,7 +118,9 @@ $mapLayer = $satellite ? 'sat,skl' : 'map';
 
 // --- Disk cache (cards never change for the same query) ---
 if (!is_dir(CACHE_DIR)) { @mkdir(CACHE_DIR, 0777, true); }
-$cacheKey = md5(implode('|', [$lat, $lng, $magRaw, $place, $date, $time, $depth, $mapLayer, $source, $infoNo]));
+// $titleA/$titleB are part of the key: without them a tsunami card and an
+// earthquake card at the same coordinates/magnitude would share a cache entry.
+$cacheKey = md5(implode('|', [$lat, $lng, $magRaw, $place, $date, $time, $depth, $mapLayer, $source, $infoNo, $titleA, $titleB]));
 $cacheFile = CACHE_DIR . '/' . $cacheKey . '.png';
 if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < CACHE_TTL) {
     header('Content-Type: image/png');
@@ -367,24 +379,24 @@ $epiY = (int)round(0.58 * MAP_H);
 $bannerTop = 0;
 $bannerH = 150;
 imagefilledrectangle($im, 0, $bannerTop, CARD_W - 1, $bannerTop + $bannerH, $navy);
-// Title: "EARTHQUAKE" white + "DETECTED" red, centered on the card.
+// Title: part 1 white + part 2 red, centered on the card.
 // Advances measured per part (trailing-space bbox is unreliable) so the
 // halves never overlap.
 $titleSize = 56;
-$titleW1 = textWidth($fontOswald, $titleSize, 'EARTHQUAKE');
-$titleW2 = textWidth($fontOswald, $titleSize, 'DETECTED');
-$titleWS = textWidth($fontOswald, $titleSize, 'EARTHQUAKE DETECTED') - $titleW1 - $titleW2;
+$titleW1 = textWidth($fontOswald, $titleSize, $titleA);
+$titleW2 = textWidth($fontOswald, $titleSize, $titleB);
+$titleWS = textWidth($fontOswald, $titleSize, $titleA . ' ' . $titleB) - $titleW1 - $titleW2;
 $titleWS = max(4, $titleWS); // degenerate bbox guard
 while ($titleW1 + $titleWS + $titleW2 > 470 && $titleSize > 28) {
     $titleSize -= 2;
-    $titleW1 = textWidth($fontOswald, $titleSize, 'EARTHQUAKE');
-    $titleW2 = textWidth($fontOswald, $titleSize, 'DETECTED');
-    $titleWS = max(4, textWidth($fontOswald, $titleSize, 'EARTHQUAKE DETECTED') - $titleW1 - $titleW2);
+    $titleW1 = textWidth($fontOswald, $titleSize, $titleA);
+    $titleW2 = textWidth($fontOswald, $titleSize, $titleB);
+    $titleWS = max(4, textWidth($fontOswald, $titleSize, $titleA . ' ' . $titleB) - $titleW1 - $titleW2);
 }
 $titleY = $bannerTop + 92;
 $titleX0 = (int)round(360 - ($titleW1 + $titleWS + $titleW2) / 2);
-drawLeft($im, $fontOswald, $titleSize, $titleX0, $titleY, 'EARTHQUAKE', $white);
-drawLeft($im, $fontOswald, $titleSize, (int)round($titleX0 + $titleW1 + $titleWS), $titleY, 'DETECTED', $red);
+drawLeft($im, $fontOswald, $titleSize, $titleX0, $titleY, $titleA, $white);
+drawLeft($im, $fontOswald, $titleSize, (int)round($titleX0 + $titleW1 + $titleWS), $titleY, $titleB, $red);
 // "{WORD} EVENT" subline with severity color, centered under the title.
 $subY = $bannerTop + 128;
 [$sevWord, $sevRgb] = severityWord($mag);
