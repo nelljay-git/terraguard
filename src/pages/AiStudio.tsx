@@ -41,9 +41,9 @@ export function AiStudio() {
   const email = (user?.email ?? '').toLowerCase();
   const allowed = !!user && DEFAULT_ADMINS.includes(email);
 
-  const [baseUrl, setBaseUrl] = useState(() => localStorage.getItem(LS.base) ?? 'https://api.openai.com/v1');
+  const [baseUrl, setBaseUrl] = useState(() => localStorage.getItem(LS.base) ?? 'https://openrouter.ai/api/v1');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(LS.key) ?? '');
-  const [model, setModel] = useState(() => localStorage.getItem(LS.model) ?? 'gpt-4o-mini');
+  const [model, setModel] = useState(() => localStorage.getItem(LS.model) ?? 'openai/gpt-4o-mini');
   const [systemPrompt, setSystemPrompt] = useState(() => localStorage.getItem(LS.sys) ?? DEFAULT_SYSTEM);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -88,7 +88,13 @@ export function AiStudio() {
       ];
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.trim()}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey.trim()}`,
+          // Recommended by OpenRouter for attribution; harmless elsewhere.
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'TerraGuard AI News Desk',
+        },
         body: JSON.stringify({ model: model.trim(), messages, temperature: 0.7, max_tokens: 1200 }),
       });
       const data = await res.json().catch(() => ({}));
@@ -209,12 +215,19 @@ export function AiStudio() {
                 <div className="ai-field">
                   <span><label htmlFor="ai-base">API base URL</label></span>
                   <small>Any OpenAI-compatible endpoint.</small>
-                  <input id="ai-base" className="ai-input" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" spellCheck={false} />
+                  <input id="ai-base" className="ai-input" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://openrouter.ai/api/v1" spellCheck={false} />
                 </div>
                 <div className="ai-field">
                   <span><label htmlFor="ai-model">Model</label></span>
-                  <small>Must exist on the endpoint above.</small>
-                  <input id="ai-model" className="ai-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-4o-mini" spellCheck={false} />
+                  <small>Must exist on the endpoint above. Pick a suggestion or type any OpenRouter model id.</small>
+                  <input id="ai-model" className="ai-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="openai/gpt-4o-mini" spellCheck={false} list="ai-model-picks" />
+                  <datalist id="ai-model-picks">
+                    <option value="openai/gpt-4o-mini" />
+                    <option value="google/gemini-2.5-flash" />
+                    <option value="meta-llama/llama-3.3-70b-instruct" />
+                    <option value="deepseek/deepseek-chat" />
+                    <option value="meta-llama/llama-3.3-70b-instruct:free" />
+                  </datalist>
                 </div>
               </div>
               <div className="ai-field">
