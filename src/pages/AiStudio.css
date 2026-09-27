@@ -285,6 +285,66 @@
   color: var(--text-primary);
 }
 
+/* ---- image presets ---- */
+.ai-presets {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 560px) {
+  .ai-presets {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.ai-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ai-preset img {
+  width: 100%;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+}
+
+.ai-preset:hover {
+  filter: brightness(1.12);
+}
+
+.ai-preset.sel {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+  color: var(--text-primary);
+}
+
+.ai-preset:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.ai-preset-none {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.12);
+}
+
 /* ---- image upload ---- */
 .ai-upload-row {
   display: flex;

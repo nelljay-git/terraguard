@@ -19,6 +19,25 @@ const WORKER_URL = (
 const LS = { base: 'tg-ai-base', key: 'tg-ai-key', model: 'tg-ai-model', sys: 'tg-ai-sys' };
 const BODY_LIMIT = 6000;
 
+/** Built-in cover images shipped in public/. Posted as absolute URLs so
+ * Facebook/Discord can fetch them — resolved against the current origin. */
+const IMAGE_PRESETS = [
+  { id: 'flash', label: 'Flash report', path: '/image-flash-report.jpg' },
+  { id: 'weather', label: 'Weather report', path: '/image-weather-report.png' },
+  { id: 'cyclone', label: 'Cyclone report', path: '/image-cyclone-report.png' },
+];
+
+/** Which preset (if any) the current URL points to. Custom/uploaded URLs → null. */
+function presetIdFor(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const hit = IMAGE_PRESETS.find((p) => u.origin + u.pathname === window.location.origin + p.path);
+    return hit ? hit.id : null;
+  } catch {
+    return null;
+  }
+}
+
 const DEFAULT_SYSTEM = `You are a news writer for TerraGuard Philippines, a disaster-monitoring community.
 Write in clear, factual English. Use ONLY the facts the user provides — never invent names, numbers, times, or quotes.
 Format: first line is "# Headline", then 2-4 short paragraphs, then one line with a practical safety reminder for readers.
@@ -334,7 +353,25 @@ export function AiStudio() {
           </div>
           <div className="ai-field">
             <span><label htmlFor="ai-image">Image</label></span>
-            <small>Optional. Upload from your device or paste a URL. Facebook posts it as a photo; Discord embeds it.</small>
+            <small>Optional. Pick a preset, upload from your device, or paste a URL. Facebook posts it as a photo; Discord embeds it. Presets resolve to this site, so post from the live site for Facebook to fetch them.</small>
+            <div className="ai-presets" role="radiogroup" aria-label="Preset images">
+              <button type="button" className={`ai-preset${!imageUrl ? ' sel' : ''}`}
+                onClick={() => setImageUrl('')} aria-pressed={!imageUrl} title="No image">
+                <span className="ai-preset-none">None</span>
+                <span>No image</span>
+              </button>
+              {IMAGE_PRESETS.map((p) => {
+                const active = presetIdFor(imageUrl) === p.id;
+                return (
+                  <button key={p.id} type="button" className={`ai-preset${active ? ' sel' : ''}`}
+                    onClick={() => setImageUrl(window.location.origin + p.path)}
+                    aria-pressed={active} title={p.label}>
+                    <img src={p.path} alt={p.label} loading="lazy" />
+                    <span>{p.label}</span>
+                  </button>
+                );
+              })}
+            </div>
             <div className="ai-upload-row">
               <label className="ai-btn" htmlFor="ai-file">
                 {uploading
