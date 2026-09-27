@@ -64,7 +64,7 @@ export function AiStudio() {
 
   const [baseUrl, setBaseUrl] = useState(() => localStorage.getItem(LS.base) ?? 'https://openrouter.ai/api/v1');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(LS.key) ?? '');
-  const [model, setModel] = useState(() => localStorage.getItem(LS.model) ?? 'openai/gpt-4o-mini');
+  const [model, setModel] = useState(() => localStorage.getItem(LS.model) ?? 'meta-llama/llama-3.3-70b-instruct');
   const [systemPrompt, setSystemPrompt] = useState(() => localStorage.getItem(LS.sys) ?? DEFAULT_SYSTEM);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -102,7 +102,16 @@ export function AiStudio() {
     if (!apiKey.trim()) { setError('Add your AI API key in Settings first.'); setShowSettings(true); return; }
     setBusy(true);
     try {
-      const endpoint = baseUrl.trim().replace(/\/+$/, '') + '/chat/completions';
+      // Validate before sending: a malformed base URL (e.g. a missing colon
+      // after https) fails DNS and surfaces only as a bare "Failed to fetch".
+      let endpoint: string;
+      try {
+        const parsed = new URL(baseUrl.trim());
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error();
+        endpoint = baseUrl.trim().replace(/\/+$/, '') + '/chat/completions';
+      } catch {
+        throw new Error(`API base URL looks invalid ("${baseUrl.trim() || '(empty)'}") — expected something like https://openrouter.ai/api/v1. Fix it in Settings and save.`);
+      }
       const messages: ChatMessage[] = [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: topic.trim() },
@@ -249,7 +258,7 @@ export function AiStudio() {
                 <div className="ai-field">
                   <span><label htmlFor="ai-model">Model</label></span>
                   <small>Must exist on the endpoint above. Pick a suggestion or type any OpenRouter model id.</small>
-                  <input id="ai-model" className="ai-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="openai/gpt-4o-mini" spellCheck={false} list="ai-model-picks" />
+                  <input id="ai-model" className="ai-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="meta-llama/llama-3.3-70b-instruct" spellCheck={false} list="ai-model-picks" />
                   <datalist id="ai-model-picks">
                     <option value="openai/gpt-4o-mini" />
                     <option value="google/gemini-2.5-flash" />
