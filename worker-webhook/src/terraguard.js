@@ -5136,6 +5136,161 @@ async function listVolcanoCandidates(v) {
     };
 }
 
+/** News-desk cooldown: same convention as the other manual posts. */
+const NEWS_COOLDOWN_S = 45;
+const NEWS_LASTPOST_KEY = "news:admin:lastpost";
+
+/** Who may use /post-news. Override with env.AI_ADMIN_EMAILS (comma-separated). */
+const DEFAULT_NEWS_ADMINS = ["gianganwneljae@gmail.com"];
+function parseNewsAdmins(env) {
+    const raw = (env.AI_ADMIN_EMAILS ?? "").trim();
+    if (!raw) return DEFAULT_NEWS_ADMINS;
+    return raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+}
+
+function b64urlDecode(s) {
+    const b64 = String(s).replace(/-/g, "+").replace(/_/g, "/");
+    const bin = atob(b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), "="));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+}
+
+/**
+ * Verify a Supabase access token (JWT, HS256, signed with the project's JWT
+ * secret). Returns the payload. Throws on malformed / wrong-alg / bad
+ * signature / expired tokens. Fail-closed: any doubt rejects.
+ */
+async function verifySupabaseJwt(token, jwtSecret) {
+    const parts = String(token || "").split(".");
+    if (parts.length !== 3) throw new Error("malformed token");
+    let header, payload;
+    try {
+        header = JSON.parse(new TextDecoder().decode(b64urlDecode(parts[0])));
+        payload = JSON.parse(new TextDecoder().decode(b64urlDecode(parts[1])));
+    }
+    catch {
+        throw new Error("malformed token");
+    }
+    if (header.alg !== "HS256") throw new Error(`unexpected alg ${header.alg}`);
+    if (!crypto?.subtle) throw new Error("crypto unavailable");
+    const key = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(jwtSecret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["verify"],
+    );
+    const ok = await crypto.subtle.verify(
+        "HMAC",
+        key,
+        b64urlDecode(parts[2]),
+        new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
+    );
+    if (!ok) throw new Error("bad signature");
+    const now = Math.floor(Date.now() / 1000);
+    if (typeof payload.exp === "number" && payload.exp < now - 30)
+        throw new Error("token expired");
+    return payload;
+}
+
+function splitNewsText(text, max = 1900) {
+    const out = [];
+    let rest = String(text);
+    while (rest.length > max) {
+        let cut = rest.lastIndexOf("\n", max);
+        if (cut < max * 0.5) cut = max;
+        out.push(rest.slice(0, cut));
+        rest = rest.slice(cut).replace(/^\n+/, "");
+    }
+    if (rest) out.push(rest);
+    return out;
+}
+
+/** Generic Discord post for news-desk items. Returns a status string. */
+async function postNewsToDiscord(title, text, imageUrl, webhookUrl) {
+    const chunks = splitNewsText(text);
+    for (let i = 0; i < chunks.length; i++) {
+        const payload = {
+            content: chunks[i],
+            embeds: i === 0
+                ? [{
+                    title: String(title).slice(0, 256),
+                    color: 0x3b82f6,
+                    ...(imageUrl ? { image: { url: imageUrl } } : {}),
+                    footer: { text: "TerraGuard AI News Desk" },
+                    timestamp: new Date().toISOString(),
+                }]
+                : [],
+        };
+        const res = await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+            const t = await res.text().catch(() => "");
+            throw new Error(`Discord webhook ${res.status}: ${t.slice(0, 200)}`);
+        }
+        if (i < chunks.length - 1) await new Promise((r) => setTimeout(r, 500));
+    }
+    return `discord: posted (${chunks.length} part${chunks.length === 1 ? "" : "s"})`;
+}
+
+/** Generic Facebook post for news-desk items. Photo when imageUrl is set. */
+async function postNewsToFacebook(title, text, imageUrl, env) {
+    const pageId = (env.FB_PAGE_ID ?? "").trim();
+    const userToken = (env.FB_USER_ACCESS_TOKEN ?? "").trim();
+    const appSecret = (env.FB_APP_SECRET ?? "").trim();
+    if (!pageId || !userToken)
+        return "fb: skipped (FB_PAGE_ID / FB_USER_ACCESS_TOKEN not set)";
+    // NOTE: getFacebookPageToken() lives inside the Tsunami module and is not
+    // visible here, so resolve the Page token locally (same /me/accounts flow).
+    let pageToken = null;
+    try {
+        const proof = await fbAppSecretProof(userToken, appSecret);
+        const listUrl = new URL(`https://graph.facebook.com/${FB_GRAPH_VERSION}/me/accounts`);
+        listUrl.searchParams.set("access_token", userToken);
+        listUrl.searchParams.set("fields", "id,name,access_token");
+        listUrl.searchParams.set("limit", "50");
+        if (proof) listUrl.searchParams.set("appsecret_proof", proof);
+        const listRes = await fetch(listUrl.toString());
+        if (listRes.ok) {
+            const listed = await listRes.json();
+            const match = (listed?.data ?? []).find((p) => String(p.id) === String(pageId));
+            if (match?.access_token) pageToken = String(match.access_token);
+        }
+    }
+    catch { /* fall through to userToken */ }
+    if (!pageToken) pageToken = userToken; // may already be a Page token
+    const proof = await fbAppSecretProof(pageToken, appSecret);
+    const withProof = (params) => {
+        if (proof) params.appsecret_proof = proof;
+        return params;
+    };
+    const caption = `**${title}**\n\n${text}\n\n_AI-assisted draft · Reviewed by TerraGuard_`;
+    if (imageUrl) {
+        const body = withProof({ access_token: pageToken, caption, url: imageUrl });
+        const res = await fetch(
+            `https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`,
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+        );
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && (data.post_id || data.id))
+            return `fb: posted photo ${data.post_id ?? data.id}`;
+        throw new Error(`FB photo ${res.status}: ${String(data?.error?.message ?? "").slice(0, 200)}`);
+    }
+    const body = withProof({ access_token: pageToken, message: caption });
+    const res = await fetch(
+        `https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/feed`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    );
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.id)
+        return `fb: posted ${data.id}`;
+    throw new Error(`FB feed ${res.status}: ${String(data?.error?.message ?? "").slice(0, 200)}`);
+}
+
 /** Candidate list driving the /admin weather (PAGASA) tab dropdown. */
 async function listWeatherCandidates(w) {
     const snap = w.kv ? await Weather.getSnapshot(w.kv).catch(() => null) : null;
@@ -5490,6 +5645,102 @@ export default {
             // channel cannot be hammered in a retry loop. Dry runs never reach here.
             if (v.kv) await v.kv.put(VOLCANO_LASTPOST_KEY, String(Math.floor(Date.now() / 1000)));
             return json({ success: true, volcano, target, message: parts.join(" | ") });
+        }
+
+        // ---- AI news desk: freeform posts to Discord / Facebook ----
+        if (path === "/post-news") {
+            // No shared secrets in the browser: the page sends the user's
+            // Supabase access token, verified here by signature, plus an email
+            // allowlist. The frontend gate is UX only; this check is the lock.
+            try {
+                if (request.method !== "POST")
+                    return json({ success: false, error: "Use POST" }, 405);
+                const jwtSecret = (env.SUPABASE_JWT_SECRET ?? "").trim();
+                if (!jwtSecret)
+                    return json({ success: false, error: "news desk not configured (SUPABASE_JWT_SECRET)" }, 500);
+                const auth = request.headers.get("Authorization") ?? "";
+                const bearer = /^Bearer (.+)$/.exec(auth.trim());
+                if (!bearer)
+                    return json({ success: false, error: "missing Bearer token (sign in first)" }, 401);
+                let claims;
+                try {
+                    claims = await verifySupabaseJwt(bearer[1], jwtSecret);
+                }
+                catch (e) {
+                    return json({ success: false, error: `invalid token: ${e instanceof Error ? e.message : String(e)}` }, 401);
+                }
+                const email = String(claims.email ?? "").toLowerCase();
+                if (!email || !parseNewsAdmins(env).includes(email))
+                    return json({ success: false, error: "restricted: this page is private" }, 403);
+                let body;
+                try {
+                    body = await request.json();
+                }
+                catch {
+                    return json({ success: false, error: "invalid JSON body" }, 400);
+                }
+                const title = String(body.title ?? "").trim().slice(0, 200) || "TerraGuard News";
+                const text = String(body.text ?? "").trim();
+                if (!text)
+                    return json({ success: false, error: "Missing text" }, 400);
+                if (text.length > 6000)
+                    return json({ success: false, error: `text too long (${text.length}/6000)` }, 400);
+                const target = String(body.target ?? "both").toLowerCase();
+                const wantDiscord = target === "both" || target === "discord";
+                const wantFb = target === "both" || target === "facebook" || target === "fb";
+                if (!wantDiscord && !wantFb)
+                    return json({ success: false, error: "Invalid target (use both, discord, or facebook)" }, 400);
+                const imageUrl = String(body.imageUrl ?? "").trim();
+                if (imageUrl && !/^https:\/\//i.test(imageUrl))
+                    return json({ success: false, error: "imageUrl must be an https URL" }, 400);
+                const newsDry = (url.searchParams.get("dryrun") ?? "") === "1";
+                if (newsDry) {
+                    return json({
+                        success: true, dryRun: true, title, target,
+                        discord: wantDiscord ? { title, chars: text.length, image: Boolean(imageUrl) } : null,
+                        facebook: wantFb ? { status: imageUrl ? "would-photo" : "would-post" } : null,
+                    });
+                }
+                const nkv = t.kv || w.kv || v.kv || h.kv;
+                if (nkv) {
+                    const nowS = Math.floor(Date.now() / 1000);
+                    const last = parseInt((await nkv.get(NEWS_LASTPOST_KEY)) || "0", 10);
+                    const wait = manualCooldownWait(nowS, last, NEWS_COOLDOWN_S);
+                    if (wait > 0)
+                        return json({ success: false, error: `cooldown — a news post ran ${nowS - last}s ago; wait ${wait}s` }, 429);
+                }
+                const parts = [];
+                if (wantDiscord) {
+                    try {
+                        const hook = t.env.DISCORD_WEBHOOK_URL || env.DISCORD_WEBHOOK_URL;
+                        if (!hook) throw new Error("DISCORD_WEBHOOK_URL not set");
+                        parts.push(await postNewsToDiscord(title, text, imageUrl || null, hook));
+                    }
+                    catch (e) {
+                        parts.push(`discord error: ${e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200)}`);
+                    }
+                }
+                else {
+                    parts.push("discord: skipped");
+                }
+                if (wantFb) {
+                    try {
+                        parts.push(await postNewsToFacebook(title, text, imageUrl || null, env));
+                    }
+                    catch (e) {
+                        parts.push(`fb error: ${e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200)}`);
+                    }
+                }
+                else {
+                    parts.push("fb: skipped");
+                }
+                // Arm the cooldown even when a send errored. Dry runs return above.
+                if (nkv) await nkv.put(NEWS_LASTPOST_KEY, String(Math.floor(Date.now() / 1000)));
+                return json({ success: true, title, target, message: parts.join(" | ") });
+            }
+            catch (e) {
+                return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
+            }
         }
 
         // ---- weather API ----

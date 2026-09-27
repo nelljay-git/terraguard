@@ -24,6 +24,7 @@ import { TikTokCallback } from './pages/TikTokCallback';
 import { Blog } from './pages/Blog';
 import { BlogPost } from './pages/BlogPost';
 import { VolcanoBulletin } from './pages/VolcanoBulletin';
+import { AiStudio } from './pages/AiStudio';
 import './App.css';
 
 // Keyed wrapper so navigating between two /details/:id URLs remounts the
@@ -72,6 +73,9 @@ function App() {
             <Route path="/blog/:slug" element={<BlogPost />} />
             <Route path="/bulletin/*" element={<VolcanoBulletin />} />
             <Route path="/tiktok-callback" element={<TikTokCallback />} />
+          {/* Unlisted admin page: no nav link. The page itself enforces the
+              email allowlist, and /post-news re-checks the signed-in user. */}
+          <Route path="/ai" element={<AiStudio />} />
           </Routes>
         </main>
       </div>
