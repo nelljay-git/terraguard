@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Sparkles, Send, Eye, Trash2, KeyRound, ShieldAlert, Loader2, MessageCircle, Share2, Layers, AlertTriangle, CheckCircle2, Newspaper } from 'lucide-react';
+import { Sparkles, Send, Eye, Trash2, KeyRound, ShieldAlert, Loader2, MessageCircle, Share2, Layers, AlertTriangle, CheckCircle2, Newspaper, ImagePlus, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import './AiStudio.css';
@@ -74,12 +74,49 @@ export function AiStudio() {
   const [imageUrl, setImageUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [posting, setPosting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
 
+  const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+  async function uploadImage(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Reset so the same file can be picked again after an error.
+    e.target.value = '';
+    setError(null);
+    setResult(null);
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError(`"${file.name}" is not an image — pick a JPG, PNG, or WebP file.`); return; }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError(`"${file.name}" is ${(file.size / 1048576).toFixed(1)} MB — 5 MB max.`);
+      return;
+    }
+    setUploading(true);
+    try {
+      const { data: { user: u } } = await supabase.auth.getUser();
+      if (!u) throw new Error('Session expired — sign in again.');
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `${u.id}/news/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('forum-images').upload(path, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type || 'image/jpeg',
+      });
+      if (upErr) throw new Error(upErr.message);
+      const { data } = supabase.storage.from('forum-images').getPublicUrl(path);
+      setImageUrl(data.publicUrl);
+      setResult('Image uploaded — preview it below before posting.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
+    }
+  }
+
   const hasKey = apiKey.trim().length > 0;
   const overLimit = body.length > BODY_LIMIT;
-  const canPost = !busy && !posting && !overLimit && (!!title.trim() || !!body.trim());
+  const canPost = !busy && !posting && !uploading && !overLimit && (!!title.trim() || !!body.trim());
 
   function saveSettings() {
     localStorage.setItem(LS.base, baseUrl.trim());
@@ -296,9 +333,25 @@ export function AiStudio() {
             <textarea id="ai-body" className="ai-textarea" value={body} onChange={(e) => setBody(e.target.value)} rows={10} placeholder="News body — editable" />
           </div>
           <div className="ai-field">
-            <span><label htmlFor="ai-image">Image URL</label></span>
-            <small>Optional. Facebook posts it as a photo; Discord embeds it.</small>
-            <input id="ai-image" className="ai-input" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…" spellCheck={false} />
+            <span><label htmlFor="ai-image">Image</label></span>
+            <small>Optional. Upload from your device or paste a URL. Facebook posts it as a photo; Discord embeds it.</small>
+            <div className="ai-upload-row">
+              <label className="ai-btn" htmlFor="ai-file">
+                {uploading
+                  ? (<><Loader2 size={15} className="spin" /> Uploading…</>)
+                  : (<><ImagePlus size={15} /> Upload image</>)}
+              </label>
+              <input id="ai-file" type="file" accept="image/*" onChange={uploadImage} hidden disabled={uploading || posting} />
+              <input id="ai-image" className="ai-input" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="…or paste https:// URL" spellCheck={false} />
+            </div>
+            {imageUrl && (
+              <div className="ai-preview">
+                <img src={imageUrl} alt="Attached preview" />
+                <button type="button" className="ai-btn danger ai-preview-x" onClick={() => setImageUrl('')} aria-label="Remove image">
+                  <X size={15} /> Remove
+                </button>
+              </div>
+            )}
           </div>
         </section>
 

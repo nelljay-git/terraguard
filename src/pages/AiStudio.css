@@ -285,6 +285,47 @@
   color: var(--text-primary);
 }
 
+/* ---- image upload ---- */
+.ai-upload-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.ai-upload-row .ai-btn {
+  flex: none;
+  white-space: nowrap;
+}
+
+.ai-upload-row .ai-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-preview {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: rgba(127, 127, 127, 0.06);
+}
+
+.ai-preview img {
+  max-width: 220px;
+  max-height: 160px;
+  border-radius: 8px;
+  object-fit: cover;
+  display: block;
+}
+
+.ai-preview-x {
+  flex: none;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+}
+
 /* ---- feedback banners ---- */
 .ai-msg {
   display: flex;
