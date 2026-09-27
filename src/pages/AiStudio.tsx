@@ -26,6 +26,27 @@ No hashtags, no emojis in the body.`;
 
 interface ChatMessage { role: 'system' | 'user'; content: string }
 
+/** Host part of a URL for error messages. Never throws. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host || url;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Turn a fetch failure into something actionable. A TypeError means the request
+ * never reached the server (DNS, offline, VPN, ad-blocker) — very different
+ * from an HTTP 4xx/5xx, so it gets its own message naming the host.
+ */
+function fetchError(what: string, endpoint: string, e: unknown): string {
+  if (e instanceof TypeError) {
+    return `${what} — network error reaching ${hostOf(endpoint)}. Check your connection, VPN, or ad-blocker, and verify the URL in Settings.`;
+  }
+  return `${what} — ${e instanceof Error ? e.message : String(e)}`;
+}
+
 function splitTitleBody(text: string, fallbackTitle: string): { title: string; body: string } {
   const lines = text.trim().split('\n');
   const first = (lines[0] ?? '').trim();
@@ -108,7 +129,8 @@ export function AiStudio() {
       setBody(split.body);
       setResult('Draft generated — review and edit before posting.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const endpoint = baseUrl.trim().replace(/\/+$/, '') + '/chat/completions';
+      setError(fetchError('AI request failed', endpoint, e));
     } finally {
       setBusy(false);
     }
@@ -139,10 +161,17 @@ export function AiStudio() {
         body: JSON.stringify({ title: title.trim(), text: body.trim(), target, imageUrl: imageUrl.trim() || undefined }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error ?? `Post failed (HTTP ${res.status})`);
+      if (!res.ok) {
+        // Empty 404 almost always means the worker predates /post-news.
+        if (res.status === 404 && !data?.error) {
+          throw new Error('Post failed (HTTP 404) — the worker has no /post-news route yet. Repaste terraguard.js into terraguard-monitor and try again.');
+        }
+        throw new Error(data?.error ?? `Post failed (HTTP ${res.status})`);
+      }
       setResult(dryRun ? `Preview OK — ${data.message ?? 'ready to post.'}` : `Posted — ${data.message ?? 'done.'}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const url = `${WORKER_URL}/post-news`;
+      setError(e instanceof TypeError ? fetchError('Post failed', url, e) : `Post failed — ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setPosting(false);
     }
