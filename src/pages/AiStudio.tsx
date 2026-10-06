@@ -40,8 +40,24 @@ function presetIdFor(url: string): string | null {
 
 const DEFAULT_SYSTEM = `You are a news writer for TerraGuard Philippines, a disaster-monitoring community.
 Write in clear, factual English. Use ONLY the facts the user provides — never invent names, numbers, times, or quotes.
+The user message starts with a "News date:" line — treat it as the dateline and use it in the story. Never invent a different date.
 Format: first line is "# Headline", then 2-4 short paragraphs, then one line with a practical safety reminder for readers.
 No hashtags, no emojis in the body.`;
+
+function todayInputValue(): string {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function formatLongDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+  if (!m) return iso.trim() || 'today';
+  const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(dt.getTime())) return iso.trim();
+  return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
 
 interface ChatMessage { role: 'system' | 'user'; content: string }
 
@@ -88,6 +104,7 @@ export function AiStudio() {
   const [showSettings, setShowSettings] = useState(false);
 
   const [topic, setTopic] = useState('');
+  const [newsDate, setNewsDate] = useState(todayInputValue);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [imageUrl, setImageUrl] = useState('');
@@ -170,7 +187,7 @@ export function AiStudio() {
       }
       const messages: ChatMessage[] = [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: topic.trim() },
+        { role: 'user', content: `News date: ${formatLongDate(newsDate)}\n${topic.trim()}` },
       ];
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -294,6 +311,11 @@ export function AiStudio() {
             <small>What happened, where, when. The AI uses only what you write here.</small>
             <textarea id="ai-topic" className="ai-textarea" value={topic} onChange={(e) => setTopic(e.target.value)} rows={4}
               placeholder="e.g. Magnitude 5.2 earthquake off Davao Oriental, 6:40 AM, felt Intensity III in Mati. No tsunami threat per PHIVOLCS." />
+          </div>
+          <div className="ai-field">
+            <span><label htmlFor="ai-date">News date</label></span>
+            <small>Joined to the prompt as “News date: …” so the draft uses this date.</small>
+            <input id="ai-date" type="date" className="ai-input" value={newsDate} onChange={(e) => setNewsDate(e.target.value)} />
           </div>
           <div className="ai-row">
             <button type="button" className="ai-btn primary block" onClick={generate} disabled={busy || posting}>
