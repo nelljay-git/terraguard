@@ -40,16 +40,8 @@ const IMAGE_PRESETS = [
   { id: 'cyclone', label: 'Cyclone report', path: '/image-cyclone-report.png' },
 ];
 
-/** Which preset (if any) the current URL points to. Custom/uploaded URLs → null. */
-function presetIdFor(url: string): string | null {
-  try {
-    const u = new URL(url);
-    const hit = IMAGE_PRESETS.find((p) => u.origin + u.pathname === window.location.origin + p.path);
-    return hit ? hit.id : null;
-  } catch {
-    return null;
-  }
-}
+/** Max images per news post (matches worker limit). */
+const MAX_NEWS_IMAGES = 4;
 
 const DEFAULT_SYSTEM = `You are a news writer for TerraGuard Philippines, a disaster-monitoring community.
 Write in clear, factual English. Use ONLY the facts the user provides — never invent names, numbers, times, or quotes.
@@ -130,7 +122,8 @@ export function AiStudio() {
   const [length, setLength] = useState(() => localStorage.getItem(LS.length) ?? 'standard');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [imageInput, setImageInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [improving, setImproving] = useState(false);
   const [improveNotes, setImproveNotes] = useState('');
@@ -140,39 +133,114 @@ export function AiStudio() {
   const [result, setResult] = useState<string | null>(null);
 
   const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+  const MAX_IMAGES = MAX_NEWS_IMAGES;
 
-  async function uploadImage(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    // Reset so the same file can be picked again after an error.
-    e.target.value = '';
+  function parseImageUrls(raw: string): string[] {
+    return raw
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter((s) => /^https:\/\//i.test(s));
+  }
+
+  function addImageUrls(urls: string[]): number {
+    const clean = urls.map((u) => u.trim()).filter((u) => /^https:\/\//i.test(u));
+    if (clean.length === 0) return 0;
+    let added = 0;
+    setImageUrls((prev) => {
+      const next = [...prev];
+      for (const u of clean) {
+        if (next.length >= MAX_IMAGES) break;
+        if (!next.includes(u)) { next.push(u); added++; }
+      }
+      return next;
+    });
+    return added;
+  }
+
+  async function uploadFiles(files: FileList | File[]) {
+    const list = Array.from(files);
+    if (list.length === 0) return;
     setError(null);
     setResult(null);
-    if (!file) return;
-    if (!file.type.startsWith('image/')) { setError(`"${file.name}" is not an image — pick a JPG, PNG, or WebP file.`); return; }
-    if (file.size > MAX_IMAGE_BYTES) {
-      setError(`"${file.name}" is ${(file.size / 1048576).toFixed(1)} MB — 5 MB max.`);
-      return;
+    const remaining = MAX_IMAGES - imageUrls.length;
+    if (remaining <= 0) { setError(`Max ${MAX_IMAGES} images — remove one first.`); return; }
+    const batch = list.slice(0, remaining);
+    for (const file of batch) {
+      if (!file.type.startsWith('image/')) { setError(`"${file.name}" is not an image — pick a JPG, PNG, or WebP file.`); return; }
+      if (file.size > MAX_IMAGE_BYTES) {
+        setError(`"${file.name}" is ${(file.size / 1048576).toFixed(1)} MB — 5 MB max.`);
+        return;
+      }
     }
     setUploading(true);
     try {
       const { data: { user: u } } = await supabase.auth.getUser();
       if (!u) throw new Error('Session expired — sign in again.');
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const path = `${u.id}/news/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
-      const { error: upErr } = await supabase.storage.from('forum-images').upload(path, file, {
-        cacheControl: '3600',
-        upsert: false,
-        contentType: file.type || 'image/jpeg',
-      });
-      if (upErr) throw new Error(upErr.message);
-      const { data } = supabase.storage.from('forum-images').getPublicUrl(path);
-      setImageUrl(data.publicUrl);
-      setResult('Image uploaded — preview it below before posting.');
+      const uploaded: string[] = [];
+      for (const file of batch) {
+        const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+        const path = `${u.id}/news/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('forum-images').upload(path, file, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: file.type || 'image/jpeg',
+        });
+        if (upErr) throw new Error(upErr.message);
+        const { data } = supabase.storage.from('forum-images').getPublicUrl(path);
+        uploaded.push(data.publicUrl);
+      }
+      addImageUrls(uploaded);
+      setResult(uploaded.length > 1 ? `${uploaded.length} images uploaded — preview below before posting.` : 'Image uploaded — preview it below before posting.');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setUploading(false);
     }
+  }
+
+  async function uploadImage(e: ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    // Reset so the same file can be picked again after an error.
+    e.target.value = '';
+    if (!files || files.length === 0) return;
+    await uploadFiles(files);
+  }
+
+  function handleDropZoneDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      void uploadFiles(files);
+      return;
+    }
+    const text = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text');
+    if (text) {
+      const urls = parseImageUrls(text);
+      if (urls.length > 0) {
+        const before = imageUrls.length;
+        addImageUrls(urls);
+        setResult(`Link${urls.length === 1 ? '' : 's'} added — preview below before posting.`);
+        if (imageUrls.length >= MAX_IMAGES && before >= MAX_IMAGES) setError(`Max ${MAX_IMAGES} images — remove one first.`);
+      }
+    }
+  }
+
+  function addPastedLinks() {
+    const urls = parseImageUrls(imageInput);
+    if (urls.length === 0) { setError('Paste one or more https:// image URLs first.'); return; }
+    if (imageUrls.length >= MAX_IMAGES) { setError(`Max ${MAX_IMAGES} images — remove one first.`); return; }
+    addImageUrls(urls);
+    setImageInput('');
+    setError(null);
+    setResult('Link(s) added — preview below before posting.');
+  }
+
+  function togglePreset(url: string) {
+    setImageUrls((prev) => {
+      if (prev.includes(url)) return prev.filter((u) => u !== url);
+      if (prev.length >= MAX_IMAGES) { setError(`Max ${MAX_IMAGES} images — remove one first.`); return prev; }
+      return [...prev, url];
+    });
   }
 
   const hasKey = apiKey.trim().length > 0;
@@ -309,7 +377,7 @@ export function AiStudio() {
       const res = await fetch(`${WORKER_URL}/post-news${dryRun ? '?dryrun=1' : ''}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: title.trim(), text: body.trim(), target, imageUrl: imageUrl.trim() || undefined }),
+        body: JSON.stringify({ title: title.trim(), text: body.trim(), target, imageUrls, imageUrl: imageUrls[0] || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -473,41 +541,53 @@ export function AiStudio() {
             </div>
           </div>
           <div className="ai-field">
-            <span><label htmlFor="ai-image">Image</label></span>
-            <small>Optional. Pick a preset, upload from your device, or paste a URL. Facebook posts it as a photo; Discord embeds it. Presets resolve to this site, so post from the live site for Facebook to fetch them.</small>
-            <div className="ai-presets" role="radiogroup" aria-label="Preset images">
-              <button type="button" className={`ai-preset${!imageUrl ? ' sel' : ''}`}
-                onClick={() => setImageUrl('')} aria-pressed={!imageUrl} title="No image">
-                <span className="ai-preset-none">None</span>
-                <span>No image</span>
-              </button>
+            <span><label htmlFor="ai-image">Images <span className="ai-count">{imageUrls.length}/{MAX_IMAGES}</span></label></span>
+            <small>Optional, up to {MAX_IMAGES}. Pick presets, upload files, or paste https:// links. You can also drag &amp; drop files or links onto the box below. First image is the cover; Facebook posts them together, Discord embeds them.</small>
+            <div className="ai-presets" role="group" aria-label="Preset images">
               {IMAGE_PRESETS.map((p) => {
-                const active = presetIdFor(imageUrl) === p.id;
+                const full = window.location.origin + p.path;
+                const active = imageUrls.includes(full);
                 return (
                   <button key={p.id} type="button" className={`ai-preset${active ? ' sel' : ''}`}
-                    onClick={() => setImageUrl(window.location.origin + p.path)}
-                    aria-pressed={active} title={p.label}>
+                    onClick={() => togglePreset(full)}
+                    aria-pressed={active} title={active ? `${p.label} (added — click to remove)` : p.label}>
                     <img src={p.path} alt={p.label} loading="lazy" />
-                    <span>{p.label}</span>
+                    <span>{p.label}{active ? ' ✓' : ''}</span>
                   </button>
                 );
               })}
             </div>
-            <div className="ai-upload-row">
-              <label className="ai-btn" htmlFor="ai-file">
-                {uploading
-                  ? (<><Loader2 size={15} className="spin" /> Uploading…</>)
-                  : (<><ImagePlus size={15} /> Upload image</>)}
-              </label>
-              <input id="ai-file" type="file" accept="image/*" onChange={uploadImage} hidden disabled={uploading || posting} />
-              <input id="ai-image" className="ai-input" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="…or paste https:// URL" spellCheck={false} />
+            <div
+              className="ai-dropzone"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDropZoneDrop}
+            >
+              <div className="ai-upload-row">
+                <label className="ai-btn" htmlFor="ai-file">
+                  {uploading
+                    ? (<><Loader2 size={15} className="spin" /> Uploading…</>)
+                    : (<><ImagePlus size={15} /> Upload {imageUrls.length > 0 ? 'more' : 'images'}</>)}
+                </label>
+                <input id="ai-file" type="file" accept="image/*" multiple onChange={uploadImage} hidden disabled={uploading || posting} />
+                <input id="ai-image" className="ai-input" value={imageInput} onChange={(e) => setImageInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPastedLinks(); } }}
+                  placeholder="…or paste https:// link(s), comma or newline separated" spellCheck={false} />
+                <button type="button" className="ai-btn" onClick={addPastedLinks} disabled={!imageInput.trim()}>Add</button>
+              </div>
+              <p className="ai-drop-hint">Drop image files or image links here</p>
             </div>
-            {imageUrl && (
-              <div className="ai-preview">
-                <img src={imageUrl} alt="Attached preview" />
-                <button type="button" className="ai-btn danger ai-preview-x" onClick={() => setImageUrl('')} aria-label="Remove image">
-                  <X size={15} /> Remove
-                </button>
+            {imageUrls.length > 0 && (
+              <div className="ai-thumbs">
+                {imageUrls.map((u, i) => (
+                  <div key={u} className="ai-thumb">
+                    <img src={u} alt={`Attached ${i + 1}`} loading="lazy" />
+                    <span className="ai-thumb-n">{i === 0 ? 'Cover' : `#${i + 1}`}</span>
+                    <button type="button" className="ai-thumb-x" onClick={() => setImageUrls((prev) => prev.filter((x) => x !== u))} aria-label={`Remove image ${i + 1}`}>
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+                <button type="button" className="ai-btn danger ai-preview-x" onClick={() => setImageUrls([])}>Clear all</button>
               </div>
             )}
           </div>

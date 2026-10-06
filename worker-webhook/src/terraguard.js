@@ -5139,6 +5139,27 @@ async function listVolcanoCandidates(v) {
 /** News-desk cooldown: same convention as the other manual posts. */
 const NEWS_COOLDOWN_S = 45;
 const NEWS_LASTPOST_KEY = "news:admin:lastpost";
+/** Max images per news-desk post (keeps FB album + Discord embeds sane). */
+const MAX_NEWS_IMAGES = 4;
+
+/**
+ * Normalize the image list from a /post-news body. Accepts the new
+ * `imageUrls` array plus the legacy single `imageUrl` string. Returns a
+ * deduped list of https URLs, capped at MAX_NEWS_IMAGES.
+ */
+function normalizeNewsImages(body) {
+    const out = [];
+    const push = (u) => {
+        const s = String(u ?? "").trim();
+        if (!s || out.length >= MAX_NEWS_IMAGES) return;
+        if (!/^https:\/\//i.test(s)) return;
+        if (!out.includes(s)) out.push(s);
+    };
+    const arr = body?.imageUrls;
+    if (Array.isArray(arr)) for (const u of arr) push(u);
+    push(body?.imageUrl);
+    return out;
+}
 
 /** Who may use /post-news. Override with env.AI_ADMIN_EMAILS (comma-separated). */
 const DEFAULT_NEWS_ADMINS = ["gianganwneljae@gmail.com"];
@@ -5208,21 +5229,51 @@ function splitNewsText(text, max = 1900) {
 }
 
 /** Generic Discord post for news-desk items. Returns a status string. */
-async function postNewsToDiscord(title, text, imageUrl, webhookUrl) {
+async function postNewsToDiscord(title, text, imageUrls, webhookUrl) {
     const cleanTitle = String(title ?? "").trim().slice(0, 256);
     const cleanText = String(text ?? "").trim();
+    const images = (Array.isArray(imageUrls) ? imageUrls : [imageUrls])
+        .map((u) => String(u ?? "").trim())
+        .filter((u) => /^https:\/\//i.test(u))
+        .slice(0, MAX_NEWS_IMAGES);
     const chunks = cleanText ? splitNewsText(cleanText) : [""];
     for (let i = 0; i < chunks.length; i++) {
-        const embed = {
-            color: 0x3b82f6,
-            ...(cleanTitle && i === 0 ? { title: cleanTitle } : {}),
-            ...(imageUrl && i === 0 ? { image: { url: imageUrl } } : {}),
-            footer: { text: "TerraGuard AI News Desk" },
-            timestamp: new Date().toISOString(),
-        };
+        // First message carries the title + cover + footer; extra images
+        // each get their own embed (Discord allows up to 10 per message).
+        const embeds = [];
+        if (i === 0) {
+            let idx = 0;
+            if (cleanTitle) {
+                embeds.push({
+                    title: cleanTitle,
+                    color: 0x3b82f6,
+                    ...(images[0] ? { image: { url: images[0] } } : {}),
+                    footer: { text: "TerraGuard AI News Desk" },
+                    timestamp: new Date().toISOString(),
+                });
+                idx = images[0] ? 1 : 0;
+            } else if (images[0]) {
+                embeds.push({
+                    color: 0x3b82f6,
+                    image: { url: images[0] },
+                    footer: { text: "TerraGuard AI News Desk" },
+                    timestamp: new Date().toISOString(),
+                });
+                idx = 1;
+            } else {
+                embeds.push({
+                    color: 0x3b82f6,
+                    footer: { text: "TerraGuard AI News Desk" },
+                    timestamp: new Date().toISOString(),
+                });
+            }
+            for (; idx < images.length; idx++) {
+                embeds.push({ color: 0x3b82f6, image: { url: images[idx] } });
+            }
+        }
         const payload = {
             ...(chunks[i] ? { content: chunks[i] } : {}),
-            embeds: i === 0 ? [embed] : [],
+            embeds,
         };
         const res = await fetch(webhookUrl, {
             method: "POST",
@@ -5238,8 +5289,12 @@ async function postNewsToDiscord(title, text, imageUrl, webhookUrl) {
     return `discord: posted (${chunks.length} part${chunks.length === 1 ? "" : "s"})`;
 }
 
-/** Generic Facebook post for news-desk items. Photo when imageUrl is set. */
-async function postNewsToFacebook(title, text, imageUrl, env) {
+/** Generic Facebook post for news-desk items. Photo(s) when images are set. */
+async function postNewsToFacebook(title, text, imageUrls, env) {
+    const images = (Array.isArray(imageUrls) ? imageUrls : [imageUrls])
+        .map((u) => String(u ?? "").trim())
+        .filter((u) => /^https:\/\//i.test(u))
+        .slice(0, MAX_NEWS_IMAGES);
     const pageId = (env.FB_PAGE_ID ?? "").trim();
     const userToken = (env.FB_USER_ACCESS_TOKEN ?? "").trim();
     const appSecret = (env.FB_APP_SECRET ?? "").trim();
@@ -5274,8 +5329,8 @@ async function postNewsToFacebook(title, text, imageUrl, env) {
     const cleanTitle = String(title ?? "").trim();
     const cleanText = String(text ?? "").trim();
     const caption = [cleanTitle, cleanText, "AI-assisted draft · Reviewed by TerraGuard"].filter(Boolean).join("\n\n");
-    if (imageUrl) {
-        const body = withProof({ access_token: pageToken, caption, url: imageUrl });
+    if (images.length === 1) {
+        const body = withProof({ access_token: pageToken, caption, url: images[0] });
         const res = await fetch(
             `https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`,
             { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
@@ -5284,6 +5339,36 @@ async function postNewsToFacebook(title, text, imageUrl, env) {
         if (res.ok && (data.post_id || data.id))
             return `fb: posted photo ${data.post_id ?? data.id}`;
         throw new Error(`FB photo ${res.status}: ${String(data?.error?.message ?? "").slice(0, 200)}`);
+    }
+    if (images.length > 1) {
+        // Multi-photo album: upload each photo unpublished, then publish one
+        // feed post with all media attached so they land as a single post.
+        const fbids = [];
+        for (const url of images) {
+            const up = withProof({ access_token: pageToken, url, published: false });
+            const upRes = await fetch(
+                `https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/photos`,
+                { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(up) },
+            );
+            const upData = await upRes.json().catch(() => ({}));
+            if (!upRes.ok || !upData?.id) {
+                throw new Error(`FB album upload ${upRes.status}: ${String(upData?.error?.message ?? "").slice(0, 200)}`);
+            }
+            fbids.push(upData.id);
+        }
+        const album = withProof({
+            access_token: pageToken,
+            message: caption,
+            attached_media: fbids.map((id) => ({ media_fbid: id })),
+        });
+        const res = await fetch(
+            `https://graph.facebook.com/${FB_GRAPH_VERSION}/${pageId}/feed`,
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(album) },
+        );
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.id)
+            return `fb: posted album (${images.length} photos) ${data.id}`;
+        throw new Error(`FB album ${res.status}: ${String(data?.error?.message ?? "").slice(0, 200)}`);
     }
     const body = withProof({ access_token: pageToken, message: caption });
     const res = await fetch(
@@ -5695,15 +5780,17 @@ export default {
                 const wantFb = target === "both" || target === "facebook" || target === "fb";
                 if (!wantDiscord && !wantFb)
                     return json({ success: false, error: "Invalid target (use both, discord, or facebook)" }, 400);
-                const imageUrl = String(body.imageUrl ?? "").trim();
-                if (imageUrl && !/^https:\/\//i.test(imageUrl))
-                    return json({ success: false, error: "imageUrl must be an https URL" }, 400);
+                const imageUrls = normalizeNewsImages(body);
+                if (Array.isArray(body?.imageUrls) && body.imageUrls.length > MAX_NEWS_IMAGES)
+                    return json({ success: false, error: `too many images (max ${MAX_NEWS_IMAGES})` }, 400);
+                if ((body?.imageUrl || (Array.isArray(body?.imageUrls) && body.imageUrls.length > 0)) && imageUrls.length === 0)
+                    return json({ success: false, error: "image URLs must be https URLs" }, 400);
                 const newsDry = (url.searchParams.get("dryrun") ?? "") === "1";
                 if (newsDry) {
                     return json({
                         success: true, dryRun: true, title, target,
-                        discord: wantDiscord ? { title, chars: text.length, image: Boolean(imageUrl) } : null,
-                        facebook: wantFb ? { status: imageUrl ? "would-photo" : "would-post" } : null,
+                        discord: wantDiscord ? { title, chars: text.length, images: imageUrls.length } : null,
+                        facebook: wantFb ? { status: imageUrls.length > 1 ? "would-album" : imageUrls.length === 1 ? "would-photo" : "would-post", images: imageUrls.length } : null,
                     });
                 }
                 const nkv = t.kv || w.kv || v.kv || h.kv;
@@ -5719,7 +5806,7 @@ export default {
                     try {
                         const hook = t.env.DISCORD_WEBHOOK_URL || env.DISCORD_WEBHOOK_URL;
                         if (!hook) throw new Error("DISCORD_WEBHOOK_URL not set");
-                        parts.push(await postNewsToDiscord(title, text, imageUrl || null, hook));
+                        parts.push(await postNewsToDiscord(title, text, imageUrls, hook));
                     }
                     catch (e) {
                         parts.push(`discord error: ${e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200)}`);
@@ -5730,7 +5817,7 @@ export default {
                 }
                 if (wantFb) {
                     try {
-                        parts.push(await postNewsToFacebook(title, text, imageUrl || null, env));
+                        parts.push(await postNewsToFacebook(title, text, imageUrls, env));
                     }
                     catch (e) {
                         parts.push(`fb error: ${e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200)}`);
