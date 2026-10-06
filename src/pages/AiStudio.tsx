@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Sparkles, Send, Eye, Trash2, KeyRound, ShieldAlert, Loader2, MessageCircle, Share2, Layers, AlertTriangle, CheckCircle2, Newspaper, ImagePlus, X } from 'lucide-react';
+import { Sparkles, Send, Eye, Trash2, KeyRound, ShieldAlert, Loader2, MessageCircle, Share2, Layers, AlertTriangle, CheckCircle2, Newspaper, ImagePlus, X, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import './AiStudio.css';
@@ -16,8 +16,21 @@ const WORKER_URL = (
   'https://terraguard-monitor.gianganwneljae.workers.dev'
 ).replace(/\/+$/, '');
 
-const LS = { base: 'tg-ai-base', key: 'tg-ai-key', model: 'tg-ai-model', sys: 'tg-ai-sys' };
+const LS = { base: 'tg-ai-base', key: 'tg-ai-key', model: 'tg-ai-model', sys: 'tg-ai-sys', tone: 'tg-ai-tone', length: 'tg-ai-length' };
 const BODY_LIMIT = 6000;
+
+const TONES = [
+  { id: 'neutral', label: 'Neutral', prompt: 'Neutral, factual news tone' },
+  { id: 'formal', label: 'Formal / official', prompt: 'Formal, official advisory tone' },
+  { id: 'urgent', label: 'Urgent / alert', prompt: 'Urgent but calm public-safety alert tone' },
+  { id: 'friendly', label: 'Friendly / community', prompt: 'Friendly, community-focused tone' },
+] as const;
+
+const LENGTHS = [
+  { id: 'short', label: 'Short (1–2 paragraphs)', prompt: 'Keep it short: 1-2 paragraphs plus a safety reminder' },
+  { id: 'standard', label: 'Standard (2–4 paragraphs)', prompt: 'Standard length: 2-4 short paragraphs plus a safety reminder' },
+  { id: 'detailed', label: 'Detailed (4–6 paragraphs)', prompt: 'Detailed: 4-6 short paragraphs plus a safety reminder' },
+] as const;
 
 /** Built-in cover images shipped in public/. Posted as absolute URLs so
  * Facebook/Discord can fetch them — resolved against the current origin. */
@@ -57,6 +70,14 @@ function formatLongDate(iso: string): string {
   const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   if (Number.isNaN(dt.getTime())) return iso.trim();
   return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function tonePrompt(id: string): string {
+  return TONES.find((t) => t.id === id)?.prompt ?? TONES[0].prompt;
+}
+
+function lengthPrompt(id: string): string {
+  return LENGTHS.find((l) => l.id === id)?.prompt ?? LENGTHS[1].prompt;
 }
 
 interface ChatMessage { role: 'system' | 'user'; content: string }
@@ -105,10 +126,14 @@ export function AiStudio() {
 
   const [topic, setTopic] = useState('');
   const [newsDate, setNewsDate] = useState(todayInputValue);
+  const [tone, setTone] = useState(() => localStorage.getItem(LS.tone) ?? 'neutral');
+  const [length, setLength] = useState(() => localStorage.getItem(LS.length) ?? 'standard');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [busy, setBusy] = useState(false);
+  const [improving, setImproving] = useState(false);
+  const [improveNotes, setImproveNotes] = useState('');
   const [posting, setPosting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -152,13 +177,16 @@ export function AiStudio() {
 
   const hasKey = apiKey.trim().length > 0;
   const overLimit = body.length > BODY_LIMIT;
-  const canPost = !busy && !posting && !uploading && !overLimit && (!!title.trim() || !!body.trim());
+  const canPost = !busy && !improving && !posting && !uploading && !overLimit && (!!title.trim() || !!body.trim());
+  const canImprove = !busy && !improving && !posting && (!!title.trim() || !!body.trim());
 
   function saveSettings() {
     localStorage.setItem(LS.base, baseUrl.trim());
     localStorage.setItem(LS.key, apiKey.trim());
     localStorage.setItem(LS.model, model.trim());
     localStorage.setItem(LS.sys, systemPrompt);
+    localStorage.setItem(LS.tone, tone);
+    localStorage.setItem(LS.length, length);
     setResult('Settings saved in this browser.');
   }
 
@@ -168,53 +196,94 @@ export function AiStudio() {
     setResult('API key removed from this browser.');
   }
 
+  function requireApiKey(): string | null {
+    if (!apiKey.trim()) { setError('Add your AI API key in Settings first.'); setShowSettings(true); return null; }
+    return apiKey.trim();
+  }
+
+  function resolveEndpoint(): string {
+    // Validate before sending: a malformed base URL (e.g. a missing colon
+    // after https) fails DNS and surfaces only as a bare "Failed to fetch".
+    try {
+      const parsed = new URL(baseUrl.trim());
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error();
+      return baseUrl.trim().replace(/\/+$/, '') + '/chat/completions';
+    } catch {
+      throw new Error(`API base URL looks invalid ("${baseUrl.trim() || '(empty)'}") — expected something like https://openrouter.ai/api/v1. Fix it in Settings and save.`);
+    }
+  }
+
+  async function chatCompletion(messages: ChatMessage[]): Promise<string> {
+    const key = requireApiKey();
+    if (!key) throw new Error('__nokey__');
+    const endpoint = resolveEndpoint();
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${key}`,
+        // Recommended by OpenRouter for attribution; harmless elsewhere.
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'TerraGuard AI News Desk',
+      },
+      body: JSON.stringify({ model: model.trim(), messages, temperature: 0.7, max_tokens: 1500 }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error?.message ?? `AI request failed (HTTP ${res.status})`);
+    }
+    const content: string = data?.choices?.[0]?.message?.content ?? '';
+    if (!content.trim()) throw new Error('The AI returned an empty response.');
+    return content;
+  }
+
   async function generate() {
     setError(null);
     setResult(null);
     if (!topic.trim()) { setError('Describe the news first — facts, place, time.'); return; }
-    if (!apiKey.trim()) { setError('Add your AI API key in Settings first.'); setShowSettings(true); return; }
     setBusy(true);
     try {
-      // Validate before sending: a malformed base URL (e.g. a missing colon
-      // after https) fails DNS and surfaces only as a bare "Failed to fetch".
-      let endpoint: string;
-      try {
-        const parsed = new URL(baseUrl.trim());
-        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error();
-        endpoint = baseUrl.trim().replace(/\/+$/, '') + '/chat/completions';
-      } catch {
-        throw new Error(`API base URL looks invalid ("${baseUrl.trim() || '(empty)'}") — expected something like https://openrouter.ai/api/v1. Fix it in Settings and save.`);
-      }
-      const messages: ChatMessage[] = [
+      const content = await chatCompletion([
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: `News date: ${formatLongDate(newsDate)}\n${topic.trim()}` },
-      ];
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey.trim()}`,
-          // Recommended by OpenRouter for attribution; harmless elsewhere.
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'TerraGuard AI News Desk',
-        },
-        body: JSON.stringify({ model: model.trim(), messages, temperature: 0.7, max_tokens: 1200 }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data?.error?.message ?? `AI request failed (HTTP ${res.status})`);
-      }
-      const content: string = data?.choices?.[0]?.message?.content ?? '';
-      if (!content.trim()) throw new Error('The AI returned an empty response.');
+        { role: 'user', content: `News date: ${formatLongDate(newsDate)}\nTone: ${tonePrompt(tone)}\nLength: ${lengthPrompt(length)}\nFacts:\n${topic.trim()}` },
+      ]);
       const split = splitTitleBody(content, topic.trim().split('\n')[0].slice(0, 200));
       setTitle(split.title);
       setBody(split.body);
       setResult('Draft generated — review and edit before posting.');
     } catch (e) {
+      if (e instanceof Error && e.message === '__nokey__') return;
       const endpoint = baseUrl.trim().replace(/\/+$/, '') + '/chat/completions';
       setError(fetchError('AI request failed', endpoint, e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function improveDraft() {
+    setError(null);
+    setResult(null);
+    if (!title.trim() && !body.trim()) { setError('Nothing to improve — generate or write a draft first.'); return; }
+    setImproving(true);
+    try {
+      const notes = improveNotes.trim() || 'Tighten the wording, keep all facts, fix grammar.';
+      const content = await chatCompletion([
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: `Rewrite this news draft. Keep every fact exactly — do not add or remove facts.\nNews date: ${formatLongDate(newsDate)}\nTone: ${tonePrompt(tone)}\nLength: ${lengthPrompt(length)}\nRewrite instructions: ${notes}\n\nCurrent headline: ${title.trim() || '(none)'}\nCurrent body:\n${body.trim()}\n\nReturn in the same format: first line "# Headline", then paragraphs, then a safety reminder. No hashtags, no emojis.`,
+        },
+      ]);
+      const split = splitTitleBody(content, title.trim() || topic.trim().split('\n')[0].slice(0, 200));
+      setTitle(split.title);
+      setBody(split.body);
+      setResult('Draft improved — review before posting.');
+    } catch (e) {
+      if (e instanceof Error && e.message === '__nokey__') return;
+      const endpoint = baseUrl.trim().replace(/\/+$/, '') + '/chat/completions';
+      setError(fetchError('Improve failed', endpoint, e));
+    } finally {
+      setImproving(false);
     }
   }
 
@@ -317,9 +386,28 @@ export function AiStudio() {
             <small>Joined to the prompt as “News date: …” so the draft uses this date.</small>
             <input id="ai-date" type="date" className="ai-input" value={newsDate} onChange={(e) => setNewsDate(e.target.value)} />
           </div>
+          <div className="ai-grid-2">
+            <div className="ai-field">
+              <span><label htmlFor="ai-tone">Tone</label></span>
+              <small>Joined to the prompt.</small>
+              <select id="ai-tone" className="ai-input" value={tone} onChange={(e) => { setTone(e.target.value); localStorage.setItem(LS.tone, e.target.value); }}>
+                {TONES.map((t) => (<option key={t.id} value={t.id}>{t.label}</option>))}
+              </select>
+            </div>
+            <div className="ai-field">
+              <span><label htmlFor="ai-length">Length</label></span>
+              <small>Joined to the prompt.</small>
+              <select id="ai-length" className="ai-input" value={length} onChange={(e) => { setLength(e.target.value); localStorage.setItem(LS.length, e.target.value); }}>
+                {LENGTHS.map((l) => (<option key={l.id} value={l.id}>{l.label}</option>))}
+              </select>
+            </div>
+          </div>
           <div className="ai-row">
-            <button type="button" className="ai-btn primary block" onClick={generate} disabled={busy || posting}>
+            <button type="button" className="ai-btn primary block" onClick={generate} disabled={busy || improving || posting}>
               {busy ? (<><Loader2 size={15} className="spin" /> Generating…</>) : (<><Sparkles size={15} /> Generate draft</>)}
+            </button>
+            <button type="button" className="ai-btn block" onClick={generate} disabled={busy || improving || posting || !topic.trim()} title="Run again with the same facts (uses current tone/length/date)">
+              <RefreshCw size={15} /> Regenerate
             </button>
             <button type="button" className="ai-toggle" onClick={() => setShowSettings((v) => !v)} aria-expanded={showSettings}>
               <KeyRound size={15} /> AI settings {showSettings ? '▾' : '▸'}
@@ -374,6 +462,17 @@ export function AiStudio() {
             <textarea id="ai-body" className="ai-textarea" value={body} onChange={(e) => setBody(e.target.value)} rows={10} placeholder="News body — editable" />
           </div>
           <div className="ai-field">
+            <span><label htmlFor="ai-improve">Improve draft</label></span>
+            <small>Optional instructions — e.g. “shorter”, “more formal”, “add safety tips”. Uses the tone/length/date above and keeps all facts.</small>
+            <textarea id="ai-improve" className="ai-textarea" value={improveNotes} onChange={(e) => setImproveNotes(e.target.value)} rows={2}
+              placeholder="e.g. Make it shorter and more urgent, keep all facts." />
+            <div className="ai-row">
+              <button type="button" className="ai-btn block" onClick={improveDraft} disabled={!canImprove}>
+                {improving ? (<><Loader2 size={15} className="spin" /> Improving…</>) : (<><Sparkles size={15} /> Improve with AI</>)}
+              </button>
+            </div>
+          </div>
+          <div className="ai-field">
             <span><label htmlFor="ai-image">Image</label></span>
             <small>Optional. Pick a preset, upload from your device, or paste a URL. Facebook posts it as a photo; Discord embeds it. Presets resolve to this site, so post from the live site for Facebook to fetch them.</small>
             <div className="ai-presets" role="radiogroup" aria-label="Preset images">
@@ -419,7 +518,7 @@ export function AiStudio() {
           {error && <p className="ai-msg error" role="alert"><AlertTriangle size={16} /> <span>{error}</span></p>}
           {result && <p className="ai-msg ok" role="status"><CheckCircle2 size={16} /> <span>{result}</span></p>}
           <div className="ai-actions">
-            <button type="button" className="ai-btn" disabled={busy || posting}
+            <button type="button" className="ai-btn" disabled={busy || improving || posting}
               onClick={() => postNews(false, false, true)}>
               <Eye size={15} /> Preview
             </button>
