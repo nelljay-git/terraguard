@@ -5209,19 +5209,20 @@ function splitNewsText(text, max = 1900) {
 
 /** Generic Discord post for news-desk items. Returns a status string. */
 async function postNewsToDiscord(title, text, imageUrl, webhookUrl) {
-    const chunks = splitNewsText(text);
+    const cleanTitle = String(title ?? "").trim().slice(0, 256);
+    const cleanText = String(text ?? "").trim();
+    const chunks = cleanText ? splitNewsText(cleanText) : [""];
     for (let i = 0; i < chunks.length; i++) {
+        const embed = {
+            color: 0x3b82f6,
+            ...(cleanTitle && i === 0 ? { title: cleanTitle } : {}),
+            ...(imageUrl && i === 0 ? { image: { url: imageUrl } } : {}),
+            footer: { text: "TerraGuard AI News Desk" },
+            timestamp: new Date().toISOString(),
+        };
         const payload = {
-            content: chunks[i],
-            embeds: i === 0
-                ? [{
-                    title: String(title).slice(0, 256),
-                    color: 0x3b82f6,
-                    ...(imageUrl ? { image: { url: imageUrl } } : {}),
-                    footer: { text: "TerraGuard AI News Desk" },
-                    timestamp: new Date().toISOString(),
-                }]
-                : [],
+            ...(chunks[i] ? { content: chunks[i] } : {}),
+            embeds: i === 0 ? [embed] : [],
         };
         const res = await fetch(webhookUrl, {
             method: "POST",
@@ -5268,7 +5269,11 @@ async function postNewsToFacebook(title, text, imageUrl, env) {
         if (proof) params.appsecret_proof = proof;
         return params;
     };
-    const caption = `**${title}**\n\n${text}\n\n_AI-assisted draft · Reviewed by TerraGuard_`;
+    // Plain text only: Facebook does not render **bold** / _italic_ markdown,
+    // so never add it. Title is optional — omit it when empty.
+    const cleanTitle = String(title ?? "").trim();
+    const cleanText = String(text ?? "").trim();
+    const caption = [cleanTitle, cleanText, "AI-assisted draft · Reviewed by TerraGuard"].filter(Boolean).join("\n\n");
     if (imageUrl) {
         const body = withProof({ access_token: pageToken, caption, url: imageUrl });
         const res = await fetch(
@@ -5679,10 +5684,10 @@ export default {
                 catch {
                     return json({ success: false, error: "invalid JSON body" }, 400);
                 }
-                const title = String(body.title ?? "").trim().slice(0, 200) || "TerraGuard News";
+                const title = String(body.title ?? "").trim().slice(0, 200);
                 const text = String(body.text ?? "").trim();
-                if (!text)
-                    return json({ success: false, error: "Missing text" }, 400);
+                if (!text && !title)
+                    return json({ success: false, error: "Missing title or text" }, 400);
                 if (text.length > 6000)
                     return json({ success: false, error: `text too long (${text.length}/6000)` }, 400);
                 const target = String(body.target ?? "both").toLowerCase();
