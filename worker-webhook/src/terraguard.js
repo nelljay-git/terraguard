@@ -5230,8 +5230,14 @@ function splitNewsText(text, max = 1900) {
 
 /** Generic Discord post for news-desk items. Returns a status string. */
 async function postNewsToDiscord(title, text, imageUrls, webhookUrl) {
-    const cleanTitle = String(title ?? "").trim().slice(0, 256);
-    const cleanText = String(text ?? "").trim();
+    const stripBoilerplate = (s) =>
+        String(s ?? "")
+            .split("\n")
+            .filter((line) => !/^\s*\**\s*TerraGuard News\s*\**\s*$/i.test(line.trim()))
+            .join("\n")
+            .trim();
+    const cleanTitle = stripBoilerplate(title).slice(0, 256);
+    const cleanText = stripBoilerplate(text);
     const images = (Array.isArray(imageUrls) ? imageUrls : [imageUrls])
         .map((u) => String(u ?? "").trim())
         .filter((u) => /^https:\/\//i.test(u))
@@ -5325,10 +5331,18 @@ async function postNewsToFacebook(title, text, imageUrls, env) {
         return params;
     };
     // Plain text only: Facebook does not render **bold** / _italic_ markdown,
-    // so never add it. Title is optional — omit it when empty.
-    const cleanTitle = String(title ?? "").trim();
-    const cleanText = String(text ?? "").trim();
-    const caption = [cleanTitle, cleanText, "AI-assisted draft · Reviewed by TerraGuard"].filter(Boolean).join("\n\n");
+    // so never add it. Title is optional — omit it when empty. Strip any
+    // leftover "TerraGuard News" boilerplate so an empty title truly posts
+    // with no header.
+    const stripNewsBoilerplate = (s) =>
+        String(s ?? "")
+            .split("\n")
+            .filter((line) => !/^\s*\**\s*TerraGuard News\s*\**\s*$/i.test(line.trim()))
+            .join("\n")
+            .trim();
+    const cleanTitle = stripNewsBoilerplate(title).slice(0, 200);
+    const cleanText = stripNewsBoilerplate(text);
+    const caption = [cleanTitle, cleanText].filter(Boolean).join("\n\n");
     if (images.length === 1) {
         const body = withProof({ access_token: pageToken, caption, url: images[0] });
         const res = await fetch(

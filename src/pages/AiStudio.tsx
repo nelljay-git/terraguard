@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Sparkles, Send, Eye, Trash2, KeyRound, ShieldAlert, Loader2, MessageCircle, Share2, Layers, AlertTriangle, CheckCircle2, Newspaper, ImagePlus, X, RefreshCw } from 'lucide-react';
+import { Sparkles, Send, Eye, Trash2, KeyRound, ShieldAlert, Loader2, MessageCircle, Share2, AlertTriangle, CheckCircle2, Newspaper, ImagePlus, X, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import './AiStudio.css';
@@ -16,7 +16,7 @@ const WORKER_URL = (
   'https://terraguard-monitor.gianganwneljae.workers.dev'
 ).replace(/\/+$/, '');
 
-const LS = { base: 'tg-ai-base', key: 'tg-ai-key', model: 'tg-ai-model', sys: 'tg-ai-sys', tone: 'tg-ai-tone', length: 'tg-ai-length' };
+const LS = { base: 'tg-ai-base', key: 'tg-ai-key', model: 'tg-ai-model', sys: 'tg-ai-sys-v2', tone: 'tg-ai-tone', length: 'tg-ai-length' };
 const BODY_LIMIT = 6000;
 
 const TONES = [
@@ -47,6 +47,7 @@ const DEFAULT_SYSTEM = `You are a news writer for TerraGuard Philippines, a disa
 Write in clear, factual English. Use ONLY the facts the user provides — never invent names, numbers, times, or quotes.
 The user message starts with a "News date:" line — treat it as the dateline and use it in the story. Never invent a different date.
 Format: first line is "# Headline", then 2-4 short paragraphs, then one line with a practical safety reminder for readers.
+Never write a "TerraGuard News" header or any boilerplate site name — start directly with the headline.
 No hashtags, no emojis in the body.`;
 
 function todayInputValue(): string {
@@ -96,13 +97,21 @@ function fetchError(what: string, endpoint: string, e: unknown): string {
 }
 
 function splitTitleBody(text: string, fallbackTitle: string): { title: string; body: string } {
-  const lines = text.trim().split('\n');
+  // Strip any "TerraGuard News" boilerplate the model may prepend so an
+  // empty headline stays empty and posted bodies never carry it.
+  const cleaned = text
+    .split('\n')
+    .filter((line) => !/^\s*\**\s*TerraGuard News\s*\**\s*$/i.test(line.trim()))
+    .join('\n');
+  const lines = cleaned.trim().split('\n');
   const first = (lines[0] ?? '').trim();
   const hash = /^#\s+(.+)$/.exec(first);
   if (hash) return { title: hash[1].trim().slice(0, 200), body: lines.slice(1).join('\n').trim() };
   const labeled = /^(title|headline)\s*:\s*(.+)$/i.exec(first);
   if (labeled) return { title: labeled[2].trim().slice(0, 200), body: lines.slice(1).join('\n').trim() };
-  return { title: fallbackTitle, body: text.trim() };
+  const bold = /^\*\*(.+)\*\*$/.exec(first);
+  if (bold && lines.length > 1) return { title: bold[1].trim().slice(0, 200), body: lines.slice(1).join('\n').trim() };
+  return { title: fallbackTitle, body: cleaned.trim() };
 }
 
 export function AiStudio() {
@@ -339,7 +348,7 @@ export function AiStudio() {
         { role: 'system', content: systemPrompt },
         {
           role: 'user',
-          content: `Rewrite this news draft. Keep every fact exactly — do not add or remove facts.\nNews date: ${formatLongDate(newsDate)}\nTone: ${tonePrompt(tone)}\nLength: ${lengthPrompt(length)}\nRewrite instructions: ${notes}\n\nCurrent headline: ${title.trim() || '(none)'}\nCurrent body:\n${body.trim()}\n\nReturn in the same format: first line "# Headline", then paragraphs, then a safety reminder. No hashtags, no emojis.`,
+          content: `Rewrite this news draft. Keep every fact exactly — do not add or remove facts.\nNews date: ${formatLongDate(newsDate)}\nTone: ${tonePrompt(tone)}\nLength: ${lengthPrompt(length)}\nRewrite instructions: ${notes}\n\nCurrent headline: ${title.trim() || '(none)'}\nCurrent body:\n${body.trim()}\n\nReturn in the same format: first line "# Headline", then paragraphs, then a safety reminder. Never add a "TerraGuard News" header. No hashtags, no emojis.`,
         },
       ]);
       const split = splitTitleBody(content, title.trim() || topic.trim().split('\n')[0].slice(0, 200));
@@ -615,7 +624,6 @@ export function AiStudio() {
               <Share2 size={15} /> Facebook only
             </button>
           </div>
-          <p className="ai-foot text-muted"><Layers size={13} /> Posts carry an “AI-assisted draft · Reviewed by TerraGuard” disclosure.</p>
         </section>
       </div>
     </div>
