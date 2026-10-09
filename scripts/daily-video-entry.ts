@@ -140,6 +140,40 @@ function buildDailyCaption(events: EmscEvent[]): string {
   return lines.join('\n');
 }
 
+async function fbAppSecretProof(accessToken: string, appSecret: string): Promise<string | null> {
+  try {
+    if (!accessToken || !appSecret) return null;
+    const { createHmac } = await import('node:crypto');
+    return createHmac('sha256', appSecret).update(accessToken).digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+// If rawToken is a User token, exchange via me/accounts for the Page token.
+// If it already IS the Page token, me/accounts fails and we fall back to it.
+async function resolveFbPageToken(pageId: string, rawToken: string): Promise<string> {
+  try {
+    const url = new URL('https://graph.facebook.com/v21.0/me/accounts');
+    url.searchParams.set('access_token', rawToken);
+    url.searchParams.set('fields', 'id,name,access_token');
+    url.searchParams.set('limit', '50');
+    const proof = await fbAppSecretProof(rawToken, process.env.FB_APP_SECRET || '');
+    if (proof) url.searchParams.set('appsecret_proof', proof);
+    const res = await fetch(url.toString());
+    if (!res.ok) return rawToken;
+    const data = (await res.json().catch(() => ({}))) as { data?: Array<{ id?: string; access_token?: string }> };
+    const match = (data.data ?? []).find((p) => String(p.id) === String(pageId));
+    if (match?.access_token) {
+      console.log('FB: resolved Page token via me/accounts');
+      return String(match.access_token);
+    }
+  } catch (e) {
+    console.error('FB token exchange failed, using raw token:', e instanceof Error ? e.message : e);
+  }
+  return rawToken;
+}
+
 async function main(): Promise<void> {
   const outDir = process.env.OUT_DIR || '/tmp/terraguard-daily';
   fs.mkdirSync(outDir, { recursive: true });
@@ -238,18 +272,30 @@ async function main(): Promise<void> {
   // Always write caption for Telegram/artifact (even when FB posts)
   const caption = process.env.DAILY_CAPTION || buildDailyCaption(events);
   fs.writeFileSync(path.join(outDir,'caption.txt'), caption);
-  // Optional Facebook upload (uses same caption)
+  // Optional Facebook upload (uses same caption). Failures are non-fatal
+  // so Telegram/artifact steps still run. Supports User token -> Page token
+  // exchange via me/accounts, same as the workers.
   const pageId = process.env.FB_PAGE_ID || '';
-  const token = process.env.FB_UPLOAD_TOKEN || '';
-  if (pageId && token) {
-    const form = new FormData();
-    form.append('access_token', token);
-    form.append('description', caption);
-    form.append('source', new Blob([fs.readFileSync(mp4)], { type:'video/mp4' }), 'daily-report.mp4');
-    const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/videos`, { method:'POST', body: form });
-    const data = await res.json().catch(()=>({})) as { id?:string; error?:{message?:string}};
-    if (!res.ok || !data.id) throw new Error(`FB upload failed: ${data.error?.message ?? res.status}`);
-    console.log('FB video id:', data.id);
+  const rawToken = process.env.FB_UPLOAD_TOKEN || process.env.FB_USER_ACCESS_TOKEN || '';
+  if (pageId && rawToken) {
+    try {
+      const resolved = await resolveFbPageToken(pageId, rawToken);
+      const proof = await fbAppSecretProof(resolved, process.env.FB_APP_SECRET || '');
+      const form = new FormData();
+      form.append('access_token', resolved);
+      if (proof) form.append('appsecret_proof', proof);
+      form.append('description', caption);
+      form.append('source', new Blob([fs.readFileSync(mp4)], { type:'video/mp4' }), 'daily-report.mp4');
+      const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/videos`, { method:'POST', body: form });
+      const data = await res.json().catch(()=>({})) as { id?:string; error?:{message?:string; code?:number; type?:string}};
+      if (!res.ok || !data.id) {
+        console.error(`FB upload failed (non-fatal): ${data.error?.message ?? res.status} ${JSON.stringify(data).slice(0, 500)}`);
+      } else {
+        console.log('FB video id:', data.id);
+      }
+    } catch (e) {
+      console.error('FB upload failed (non-fatal):', e instanceof Error ? e.message : e);
+    }
   } else {
     console.log('FB upload skipped (FB_PAGE_ID / FB_UPLOAD_TOKEN not set)');
   }

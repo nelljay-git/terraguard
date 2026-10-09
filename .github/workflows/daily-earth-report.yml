@@ -40,13 +40,16 @@ jobs:
           OUT_DIR: video-out
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_UPLOAD_TOKEN: ${{ secrets.FB_UPLOAD_TOKEN }}
+          FB_USER_ACCESS_TOKEN: ${{ secrets.FB_USER_ACCESS_TOKEN }}
+          FB_APP_SECRET: ${{ secrets.FB_APP_SECRET }}
         run: |
           mkdir -p video-out
           node dist-video/daily-entry.mjs
           cat video-out/caption.txt 2>/dev/null || true
 
       - name: Reformat for TikTok (9:16)
-        run: ffmpeg -y -i video-out/out.mp4 -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" -c:a copy video-out/tiktok.mp4 || echo "tiktok reformat skipped"
+        if: always()
+        run: if [ -f video-out/out.mp4 ]; then ffmpeg -y -i video-out/out.mp4 -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" -c:a copy video-out/tiktok.mp4 || echo "tiktok reformat skipped"; else echo "tiktok reformat skipped (no out.mp4)"; fi
 
       - name: Telegram send
         if: always()
