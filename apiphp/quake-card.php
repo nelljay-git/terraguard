@@ -2,15 +2,24 @@
 /**
  * quake-card.php — PHP/GD earthquake visual-report card (720x900 PNG) for
  * Facebook auto-posts. Alert-banner design (no header/footer bars):
- * full-bleed Yandex satellite stitch, "EARTHQUAKE DETECTED" banner,
+ * full-bleed Esri satellite stitch (the same "satellite mode" tiles the
+ * app's Leaflet map shows), "EARTHQUAKE DETECTED" banner,
  * magnitude/depth panel, epicenter rings + callout, location box,
  * bottom info bar (date/source/synthetic seismograph).
+ *
+ * (Leaflet itself is a browser JS lib and can't run inside PHP/GD — but
+ * its tile *source* can: one Esri export request renders the whole 720x900
+ * map server-side (plus one transparent labels overlay). This replaced the
+ * old Yandex static-maps endpoint, which shared hosts increasingly
+ * block/rate-limit, yielding blank dark cards.)
  *
  * Query: ?lat=&lng=&mag=&place=&date=&time=&depth=&source=&info=&sat=
  *   (lat/lng/mag required; source defaults to PHIVOLCS; info = PHIVOLCS
  *   bulletin number, shows an "INFORMATION NO." pill when present)
  *   title / title2  banner headline halves (default EARTHQUAKE / DETECTED;
  *                   the tsunami monitor passes TSUNAMI / INFORMATION)
+ *   debug=tiles  plain-text tile-fetch report (no image, no cache) to
+ *                   diagnose blank maps from the browser
  * Output: image/png (720x900), cached to disk per query (24h).
  *
  * Requirements: PHP 8+ with GD + FreeType (imagettftext), cURL (or
@@ -47,7 +56,7 @@ define('CARD_H', 900);
 define('MAP_H', 900); // full-bleed map; bars are overlays
 define('CACHE_TTL', 86400); // cards are immutable per event
 define('CACHE_DIR', sys_get_temp_dir() . '/quakecard_cache');
-define('TILE_TIMEOUT', 8);
+define('TILE_TIMEOUT', 20); // export renders server-side; allow slow uplinks
 // Map style: true = satellite + labels (sat,skl), false = normal map.
 // Overridable per request with ?sat=1 / ?sat=0. Otherwise auto day/night:
 // event time 6PM-6AM -> satellite, 6AM-6PM -> normal map. When the event
@@ -114,7 +123,7 @@ if (isset($_GET['sat'])) {
     // Night (6PM-6AM) reads better on satellite; day (6AM-6PM) on the map.
     $satellite = ($hour === null) ? SATELLITE_MODE : ($hour >= 18 || $hour < 6);
 }
-$mapLayer = $satellite ? 'sat,skl' : 'map';
+$mapLayer = $satellite ? 'esri-exp-sat' : 'esri-exp-map'; // cache key (v3: single-export, busts old caches)
 
 // --- Disk cache (cards never change for the same query) ---
 if (!is_dir(CACHE_DIR)) { @mkdir(CACHE_DIR, 0777, true); }
@@ -153,80 +162,92 @@ if ($fontInter === null) $fontInter = $fontOswald; // fallback, better than fata
 // --- Zoom by magnitude (tighter framing than the old pill design) ---
 $zoom = $mag >= 7 ? 5 : ($mag >= 6 ? 6 : 7);
 
-// --- Tile geometry (port of mapTiles(): overlapping rows hide watermarks) ---
-$span = (360 * MAP_H) / (256 * (2 ** $zoom));
-$clat = max(-85, min(85, $lat + 0.08 * $span)); // epicenter ~58% height
+// --- Base map: ONE Esri export request for the whole 720x900 card (same
+// World_Imagery source as the app's Leaflet satellite mode + video
+// renderer). Single-export avoids the burst throttling that kills
+// multi-tile stitching on shared hosting (32 parallel tiles -> 429s).
+// Satellite mode adds one transparent Reference export (place labels).
+// Day mode uses World_Street_Map (labels baked in, 1 request total).
+// Framing matches the old zoom math: $P = lng degrees per px at $zoom,
+// epicenter at CARD_W/2 x 58% height (matches $epiX/$epiY below).
 $P = 360 / (256 * (2 ** $zoom));
-$s = max(CARD_W / 650, MAP_H / 450);
-$vw = CARD_W / $s;
-$vh = MAP_H / $s;
-$P1 = $P / 2;
-$VW1 = $vw * 2;
-$VH1 = $vh * 2;
-$d = CARD_W / $VW1;
-$tw = 650 * $d;
-$th = 450 * $d;
-$cosLat = cos($clat * M_PI / 180);
-$topLat = $clat + ($VH1 / 2) * $P1 * $cosLat;
-$ROW_STEP = 225;
-$rows = (int)ceil(($VH1 - 450) / $ROW_STEP) + 1;
-$qx = [CARD_W / 4, (3 * CARD_W) / 4];
-$tileJobs = [];
-for ($r = 0; $r < $rows; $r++) {
-    $rowTop = min($r * $ROW_STEP, $VH1 - 450);
-    $rowCenter = $rowTop + 225;
-    $tLat = max(-85, min(85, $topLat - $rowCenter * $P1 * $cosLat));
-    for ($c = 0; $c < 2; $c++) {
-        $tLng = $lng + ($c === 0 ? -1 : 1) * (($VW1 / 4) * $P1);
-        // number_format with explicit '.' guards against comma-decimal locales.
-        $ll = number_format($tLng, 6, '.', '') . ',' . number_format($tLat, 6, '.', '');
-        $tileJobs[] = [
-            'url' => 'https://static-maps.yandex.ru/1.x/?lang=en_US&ll=' . $ll
-                . '&z=' . ($zoom + 1) . '&size=650,450&l=' . $mapLayer,
-            'left' => $qx[$c] - $tw / 2,
-            'top' => ($rowTop / $VH1) * MAP_H,
-        ];
-    }
+$leftLng = $lng - (CARD_W / 2) * $P;
+$rightLng = $lng + (CARD_W / 2) * $P;
+$topLat = max(-80, min(80, $lat + 0.58 * MAP_H * $P));
+$botLat = max(-80, min(80, $lat - 0.42 * MAP_H * $P));
+// Wrap antimeridian (PH never crosses it, but keep it correct).
+if ($leftLng < -180) { $leftLng += 360; $rightLng += 360; }
+if ($rightLng > 180) { $leftLng -= 360; $rightLng -= 360; }
+$bbox = number_format($leftLng, 6, '.', '') . ',' . number_format($botLat, 6, '.', '')
+    . ',' . number_format($rightLng, 6, '.', '') . ',' . number_format($topLat, 6, '.', '');
+$esriBase = $satellite
+    ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export'
+    : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export';
+$esriRef = 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/export';
+$tileJobs = [[
+    'url' => $esriBase . '?bbox=' . $bbox . '&bboxSR=4326&imageSR=4326'
+        . '&size=' . CARD_W . ',' . MAP_H . '&format=png&f=image',
+    'left' => 0, 'top' => 0, 'overlay' => false,
+]];
+if ($satellite) {
+    $tileJobs[] = [
+        'url' => $esriRef . '?bbox=' . $bbox . '&bboxSR=4326&imageSR=4326'
+            . '&size=' . CARD_W . ',' . MAP_H . '&format=png32&transparent=true&f=image',
+        'left' => 0, 'top' => 0, 'overlay' => true,
+    ];
 }
 
-// --- Fetch tiles (curl_multi when available, else sequential) ---
+// --- Fetch tiles ---
+// Esri/x10 throttle 32-at-once bursts (first tile OK, rest rejected), so:
+// pass 1 = curl_multi in small batches; pass 2 = sequential retry with a
+// delay for leftovers. HTTP codes are kept for ?debug=tiles.
 $tileImages = array_fill(0, count($tileJobs), null);
-if (function_exists('curl_multi_init')) {
-    $mh = curl_multi_init();
-    $handles = [];
+$tileInfo = array_fill(0, count($tileJobs), 'no attempt');
+function fetchTileBody(string $url, string &$info) { // no union return type: stays PHP 7.x compatible
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => TILE_TIMEOUT,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_USERAGENT => 'TerraGuard-Card/2.0 (Esri tiles)',
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
+    ]);
+    $body = curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_errno($ch);
+    $info = "http=$code" . ($err ? " curl_err=$err:" . curl_error($ch) : '') . ' len=' . strlen((string)$body);
+    curl_close($ch);
+    if ($body === false || $body === '' || $code < 200 || $code >= 300) return false;
+    return $body;
+}
+if (function_exists('curl_init')) {
+    // 1-2 sequential requests: no burst, nothing to throttle.
     foreach ($tileJobs as $i => $job) {
-        $ch = curl_init($job['url']);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => TILE_TIMEOUT,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_USERAGENT => 'TerraGuard-Card/1.0',
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => 3,
-        ]);
-        curl_multi_add_handle($mh, $ch);
-        $handles[$i] = $ch;
-    }
-    $running = null;
-    do {
-        $mrc = curl_multi_exec($mh, $running);
-        if ($running) curl_multi_select($mh, 1.0);
-    } while ($running && $mrc === CURLM_OK);
-    foreach ($handles as $i => $ch) {
-        $body = curl_multi_getcontent($ch);
-        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        if ($body !== false && $body !== '' && $code >= 200 && $code < 300) {
+        $info = '';
+        $body = fetchTileBody($job['url'], $info);
+        $tileInfo[$i] = $info;
+        if ($body !== false) {
             $img = @imagecreatefromstring($body);
             if ($img !== false) $tileImages[$i] = $img;
         }
-        curl_multi_remove_handle($mh, $ch);
-        curl_close($ch);
+        if ($tileImages[$i] === null) {
+            // One retry after a short pause (transient 429/5xx).
+            usleep(500000);
+            $info2 = '';
+            $body2 = fetchTileBody($job['url'], $info2);
+            $tileInfo[$i] .= ' / retry: ' . $info2;
+            if ($body2 !== false) {
+                $img2 = @imagecreatefromstring($body2);
+                if ($img2 !== false) $tileImages[$i] = $img2;
+            }
+        }
     }
-    curl_multi_close($mh);
 } else {
     foreach ($tileJobs as $i => $job) {
-        $ctx = stream_context_create(['http' => ['timeout' => TILE_TIMEOUT, 'header' => 'User-Agent: TerraGuard-Card/1.0']]);
+        $ctx = stream_context_create(['http' => ['timeout' => TILE_TIMEOUT, 'header' => 'User-Agent: TerraGuard-Card/2.0 (Esri tiles)']]);
         $body = @file_get_contents($job['url'], false, $ctx);
+        $tileInfo[$i] = 'file_get_contents len=' . strlen((string)$body);
         if ($body !== false) {
             $img = @imagecreatefromstring($body);
             if ($img !== false) $tileImages[$i] = $img;
@@ -250,15 +271,30 @@ $ringFaint = imagecolorallocatealpha($im, 239, 68, 68, 100);
 $depthGray = imagecolorallocate($im, 229, 231, 235);
 imagefill($im, 0, 0, $mapBg);
 
-// Composite tiles.
+// Debug mode: plain-text tile-fetch report (browser-checkable, no cache).
+// e.g. quake-card.php?lat=..&lng=..&mag=..&debug=tiles
+if (isset($_GET['debug']) && $_GET['debug'] === 'tiles') {
+    header('Content-Type: text/plain');
+    header('Cache-Control: no-store');
+    $ok = count(array_filter($tileImages));
+    echo "jobs=" . count($tileJobs) . " ok=$ok zoom=$zoom layer=$mapLayer\n";
+    echo "curl_multi=" . (function_exists('curl_multi_init') ? 'yes' : 'no') . " curl=" . (function_exists('curl_init') ? 'yes' : 'no') . "\n";
+    foreach ($tileJobs as $i => $job) {
+        $t = $tileImages[$i];
+        echo ($t === null ? 'FAIL' : ('OK ' . imagesx($t) . 'x' . imagesy($t))) . ' [' . $tileInfo[$i] . '] ' . $job['url'] . "\n";
+    }
+    exit;
+}
+
+// Composite tiles (1:1; imagery first, transparent Reference labels over).
+imagealphablending($im, true);
 foreach ($tileJobs as $i => $job) {
     $tile = $tileImages[$i];
     if ($tile === null) continue;
-    imagecopyresampled(
+    imagecopy(
         $im, $tile,
         (int)round($job['left']), (int)round($job['top']),
         0, 0,
-        (int)round($tw), (int)round($th),
         imagesx($tile), imagesy($tile)
     );
     imagedestroy($tile);
