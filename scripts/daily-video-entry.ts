@@ -344,18 +344,40 @@ async function main(): Promise<void> {
   );
   if (pageId && (uploadToken || userToken)) {
     try {
-      const { token: resolved, via } = await resolveFbPageToken(pageId, [
+      const { token: exchanged, via } = await resolveFbPageToken(pageId, [
         { label: 'FB_UPLOAD_TOKEN', token: uploadToken },
         { label: 'FB_USER_ACCESS_TOKEN', token: userToken },
       ]);
+      // Try every usable token (exchanged first, then each raw secret) and
+      // keep the first that passes preflight — one expired secret must not
+      // sink a valid backup.
+      const tried = new Set<string>();
+      const options: Array<{ token: string; via: string }> = [];
+      for (const o of [
+        { token: exchanged, via },
+        { token: uploadToken, via: 'direct:FB_UPLOAD_TOKEN' },
+        { token: userToken, via: 'direct:FB_USER_ACCESS_TOKEN' },
+      ]) {
+        if (o.token && !tried.has(o.token)) {
+          tried.add(o.token);
+          options.push(o);
+        }
+      }
+      let resolved = '';
+      let resolvedVia = '';
+      for (const o of options) {
+        console.log(`FB: trying token via ${o.via}`);
+        if (await fbPreflight(pageId, o.token)) {
+          resolved = o.token;
+          resolvedVia = o.via;
+          break;
+        }
+      }
       if (!resolved) {
-        console.error('FB upload skipped (non-fatal): no token available after exchange');
+        console.error('FB upload skipped (non-fatal): no token passed preflight');
       } else {
-        console.log(`FB: uploading with token via ${via}`);
-        const ok = await fbPreflight(pageId, resolved);
-        if (!ok) {
-          console.error('FB upload aborted after preflight (non-fatal) — fix FB_PAGE_ID / tokens');
-        } else {
+        console.log(`FB: uploading with token via ${resolvedVia}`);
+        {
           const proof = await fbAppSecretProof(resolved, (process.env.FB_APP_SECRET || '').trim());
           const form = new FormData();
           form.append('access_token', resolved);
