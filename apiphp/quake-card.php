@@ -495,7 +495,7 @@ if ($tsunamiText !== '') {
     $isAdvisory = stripos($tsunamiText, 'ADVISORY') !== false;
     $tsuRgb = $isAdvisory ? [249, 115, 22] : [239, 68, 68];
     $tsuBar = imagecolorallocate($im, $tsuRgb[0], $tsuRgb[1], $tsuRgb[2]);
-    $tsuText = '!! ' . $tsunamiText . ' !!';
+    $tsuText = $tsunamiText;
     $tsuSize = autofit($fontOswald, $tsuText, 22, 300);
     $tsuW = min(352, textWidth($fontOswald, $tsuSize, $tsuText) + 36);
     $tsuX0 = 16;
