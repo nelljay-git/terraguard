@@ -213,7 +213,7 @@ async function resolveFbPageToken(
   pageId: string,
   candidates: Array<{ label: string; token: string }>,
 ): Promise<{ token: string; via: string }> {
-  const appSecret = process.env.FB_APP_SECRET || '';
+  const appSecret = (process.env.FB_APP_SECRET || '').trim();
   for (const c of candidates) {
     if (!c.token) continue;
     try {
@@ -263,7 +263,7 @@ async function fbPreflight(pageId: string, pageToken: string): Promise<boolean> 
     const url = new URL(`https://graph.facebook.com/v21.0/${pageId}`);
     url.searchParams.set('fields', 'id,name,category,link');
     url.searchParams.set('access_token', pageToken);
-    const proof = await fbAppSecretProof(pageToken, process.env.FB_APP_SECRET || '');
+    const proof = await fbAppSecretProof(pageToken, (process.env.FB_APP_SECRET || '').trim());
     if (proof) url.searchParams.set('appsecret_proof', proof);
     const res = await fetch(url.toString());
     const data = (await res.json().catch(() => ({}))) as { id?: string; name?: string; category?: string; error?: { message?: string; code?: number; error_subcode?: number } };
@@ -437,7 +437,7 @@ async function main(): Promise<void> {
         if (!ok) {
           console.error('FB upload aborted after preflight (non-fatal) — see message above for the fix');
         } else {
-          const proof = await fbAppSecretProof(resolved, process.env.FB_APP_SECRET || '');
+          const proof = await fbAppSecretProof(resolved, (process.env.FB_APP_SECRET || '').trim());
           const form = new FormData();
           form.append('access_token', resolved);
           if (proof) form.append('appsecret_proof', proof);
