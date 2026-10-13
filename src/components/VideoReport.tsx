@@ -14,9 +14,11 @@ import './VideoReport.css';
 // Staged video export of the earthquake report, rendered + captured
 // fully in-browser (canvas.captureStream + MediaRecorder — no server).
 //
-// Timeline (~20s): plain map (0-1s) -> epicenter pop (1s) + tsunami toast
-// when a real threat exists (1s slide-down, visible ~3s, hands off to the
-// info cards at 4s) -> shockwave spreading across the map (1.5s, ~1s) -> DYFI felt
+// Timeline (~20s): tight on the epicenter (0-4s, slow push-in) -> epicenter
+// pop (1s) + tsunami toast when a real threat exists (1s slide-down,
+// visible ~3s, hands off to the info cards at 4s) -> pull out to full
+// context (4-6.5s) as sections cascade in -> shockwave spreading across
+// the map (1.5s, ~1s) -> DYFI felt
 // responses fade in (2.5s) -> styled info cards fade/slide in (4s) -> idle
 // drift until end.
 
@@ -244,8 +246,21 @@ export function drawFrame(
   source?: string,
 ) {
   const p = Math.min(Math.max(t / DUR, 0), 1);
-  // Slow zoom 1.0 -> 1.08 around the epicenter display point.
-  const s = 1 + 0.08 * easeInOut(p);
+  // Open tight on the epicenter with a slow push-in while the map intro
+  // (pop, wave, toast) plays, then pull out to full context as the info
+  // sections step in — locked at 1.0 once data is on screen.
+  const CLOSE_S = 1.32;
+  const OUT_T = 4.0;
+  const OUT_END = 6.5;
+  let s: number;
+  if (t < OUT_T) {
+    s = CLOSE_S + 0.03 * easeInOut(Math.min(Math.max(t / OUT_T, 0), 1));
+  } else if (t < OUT_END) {
+    const u = easeInOut((t - OUT_T) / (OUT_END - OUT_T));
+    s = CLOSE_S + 0.03 - (CLOSE_S + 0.03 - 1.0) * u;
+  } else {
+    s = 1.0;
+  }
   // Mini shake 0.5s right after the wave appears — watermark excluded.
   const shakeActive = t >= WAVE_T && t < WAVE_T + 0.5;
   let shakeX = 0, shakeY = 0;
@@ -528,11 +543,15 @@ export function drawFrame(
     ctx.textAlign = 'left';
 
     // DYFI dots — drawn after gradients (on top) so they aren't dimmed, larger + stronger outline.
+    // Transformed by the same zoom-about-epicenter as the map so points
+    // stay glued to the ground underneath (s is 1.0+ during the pull-out).
     if (dyfi.length > 0 && t >= DYFI_T) {
       ctx.save();
       ctx.globalAlpha = q * (0.95 * dyfiA + 0.05);
       for (const p of dyfi) {
-        const { x, y } = latLngToDisplayPx(eq, p.lat, p.lng);
+        const { x: bx, y: by } = latLngToDisplayPx(eq, p.lat, p.lng);
+        const x = dex + (bx - dex) * s;
+        const y = dey + (by - dey) * s;
         if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
         ctx.beginPath();
         ctx.arc(x, y, 7, 0, Math.PI * 2);
