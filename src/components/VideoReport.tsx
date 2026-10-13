@@ -28,6 +28,12 @@ export const MAP_T = 1; // epicenter appears
 export const WAVE_T = 2.0; // shockwave starts (1s after the epicenter)
 export const WAVE_DUR = 2.8; // slow single wave
 export const INFO_T = 4; // info cards appear
+// Staggered section intros (0.2s cascade, slide + fade over 0.6s each).
+export const EVENT_T = INFO_T; // EVENT DATA from the left
+export const IMPACT_T = INFO_T + 0.2; // IMPACT DATA from the right
+export const SHAKE_T = INFO_T + 0.4; // SHAKE REPORT from the left
+export const DAMAGE_T = INFO_T + 0.6; // DAMAGE ASSESSMENT from the right
+export const SEC_DUR = 0.6; // per-section slide duration
 export const TSU_T = 1.0; // tsunami toast slides down (same beat as the epicenter pop)
 export const TSU_HOLD = 3.45; // toast starts sliding away (visible ~3s: 1.0 -> 4.0)
 export const TSU_GONE = 4.0; // toast fully off-screen exactly as info cards land
@@ -175,6 +181,11 @@ function countryOf(location: string): string {
     .split(/\s+/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
+}
+
+// 0 -> 1 slide/fade progress of an info section starting at `start`.
+export function secP(t: number, start: number): number {
+  return easeOutCubic(Math.min(Math.max((t - start) / SEC_DUR, 0), 1));
 }
 
 // True only for real tsunami threats — 'NONE'/'No Tsunami Threat'/'—'/empty
@@ -490,9 +501,11 @@ export function drawFrame(
     }
   }
 
-  // Broadcast data columns + callout + intensity scale (t>=INFO_T).
+  // Broadcast data columns + callout + intensity scale — staggered
+  // cascade: EVENT (left) -> IMPACT (right) -> SHAKE (left) -> DAMAGE
+  // (right), 0.2s apart, each sliding + fading over SEC_DUR.
   if (t >= INFO_T) {
-    const q = easeOutCubic(Math.min((t - INFO_T) / 0.7, 1));
+    const q = secP(t, EVENT_T);
     ctx.save();
     ctx.globalAlpha = q;
     // Side gradients behind the data containers — black at edges fading to
@@ -550,7 +563,12 @@ export function drawFrame(
     const threatText = !threat || threat.trim() === '—' ? 'None' : threat;
 
     const colTop = 60;
-    // Left column: EVENT DATA (drawn at 64% scale).
+    // Left column: EVENT DATA slides in from the left.
+    const pEvent = secP(t, EVENT_T);
+    if (pEvent > 0) {
+    ctx.save();
+    ctx.globalAlpha = pEvent;
+    ctx.translate(-(1 - pEvent) * 200, 0);
     const lx = 48;
     ctx.fillStyle = '#f97316';
     ctx.beginPath();
@@ -609,8 +627,15 @@ export function drawFrame(
     const rawSrc = (source ?? (eq as unknown as { source?: string }).source ?? '').toString().trim();
     const srcLabel = rawSrc ? rawSrc.toUpperCase() : 'PHIVOLCS';
     ctx.fillText(srcLabel === 'EMSC' ? 'EMSC-CSEM' : srcLabel, lx, ly);
+    ctx.restore();
+    }
 
-    // Right column: IMPACT DATA (drawn at 64% scale, right-aligned).
+    // Right column: IMPACT DATA slides in from the right.
+    const pImpact = secP(t, IMPACT_T);
+    if (pImpact > 0) {
+    ctx.save();
+    ctx.globalAlpha = pImpact;
+    ctx.translate((1 - pImpact) * 200, 0);
     const re = W - 64; // right edge of the column (clears the watermark)
     ctx.textAlign = 'right';
     ctx.fillStyle = '#fbbf24';
@@ -707,11 +732,14 @@ export function drawFrame(
     ctx.font = '400 19px Inter, sans-serif';
     ctx.fillText(radius, re, ry);
     ctx.textAlign = 'left';
+    ctx.restore();
+    }
 
-    // SHAKE REPORT (bottom-left): strongest felt areas with intensity,
-    // bottom-anchored so the last row sits near the progress bar. Falls
-    // back to the max intensity + epicenter location when no per-area
-    // rows were parsed; with neither, a muted line holds the slot.
+    // SHAKE REPORT (bottom-left) slides in from the left: strongest felt
+    // areas with intensity, bottom-anchored so the last row sits near the
+    // progress bar. Falls back to the max intensity + epicenter location
+    // when no per-area rows were parsed; with neither, a muted line holds
+    // the slot.
     const shakeList: ShakeRow[] =
       shakes.length > 0
         ? shakes.slice(0, 5)
@@ -719,6 +747,11 @@ export function drawFrame(
           ? [{ area: (eq.location || '').slice(0, 30) || 'Epicenter area', intensity }]
           : [];
     {
+      const pShake = secP(t, SHAKE_T);
+      if (pShake > 0) {
+      ctx.save();
+      ctx.globalAlpha = pShake;
+      ctx.translate(-(1 - pShake) * 200, 0);
       const rows = shakeList.length > 0 ? shakeList.length : 1;
       const lastBaseline = 1360;
       const firstBaseline = lastBaseline - (rows - 1) * 38;
@@ -759,12 +792,20 @@ export function drawFrame(
         ctx.font = '400 19px Inter, sans-serif';
         sy += 38;
       }
+      ctx.restore();
+      }
     }
 
-    // DAMAGE ASSESSMENT (bottom-right): rough heuristic estimates from
-    // magnitude — wide "~" ranges, never precise figures. Bottom-anchored.
+    // DAMAGE ASSESSMENT (bottom-right) slides in from the right: rough
+    // heuristic estimates from magnitude — wide "~" ranges, never precise
+    // figures. Bottom-anchored.
     const dmg = estimateDamage(eq.magnitude, intensity);
     if (dmg) {
+      const pDamage = secP(t, DAMAGE_T);
+      if (pDamage > 0) {
+      ctx.save();
+      ctx.globalAlpha = pDamage;
+      ctx.translate((1 - pDamage) * 200, 0);
       const dx0 = 648;
       const dmgValY = 1360;
       const dmgLblY = dmgValY - 34;
@@ -804,6 +845,8 @@ export function drawFrame(
       ctx.font = '400 13px Inter, sans-serif';
       ctx.fillText('DAMAGE & FATALITIES', dx0, dmgLblY);
       sevBadge(dmgValY, dmg.fatalities);
+      ctx.restore();
+      }
     }
 
     ctx.restore();
