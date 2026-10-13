@@ -998,8 +998,9 @@ export function VideoReportModal({
       setPhase('unsupported');
       return;
     }
-    // Timed sound effects: the same three MP3s the headless renderer
-    // mixes, scheduled against the recording clock and captured through
+    // Timed sound effects: the same MP3s the headless renderer mixes
+    // (plus tsunami-notif with the toast when a real threat exists),
+    // scheduled against the recording clock and captured through
     // a MediaStreamDestination (plus live monitor so you hear it too).
     // Created here (user gesture) so autoplay policy allows playback.
     // Any failure degrades to the previous silent recording.
@@ -1012,6 +1013,10 @@ export function VideoReportModal({
         await actx.resume().catch(() => {});
         const files = ['epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
         const at = [1.0, 2.0, 4.0];
+        if (hasTsunamiThreat(threatRef.current ?? '')) {
+          files.splice(1, 0, 'tsunami-notif.mp3');
+          at.splice(1, 0, 1.0);
+        }
         const dest = actx.createMediaStreamDestination();
         const t0 = actx.currentTime + 0.05;
         await Promise.all(

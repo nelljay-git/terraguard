@@ -367,16 +367,15 @@ async function main(): Promise<void> {
   }
 
   // Encode: PNG frames + timed sound effects (repo public/sounds).
-  // epicenter-appear @1s (pop), wave-spread @1.5s (shockwave),
-  // reports @4s (info cards), tsunami-alert @1s with the toast (only when
-  // a real threat exists; drop the mp3 into public/sounds to enable).
-  // Missing SFX files are skipped so one absent file can never kill the
-  // video; with none present it renders silent.
+  // epicenter-appear @1s (pop), tsunami-notif @1s with the toast (only
+  // when a real threat exists), wave-spread @1.5s (shockwave), reports
+  // @4s (info cards). Missing SFX files are skipped so one absent file
+  // can never kill the video; with none present it renders silent.
   const mp4 = path.join(outDir, 'out.mp4');
   const sfxDir = path.join(process.cwd(), 'public', 'sounds');
   const sfxPlan = [
     { file: 'epicenter-appear.mp3', at: 1000 },
-    ...(hasTsunamiThreat(quake.threat ?? '') ? [{ file: 'tsunami-alert.mp3', at: 1000 }] : []),
+    ...(hasTsunamiThreat(quake.threat ?? '') ? [{ file: 'tsunami-notif.mp3', at: 1000 }] : []),
     { file: 'wave-spread.mp3', at: 2000 },
     { file: 'reports.mp3', at: 4000 },
   ].filter((s) => {
