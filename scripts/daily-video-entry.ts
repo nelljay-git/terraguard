@@ -206,12 +206,12 @@ async function resolveFbPageToken(
 async function fbPreflight(pageId: string, pageToken: string): Promise<boolean> {
   try {
     const url = new URL(`https://graph.facebook.com/v21.0/${pageId}`);
-    url.searchParams.set('fields', 'id,name');
+    url.searchParams.set('fields', 'id,name,category,link');
     url.searchParams.set('access_token', pageToken);
     const proof = await fbAppSecretProof(pageToken, process.env.FB_APP_SECRET || '');
     if (proof) url.searchParams.set('appsecret_proof', proof);
     const res = await fetch(url.toString());
-    const data = (await res.json().catch(() => ({}))) as { id?: string; name?: string; error?: { message?: string; code?: number; error_subcode?: number } };
+    const data = (await res.json().catch(() => ({}))) as { id?: string; name?: string; category?: string; error?: { message?: string; code?: number; error_subcode?: number } };
     if (!res.ok || !data.id) {
       console.error(
         `FB preflight failed: token cannot see Page ${pageId} (HTTP ${res.status} ${data.error?.message ?? JSON.stringify(data).slice(0, 300)}). ` +
@@ -219,7 +219,15 @@ async function fbPreflight(pageId: string, pageToken: string): Promise<boolean> 
       );
       return false;
     }
-    console.log(`FB preflight OK: Page "${(data as { name?: string }).name ?? ''}" (${data.id})`);
+    console.log(`FB preflight OK: Page "${data.name ?? ''}" (${data.id})`);
+    if (!data.category) {
+      console.error(
+        `FB preflight WARNING: ID ${pageId} ("${data.name ?? ''}") has no Page category — ` +
+          `it looks like an APP ID, not a PAGE ID. Videos must be posted to a Page ID. ` +
+          `Get the real Page ID via me/accounts with your USER token and update the FB_PAGE_ID secret.`,
+      );
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('FB preflight error:', e instanceof Error ? e.message : e);
