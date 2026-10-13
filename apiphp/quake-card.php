@@ -96,6 +96,15 @@ $source = safeSubstr((string)($_GET['source'] ?? 'PHIVOLCS'), 24);
 // PHIVOLCS bulletin number (digits only): renders the INFORMATION pill.
 // Absent for EMSC/USGS cards, which simply omit the pill.
 $infoNo = safeSubstr(preg_replace('/\D+/', '', (string)($_GET['info'] ?? '')), 4);
+// Tsunami threat label (?tsunami=Tsunami+Warning): renders a red/amber
+// warning pill top-left (mirrors the magnitude panel). Omitted when empty,
+// NONE, N/A, or a "no threat" phrase — normal cards stay byte-identical.
+$tsunamiRaw = safeSubstr((string)($_GET['tsunami'] ?? ''), 40);
+$tsunamiText = '';
+if ($tsunamiRaw !== '' && !preg_match('/^(none|n\/?a)\b/i', trim($tsunamiRaw))
+    && !preg_match('/no tsunami|no threat|no hazard|not expect|does not pose/i', $tsunamiRaw)) {
+    $tsunamiText = safeUpper($tsunamiRaw);
+}
 // Banner headline, two parts: part 1 renders white, part 2 in the alert colour.
 // Defaults keep the original "EARTHQUAKE DETECTED" card byte-identical; the
 // tsunami monitor reuses this generator with title=TSUNAMI INFORMATION so it
@@ -129,7 +138,7 @@ $mapLayer = $satellite ? 'esri-exp-sat' : 'esri-exp-map'; // cache key (v3: sing
 if (!is_dir(CACHE_DIR)) { @mkdir(CACHE_DIR, 0777, true); }
 // $titleA/$titleB are part of the key: without them a tsunami card and an
 // earthquake card at the same coordinates/magnitude would share a cache entry.
-$cacheKey = md5(implode('|', [$lat, $lng, $magRaw, $place, $date, $time, $depth, $mapLayer, $source, $infoNo, $titleA, $titleB]));
+$cacheKey = md5(implode('|', [$lat, $lng, $magRaw, $place, $date, $time, $depth, $mapLayer, $source, $infoNo, $titleA, $titleB, $tsunamiText]));
 $cacheFile = CACHE_DIR . '/' . $cacheKey . '.png';
 if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < CACHE_TTL) {
     header('Content-Type: image/png');
@@ -478,6 +487,23 @@ if ($infoNo !== '') {
     imagefilledrectangle($im, $panelX1 - 8, $pillTop, $panelX1, $pillTop + $pillH, $magBar);
     $infoSize = autofit($fontOswald, $infoText, 22, $panelW - 32);
     drawCentered($im, $fontOswald, $infoSize, $panelCx, $pillTop + 31, $infoText, $white);
+}
+
+// --- 2c. Tsunami threat pill (?tsunami=, top-left mirror of the mag panel) ---
+// Warning = red, advisory = amber. Plain "!!" markers (GD fonts lack emoji).
+if ($tsunamiText !== '') {
+    $isAdvisory = stripos($tsunamiText, 'ADVISORY') !== false;
+    $tsuRgb = $isAdvisory ? [249, 115, 22] : [239, 68, 68];
+    $tsuBar = imagecolorallocate($im, $tsuRgb[0], $tsuRgb[1], $tsuRgb[2]);
+    $tsuText = '!! ' . $tsunamiText . ' !!';
+    $tsuSize = autofit($fontOswald, $tsuText, 22, 300);
+    $tsuW = min(352, textWidth($fontOswald, $tsuSize, $tsuText) + 36);
+    $tsuX0 = 16;
+    $tsuTop = $panelTop;
+    $tsuH = 44;
+    imagefilledrectangle($im, $tsuX0, $tsuTop, $tsuX0 + $tsuW, $tsuTop + $tsuH, $panelBg);
+    imagefilledrectangle($im, $tsuX0, $tsuTop, $tsuX0 + 8, $tsuTop + $tsuH, $tsuBar);
+    drawCentered($im, $fontOswald, $tsuSize, (int)round($tsuX0 + $tsuW / 2 + 4), $tsuTop + 31, $tsuText, $white);
 }
 
 // --- 3. Epicenter rings + dot, severity word-coding color ---

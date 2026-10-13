@@ -1086,6 +1086,10 @@ export function Details() {
           // Explicit bulletin number (same value the page displays) so the
           // post doesn't depend on filename parsing server-side.
           infoNo: bulletin?.no ?? undefined,
+          // Tsunami state for the FB message line (omitted server-side
+          // unless level is warning/advisory).
+          tsunamiThreat: tsunamiInfo?.label ?? '',
+          tsunamiLevel: tsunamiInfo?.level ?? '',
         }),
       });
       const j = await res.json().catch(() => ({}));

@@ -169,6 +169,15 @@ export async function onRequest(context: { request: Request; env?: Record<string
   const infoNo = tag === 'PHIVOLCS'
     ? (Number.isFinite(explicitNo) && explicitNo > 0 ? String(explicitNo) : infoNoFromLink(sourceLink))
     : '';
+  // Tsunami line: only for real threats (warning/advisory). 'No Tsunami
+  // Threat'/empty stays omitted so normal posts are byte-identical.
+  const tsunamiLabel = esc(body.tsunamiThreat);
+  const tsunamiLevel = esc(body.tsunamiLevel).toLowerCase();
+  const hasTsunamiThreat = tsunamiLabel !== '' && (
+    tsunamiLevel === 'warning' || tsunamiLevel === 'advisory' ||
+    (tsunamiLevel === '' && /warning|advisory|threat exists|may generate/i.test(tsunamiLabel) &&
+      !/no tsunami|no threat|no hazard|not expect|does not pose/i.test(tsunamiLabel))
+  );
   const lines = [
     `${magPrefix(mag)}JUST IN: A Magnitude: ${esc(body.magnitude) || '?'} struck near ${place} on ${date}${timeBare ? ` - ${timeBare}` : ''}`,
     ``,
@@ -177,6 +186,7 @@ export async function onRequest(context: { request: Request; env?: Record<string
     `Location: ${place}`,
     `Date & Time: ${date}${timeBare ? ` - ${timeBare}` : ''}`,
     `Depth: ${depth} km`,
+    ...(hasTsunamiThreat ? [`⚠️ Tsunami Threat: ${tsunamiLabel}`] : []),
   ];
   if (!isNaN(lat) && !isNaN(lng)) {
     lines.push(`Coordinates: ${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`);
@@ -229,6 +239,7 @@ export async function onRequest(context: { request: Request; env?: Record<string
         depth: String(body.depth ?? ''),
         source: tag,
         ...(infoNo ? { info: infoNo } : {}),
+        ...(hasTsunamiThreat ? { tsunami: tsunamiLabel } : {}),
       }).toString()
     : '';
   const cardUrl =
