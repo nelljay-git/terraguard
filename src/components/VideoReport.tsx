@@ -263,15 +263,6 @@ export function drawFrame(
   } else {
     s = 1.0;
   }
-  // Wave-start punch: a quick small extra pull-back the instant the
-  // shockwave launches — linear phase (no ease-in), out-and-back so it
-  // hands smoothly to the base curve.
-  const PUNCH_DUR = 0.9;
-  const PUNCH_AMT = 0.1;
-  if (t >= WAVE_T && t <= WAVE_T + PUNCH_DUR) {
-    const k = (t - WAVE_T) / PUNCH_DUR; // 0 -> 1, linear
-    s -= PUNCH_AMT * Math.sin(k * Math.PI);
-  }
   // Mini shake 0.5s right after the wave appears — watermark excluded.
   const shakeActive = t >= WAVE_T && t < WAVE_T + 0.5;
   let shakeX = 0, shakeY = 0;
