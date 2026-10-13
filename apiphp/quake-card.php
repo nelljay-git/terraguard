@@ -205,14 +205,18 @@ $tileImages = array_fill(0, count($tileJobs), null);
 $tileInfo = array_fill(0, count($tileJobs), 'no attempt');
 function fetchTileBody(string $url, string &$info) { // no union return type: stays PHP 7.x compatible
     $ch = curl_init($url);
-    curl_setopt_array($ch, [
+    $opts = [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => TILE_TIMEOUT,
         CURLOPT_CONNECTTIMEOUT => 5,
         CURLOPT_USERAGENT => 'TerraGuard-Card/2.0 (Esri tiles)',
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_MAXREDIRS => 3,
-    ]);
+    ];
+    // Shared hosts often have broken IPv6 DNS (curl_err=6). Esri has A
+    // records, so prefer IPv4 when the constant exists.
+    if (defined('CURL_IPRESOLVE_V4')) $opts[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V4;
+    curl_setopt_array($ch, $opts);
     $body = curl_exec($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_errno($ch);
@@ -223,25 +227,22 @@ function fetchTileBody(string $url, string &$info) { // no union return type: st
 }
 if (function_exists('curl_init')) {
     // 1-2 sequential requests: no burst, nothing to throttle.
+    // Up to 4 attempts with growing pauses — x10 DNS flakes (err 6) and
+    // resolve failures return instantly, so retries are cheap.
     foreach ($tileJobs as $i => $job) {
-        $info = '';
-        $body = fetchTileBody($job['url'], $info);
-        $tileInfo[$i] = $info;
-        if ($body !== false) {
-            $img = @imagecreatefromstring($body);
-            if ($img !== false) $tileImages[$i] = $img;
-        }
-        if ($tileImages[$i] === null) {
-            // One retry after a short pause (transient 429/5xx).
-            usleep(500000);
-            $info2 = '';
-            $body2 = fetchTileBody($job['url'], $info2);
-            $tileInfo[$i] .= ' / retry: ' . $info2;
-            if ($body2 !== false) {
-                $img2 = @imagecreatefromstring($body2);
-                if ($img2 !== false) $tileImages[$i] = $img2;
+        $tries = [];
+        for ($a = 1; $a <= 4; $a++) {
+            if ($a > 1) usleep(500000 * ($a - 1));
+            $info = '';
+            $body = fetchTileBody($job['url'], $info);
+            $tries[] = "try$a: $info";
+            if ($body !== false) {
+                $img = @imagecreatefromstring($body);
+                if ($img !== false) { $tileImages[$i] = $img; break; }
+                $tries[count($tries) - 1] .= ' (bad image)';
             }
         }
+        $tileInfo[$i] = implode(' / ', $tries);
     }
 } else {
     foreach ($tileJobs as $i => $job) {
