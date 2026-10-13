@@ -256,7 +256,9 @@ export function drawFrame(
   if (t < OUT_T) {
     s = CLOSE_S + 0.03 * easeInOut(Math.min(Math.max(t / OUT_T, 0), 1));
   } else if (t < OUT_END) {
-    const u = easeInOut((t - OUT_T) / (OUT_END - OUT_T));
+    // Ease-out only: the pull-out starts at full speed the instant the
+    // sections step in (no sluggish ease-in), then settles gently.
+    const u = easeOutCubic((t - OUT_T) / (OUT_END - OUT_T));
     s = CLOSE_S + 0.03 - (CLOSE_S + 0.03 - 1.0) * u;
   } else {
     s = 1.0;
