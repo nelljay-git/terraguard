@@ -371,15 +371,16 @@ export function drawFrame(
 
   // Tsunami toast: notification banner that drops from the top at TSU_T
   // (same beat as the epicenter pop, different screen area), holds with a
-  // pulsing alert edge + shine sweep, then slides away before the info
-  // cards land at INFO_T. Only for real threats (warning/advisory/watch).
+  // pulsing alert edge + shine sweep, then hands off to a slim persistent
+  // strip as the info cards land at INFO_T. Only for real threats
+  // (warning/advisory/watch).
   if (hasTsunamiThreat(threat)) {
     const tsuColor = threatColor(threat.trim());
     const BH = 124; // banner height
     const slideIn = Math.min(Math.max((t - TSU_T) / 0.55, 0), 1);
     const slideOut = Math.min(Math.max((t - TSU_HOLD) / (TSU_GONE - TSU_HOLD), 0), 1);
     if (slideIn > 0 && slideOut < 1) {
-      const yOff = (1 - easeOutBack(slideIn)) * -(BH + 30) - easeInOut(slideOut) * (BH + 30);
+      const yOff = (1 - easeOutBack(slideIn)) * -(BH + 30) - easeInOut(slideOut) * 40;
       const alpha = Math.min(slideIn * 1.4, 1) * (1 - slideOut);
       ctx.save();
       ctx.globalAlpha = Math.max(alpha, 0);
@@ -455,6 +456,37 @@ export function drawFrame(
       }
       ctx.restore();
       ctx.textAlign = 'left';
+    }
+    // Slim persistent strip: fades/slides in while the banner leaves, then
+    // stays for the rest of the video. 44px tall so the info-column
+    // headers (y=60) clear it.
+    if (t >= TSU_HOLD) {
+      const si = easeOutCubic(Math.min((t - TSU_HOLD) / (TSU_GONE - TSU_HOLD), 1));
+      if (si > 0) {
+        const SH = 44;
+        ctx.save();
+        ctx.globalAlpha = si;
+        ctx.translate(0, -(1 - si) * (SH + 10));
+        ctx.fillStyle = 'rgba(8,12,24,0.93)';
+        ctx.fillRect(0, 0, W, SH);
+        const sPulse = 0.55 + 0.35 * Math.sin((t - TSU_T) * 5.2);
+        ctx.fillStyle = tsuColor;
+        ctx.globalAlpha = si * sPulse;
+        ctx.fillRect(0, SH - 5, W, 5);
+        ctx.globalAlpha = si;
+        ctx.beginPath();
+        ctx.arc(48, SH / 2, 10, 0, Math.PI * 2);
+        ctx.fillStyle = tsuColor;
+        ctx.fill();
+        const sTitle = threat.trim().toUpperCase().slice(0, 24);
+        const sAdvice = /warning/i.test(threat) ? 'move away from shore' : 'stay away from shore';
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '700 24px Oswald, Inter, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${sTitle} — ${sAdvice}`, 70, 29);
+        ctx.restore();
+        ctx.textAlign = 'left';
+      }
     }
   }
 
