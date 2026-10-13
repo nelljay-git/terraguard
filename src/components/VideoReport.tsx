@@ -15,8 +15,8 @@ import './VideoReport.css';
 // fully in-browser (canvas.captureStream + MediaRecorder — no server).
 //
 // Timeline (~20s): plain map (0-1s) -> epicenter pop (1s) + tsunami toast
-// when a real threat exists (1s slide-down, dismisses 3.2s before the info
-// cards) -> shockwave spreading across the map (1.5s, ~1s) -> DYFI felt
+// when a real threat exists (1s slide-down, visible ~3s, hands off to the
+// info cards at 4s) -> shockwave spreading across the map (1.5s, ~1s) -> DYFI felt
 // responses fade in (2.5s) -> styled info cards fade/slide in (4s) -> idle
 // drift until end.
 
@@ -29,8 +29,8 @@ export const WAVE_T = 2.0; // shockwave starts (1s after the epicenter)
 export const WAVE_DUR = 2.8; // slow single wave
 export const INFO_T = 4; // info cards appear
 export const TSU_T = 1.0; // tsunami toast slides down (same beat as the epicenter pop)
-export const TSU_HOLD = 3.2; // toast starts sliding away (clears before INFO_T)
-export const TSU_GONE = 3.75; // toast fully off-screen
+export const TSU_HOLD = 3.45; // toast starts sliding away (visible ~3s: 1.0 -> 4.0)
+export const TSU_GONE = 4.0; // toast fully off-screen exactly as info cards land
 export const DYFI_T = WAVE_T + WAVE_DUR + 0.1; // DYFI fade-in, right after the wave
 // Mosaic: 5 cols x 6 rows of 256px Esri tiles (same map as the app),
 // covering the canvas with a slight crop. Epicenter lands at canvas center.
