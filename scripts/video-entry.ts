@@ -206,26 +206,81 @@ async function fbAppSecretProof(accessToken: string, appSecret: string): Promise
 
 // If rawToken is a User token, exchange via me/accounts for the Page token.
 // If it already IS the Page token, me/accounts fails and we fall back to it.
-async function resolveFbPageToken(pageId: string, rawToken: string): Promise<string> {
+// Tries each candidate token in order (FB_UPLOAD_TOKEN, then FB_USER_ACCESS_TOKEN)
+// so one stale secret can't silently kill the upload with a cryptic
+// "Unsupported post request ... code 100 subcode 33".
+async function resolveFbPageToken(
+  pageId: string,
+  candidates: Array<{ label: string; token: string }>,
+): Promise<{ token: string; via: string }> {
+  const appSecret = process.env.FB_APP_SECRET || '';
+  for (const c of candidates) {
+    if (!c.token) continue;
+    try {
+      const url = new URL('https://graph.facebook.com/v21.0/me/accounts');
+      url.searchParams.set('access_token', c.token);
+      url.searchParams.set('fields', 'id,name,access_token');
+      url.searchParams.set('limit', '100');
+      const proof = await fbAppSecretProof(c.token, appSecret);
+      if (proof) url.searchParams.set('appsecret_proof', proof);
+      const res = await fetch(url.toString());
+      const data = (await res.json().catch(() => ({}))) as {
+        data?: Array<{ id?: string; name?: string; access_token?: string }>;
+        error?: { message?: string; code?: number };
+      };
+      if (!res.ok) {
+        console.error(
+          `FB: me/accounts with ${c.label} failed: HTTP ${res.status} ${data.error?.message ?? JSON.stringify(data).slice(0, 200)}`,
+        );
+        continue;
+      }
+      const pages = data.data ?? [];
+      const match = pages.find((p) => String(p.id) === String(pageId));
+      if (match?.access_token) {
+        console.log(`FB: resolved Page token via me/accounts (${c.label}, ${pages.length} pages)`);
+        return { token: String(match.access_token), via: `me/accounts:${c.label}` };
+      }
+      console.error(
+        `FB: ${c.label} is valid but Page ${pageId} not in its ${pages.length} pages ` +
+          `(ids: ${pages.slice(0, 5).map((p) => p.id).join(',') || 'none'}). ` +
+          `Wrong FB_PAGE_ID or token has no access to this Page.`,
+      );
+    } catch (e) {
+      console.error(`FB token exchange (${c.label}) failed:`, e instanceof Error ? e.message : e);
+    }
+  }
+  // Fallback: assume the first non-empty candidate already IS a Page token.
+  const first = candidates.find((c) => c.token);
+  if (first) {
+    console.error(`FB: using ${first.label} directly as Page token (no me/accounts match)`);
+    return { token: first.token, via: `direct:${first.label}` };
+  }
+  return { token: '', via: 'none' };
+}
+
+async function fbPreflight(pageId: string, pageToken: string): Promise<boolean> {
   try {
-    const url = new URL('https://graph.facebook.com/v21.0/me/accounts');
-    url.searchParams.set('access_token', rawToken);
-    url.searchParams.set('fields', 'id,name,access_token');
-    url.searchParams.set('limit', '50');
-    const proof = await fbAppSecretProof(rawToken, process.env.FB_APP_SECRET || '');
+    const url = new URL(`https://graph.facebook.com/v21.0/${pageId}`);
+    url.searchParams.set('fields', 'id,name');
+    url.searchParams.set('access_token', pageToken);
+    const proof = await fbAppSecretProof(pageToken, process.env.FB_APP_SECRET || '');
     if (proof) url.searchParams.set('appsecret_proof', proof);
     const res = await fetch(url.toString());
-    if (!res.ok) return rawToken;
-    const data = (await res.json().catch(() => ({}))) as { data?: Array<{ id?: string; access_token?: string }> };
-    const match = (data.data ?? []).find((p) => String(p.id) === String(pageId));
-    if (match?.access_token) {
-      console.log('FB: resolved Page token via me/accounts');
-      return String(match.access_token);
+    const data = (await res.json().catch(() => ({}))) as { id?: string; name?: string; error?: { message?: string; code?: number; error_subcode?: number } };
+    if (!res.ok || !data.id) {
+      console.error(
+        `FB preflight failed: token cannot see Page ${pageId} (HTTP ${res.status} ${data.error?.message ?? JSON.stringify(data).slice(0, 300)}). ` +
+          `This is what causes "Unsupported post request ... code 100 subcode 33" on /videos. ` +
+          `Fix: check FB_PAGE_ID secret (must be numeric Page ID) and refresh FB_UPLOAD_TOKEN/FB_USER_ACCESS_TOKEN.`,
+      );
+      return false;
     }
+    console.log(`FB preflight OK: Page "${(data as { name?: string }).name ?? ''}" (${data.id})`);
+    return true;
   } catch (e) {
-    console.error('FB token exchange failed, using raw token:', e instanceof Error ? e.message : e);
+    console.error('FB preflight error:', e instanceof Error ? e.message : e);
+    return false;
   }
-  return rawToken;
 }
 
 async function main(): Promise<void> {
@@ -354,23 +409,64 @@ async function main(): Promise<void> {
   // directly) or a User token — in the latter case we exchange it via
   // me/accounts for the Page token, same as the workers do. Failures are
   // non-fatal so TikTok/Telegram/artifact steps still run.
-  const pageId = process.env.FB_PAGE_ID || '';
-  const rawToken = process.env.FB_UPLOAD_TOKEN || process.env.FB_USER_ACCESS_TOKEN || '';
-  if (pageId && rawToken) {
+  const pageId = (process.env.FB_PAGE_ID || '').trim();
+  const uploadToken = (process.env.FB_UPLOAD_TOKEN || '').trim();
+  const userToken = (process.env.FB_USER_ACCESS_TOKEN || '').trim();
+  console.log(
+    `FB config: pageId_len=${pageId.length} has_upload=${Boolean(uploadToken)} has_user=${Boolean(userToken)} ` +
+      `upload_prefix=${uploadToken.slice(0, 8)} user_prefix=${userToken.slice(0, 8)}`,
+  );
+  if (pageId && (uploadToken || userToken)) {
     try {
-      const resolved = await resolveFbPageToken(pageId, rawToken);
-      const proof = await fbAppSecretProof(resolved, process.env.FB_APP_SECRET || '');
-      const form = new FormData();
-      form.append('access_token', resolved);
-      if (proof) form.append('appsecret_proof', proof);
-      form.append('description', quake.description || (quake.finalReport ? buildFinalCaption(quake) : buildVideoCaption(quake)));
-      form.append('source', new Blob([fs.readFileSync(mp4)], { type: 'video/mp4' }), 'report.mp4');
-      const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/videos`, { method: 'POST', body: form });
-      const data = (await res.json().catch(() => ({}))) as { id?: string; error?: { message?: string; code?: number; type?: string } };
-      if (!res.ok || !data.id) {
-        console.error(`FB upload failed (non-fatal): ${data.error?.message ?? res.status} ${JSON.stringify(data).slice(0, 500)}`);
+      const { token: resolved, via } = await resolveFbPageToken(pageId, [
+        { label: 'FB_UPLOAD_TOKEN', token: uploadToken },
+        { label: 'FB_USER_ACCESS_TOKEN', token: userToken },
+      ]);
+      if (!resolved) {
+        console.error('FB upload skipped (non-fatal): no token available after exchange');
       } else {
-        console.log('FB video id:', data.id);
+        console.log(`FB: uploading with token via ${via}`);
+        const ok = await fbPreflight(pageId, resolved);
+        if (!ok) {
+          console.error('FB upload aborted after preflight (non-fatal) — see message above for the fix');
+        } else {
+          const proof = await fbAppSecretProof(resolved, process.env.FB_APP_SECRET || '');
+          const form = new FormData();
+          form.append('access_token', resolved);
+          if (proof) form.append('appsecret_proof', proof);
+          form.append('description', quake.description || (quake.finalReport ? buildFinalCaption(quake) : buildVideoCaption(quake)));
+          form.append('source', new Blob([fs.readFileSync(mp4)], { type: 'video/mp4' }), 'report.mp4');
+          // graph-video is the recommended host for video uploads; fall back to graph.
+          const hosts = ['https://graph-video.facebook.com/v21.0', 'https://graph.facebook.com/v21.0'];
+          let done = false;
+          for (const host of hosts) {
+            const res = await fetch(`${host}/${pageId}/videos`, { method: 'POST', body: form });
+            const data = (await res.json().catch(() => ({}))) as {
+              id?: string;
+              error?: { message?: string; code?: number; error_subcode?: number; type?: string };
+            };
+            if (!res.ok || !data.id) {
+              console.error(
+                `FB upload via ${host} failed (non-fatal): ${data.error?.message ?? res.status} ` +
+                  `code=${data.error?.code} subcode=${(data.error as { error_subcode?: number })?.error_subcode} ${JSON.stringify(data).slice(0, 500)}`,
+              );
+              if (data.error?.code === 100 && (data.error as { error_subcode?: number })?.error_subcode === 33) {
+                console.error(
+                  `FB code 100/33 = token cannot access Page ${pageId}. ` +
+                    `Not a video bug. Check: (1) FB_PAGE_ID secret == Cloudflare worker FB_PAGE_ID exactly, ` +
+                    `(2) FB_UPLOAD_TOKEN is fresh (delete stale one so FB_USER_ACCESS_TOKEN is used), ` +
+                    `(3) user token still has pages_show_list + pages_manage_posts, ` +
+                    `(4) token not expired by password change. Tester works because it uses different (fresh) env.`,
+                );
+              }
+              continue;
+            }
+            console.log('FB video id:', data.id);
+            done = true;
+            break;
+          }
+          if (!done) console.error('FB upload failed on all hosts (non-fatal)');
+        }
       }
     } catch (e) {
       console.error('FB upload failed (non-fatal):', e instanceof Error ? e.message : e);
