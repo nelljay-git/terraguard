@@ -14,9 +14,11 @@ import './VideoReport.css';
 // Staged video export of the earthquake report, rendered + captured
 // fully in-browser (canvas.captureStream + MediaRecorder — no server).
 //
-// Timeline (~20s): plain map (0-1s) -> epicenter pop (1s) -> shockwave
-// spreading across the map (1.5s, ~1s) -> DYFI felt responses fade in
-// (2.5s) -> styled info cards fade/slide in (4s) -> idle drift until end.
+// Timeline (~20s): plain map (0-1s) -> epicenter pop (1s) + tsunami toast
+// when a real threat exists (1s slide-down, dismisses 3.2s before the info
+// cards) -> shockwave spreading across the map (1.5s, ~1s) -> DYFI felt
+// responses fade in (2.5s) -> styled info cards fade/slide in (4s) -> idle
+// drift until end.
 
 export const W = 1080;
 export const H = 1440;
@@ -26,6 +28,9 @@ export const MAP_T = 1; // epicenter appears
 export const WAVE_T = 2.0; // shockwave starts (1s after the epicenter)
 export const WAVE_DUR = 2.8; // slow single wave
 export const INFO_T = 4; // info cards appear
+export const TSU_T = 1.0; // tsunami toast slides down (same beat as the epicenter pop)
+export const TSU_HOLD = 3.2; // toast starts sliding away (clears before INFO_T)
+export const TSU_GONE = 3.75; // toast fully off-screen
 export const DYFI_T = WAVE_T + WAVE_DUR + 0.1; // DYFI fade-in, right after the wave
 // Mosaic: 5 cols x 6 rows of 256px Esri tiles (same map as the app),
 // covering the canvas with a slight crop. Epicenter lands at canvas center.
@@ -170,6 +175,15 @@ function countryOf(location: string): string {
     .split(/\s+/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
+}
+
+// True only for real tsunami threats — 'NONE'/'No Tsunami Threat'/'—'/empty
+// never trigger the toast (or the headless alert sfx).
+export function hasTsunamiThreat(label: string): boolean {
+  const s = (label || '').trim();
+  if (!s || s === '—' || s === '-') return false;
+  if (/\bnone\b|\bno\b/i.test(s)) return false;
+  return /warning|advisory|watch/i.test(s);
 }
 
 function threatColor(label: string): string {
@@ -353,6 +367,95 @@ export function drawFrame(
     ctx.fillText(`\u25CF ${dyfi.length} DYFI FELT REPORTS`, W / 2, 60);
     ctx.restore();
     ctx.textAlign = 'left';
+  }
+
+  // Tsunami toast: notification banner that drops from the top at TSU_T
+  // (same beat as the epicenter pop, different screen area), holds with a
+  // pulsing alert edge + shine sweep, then slides away before the info
+  // cards land at INFO_T. Only for real threats (warning/advisory/watch).
+  if (hasTsunamiThreat(threat)) {
+    const tsuColor = threatColor(threat.trim());
+    const BH = 124; // banner height
+    const slideIn = Math.min(Math.max((t - TSU_T) / 0.55, 0), 1);
+    const slideOut = Math.min(Math.max((t - TSU_HOLD) / (TSU_GONE - TSU_HOLD), 0), 1);
+    if (slideIn > 0 && slideOut < 1) {
+      const yOff = (1 - easeOutBack(slideIn)) * -(BH + 30) - easeInOut(slideOut) * (BH + 30);
+      const alpha = Math.min(slideIn * 1.4, 1) * (1 - slideOut);
+      ctx.save();
+      ctx.globalAlpha = Math.max(alpha, 0);
+      ctx.translate(0, yOff);
+      // Bar.
+      ctx.fillStyle = 'rgba(8,12,24,0.93)';
+      ctx.fillRect(0, 0, W, BH);
+      // Alert edge with breathing glow (holds while the toast is parked).
+      const parked = slideIn >= 1 && slideOut <= 0 ? 1 : 0;
+      const pulse = 0.55 + 0.35 * Math.sin((t - TSU_T) * 5.2);
+      ctx.fillStyle = tsuColor;
+      ctx.globalAlpha = Math.max(alpha, 0) * (parked ? pulse : 1);
+      ctx.fillRect(0, BH - 7, W, 7);
+      ctx.globalAlpha = Math.max(alpha, 0);
+      // Icon: threat-colored disc with a hand-drawn wave (no emoji font).
+      const ix = 92, iy = BH / 2 - 4, ir = 34;
+      ctx.beginPath();
+      ctx.arc(ix, iy, ir, 0, Math.PI * 2);
+      ctx.fillStyle = tsuColor;
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      for (let row = 0; row < 2; row++) {
+        ctx.beginPath();
+        const wy = iy - 8 + row * 16;
+        for (let x = -20; x <= 20; x += 4) {
+          const y = wy + Math.sin((x / 20) * Math.PI * 1.4) * 6;
+          if (x === -20) ctx.moveTo(ix + x, y);
+          else ctx.lineTo(ix + x, y);
+        }
+        ctx.stroke();
+      }
+      // Title + subline.
+      const title = threat.trim().toUpperCase().slice(0, 34);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 42px Oswald, Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(title, 148, 62);
+      const sub = /warning/i.test(threat)
+        ? 'Destructive waves possible — move away from shore'
+        : 'Strong currents & waves possible — stay away from shore';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '400 21px Inter, sans-serif';
+      ctx.fillText(sub, 148, 96);
+      // Alert dot, right side, pulsing with the edge.
+      const dotA = parked ? pulse : 1;
+      ctx.save();
+      ctx.globalAlpha = Math.max(alpha, 0) * dotA;
+      ctx.beginPath();
+      ctx.arc(W - 92, BH / 2 - 4, 13, 0, Math.PI * 2);
+      ctx.fillStyle = tsuColor;
+      ctx.fill();
+      ctx.restore();
+      // One shine sweep across the bar shortly after landing.
+      const shineT = (t - (TSU_T + 0.55)) / 0.9;
+      if (shineT >= 0 && shineT <= 1) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, W, BH);
+        ctx.clip();
+        const sx = -260 + easeOutCubic(shineT) * (W + 520);
+        ctx.globalAlpha = Math.max(alpha, 0) * 0.12 * (1 - shineT);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx + 130, 0);
+        ctx.lineTo(sx + 40, BH);
+        ctx.lineTo(sx - 90, BH);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+      ctx.textAlign = 'left';
+    }
   }
 
   // Broadcast data columns + callout + intensity scale (t>=INFO_T).

@@ -23,6 +23,7 @@ import {
   drawFrame,
   esriTileUrls,
   epicenterMosaicPx,
+  hasTsunamiThreat,
   W,
   H,
   FPS,
@@ -41,6 +42,7 @@ export {
   drawFrame,
   esriTileUrls,
   epicenterMosaicPx,
+  hasTsunamiThreat,
   W,
   H,
   FPS,
@@ -298,7 +300,9 @@ async function main(): Promise<void> {
   // Flatten dispatch `extra` enrichment (flat manual fields win when set).
   const ex = quake.extra ?? {};
   quake.intensity = quake.intensity || ex.intensity || '';
-  quake.threat = quake.threat || ex.threat || '';
+  // drawFrame's `threat` drives both the info-card row and the tsunami
+  // toast — resolve every alias dispatch/manual payloads may use.
+  quake.threat = quake.threat || quake.tsunamiThreat || ex.threat || (ex as { tsunamiThreat?: string }).tsunamiThreat || '';
   quake.tsunamiThreat = quake.tsunamiThreat || ex.tsunamiThreat || quake.threat;
   quake.shakes = quake.shakes ?? ex.shakes ?? [];
   quake.usgsEventId = quake.usgsEventId || ex.usgsEventId;
@@ -364,12 +368,15 @@ async function main(): Promise<void> {
 
   // Encode: PNG frames + timed sound effects (repo public/sounds).
   // epicenter-appear @1s (pop), wave-spread @1.5s (shockwave),
-  // reports @4s (info cards). Missing SFX files are skipped so one absent
-  // file can never kill the video; with none present it renders silent.
+  // reports @4s (info cards), tsunami-alert @1s with the toast (only when
+  // a real threat exists; drop the mp3 into public/sounds to enable).
+  // Missing SFX files are skipped so one absent file can never kill the
+  // video; with none present it renders silent.
   const mp4 = path.join(outDir, 'out.mp4');
   const sfxDir = path.join(process.cwd(), 'public', 'sounds');
   const sfxPlan = [
     { file: 'epicenter-appear.mp3', at: 1000 },
+    ...(hasTsunamiThreat(quake.threat ?? '') ? [{ file: 'tsunami-alert.mp3', at: 1000 }] : []),
     { file: 'wave-spread.mp3', at: 2000 },
     { file: 'reports.mp3', at: 4000 },
   ].filter((s) => {
