@@ -1,8 +1,8 @@
 <?php
 /**
  * volcano-card.php — PHP/GD volcano visual-report card (720x900 PNG).
- * Port of functions/api/volcano-card.ts (Yandex satellite close-up, risk-colored
- * banner, observation pills, footer). Called by the volcano monitor.
+ * Single Esri World_Imagery satellite export (+ labels overlay) as the map,
+ * risk-colored banner, observation pills, footer. Called by the volcano monitor.
  *
  * Query: ?volcano=MAYON&level=2&risk=MODERATE&issued=19+September+2026&quakes=23&so2=1258&pdz=6
  * Output: image/png (720x900), cached 24h.
@@ -28,7 +28,7 @@ define('MAP_H', 720); // was 650 → map now fills the 70px black gap on top of 
 define('KNOWN_ZOOM', 11);
 define('CACHE_TTL', 0); // no cache per request
 define('CACHE_DIR', sys_get_temp_dir() . '/volcanocard_cache');
-define('TILE_TIMEOUT', 8);
+define('TILE_TIMEOUT', 20); // Esri export renders server-side; allow slow uplinks
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
@@ -112,64 +112,64 @@ function riskColorRgb(string $risk): array {
 }
 $riskRgb = riskColorRgb($risk);
 
-// --- Tile geometry (same as TS: overlap-stitch to hide watermarks) ---
-$span = (360 * MAP_H) / (256 * (2 ** $zoom));
-$clat = max(-85, min(85, $lat + 0.07 * $span)); // a bit bottom 2% (was 0.03)
-$P = 360 / (256 * (2 ** $zoom));
-$s = max(CARD_W / 650, MAP_H / 450);
-$vw = CARD_W / $s;
-$vh = MAP_H / $s;
-$P1 = $P / 2;
-$VW1 = $vw * 2;
-$VH1 = $vh * 2;
-$d = CARD_W / $VW1;
-$tw = 650 * $d;
-$th = 450 * $d;
-$cosLat = cos($clat * M_PI / 180);
-$topLat = $clat + ($VH1 / 2) * $P1 * $cosLat;
-$ROW_STEP = 225;
-$CROP_PX = 40;
-$rows = (int)ceil(($VH1 - 450) / $ROW_STEP) + 1;
-$qx = [CARD_W / 4, (3 * CARD_W) / 4];
-$tileJobs = [];
-for ($r = 0; $r < $rows; $r++) {
-    $rowTop = $r === $rows - 1 ? $VH1 - 450 + $CROP_PX : min($r * $ROW_STEP, $VH1 - 450);
-    $rowCenter = $rowTop + 225;
-    $tLat = max(-85, min(85, $topLat - $rowCenter * $P1 * $cosLat));
-    for ($c = 0; $c < 2; $c++) {
-        $tLng = $lng + ($c === 0 ? -1 : 1) * (($VW1 / 4) * $P1);
-        $ll = number_format($tLng, 6, '.', '') . ',' . number_format($tLat, 6, '.', '');
-        $tileJobs[] = [
-            'url' => 'https://static-maps.yandex.ru/1.x/?lang=en_US&ll=' . $ll . '&z=' . ($zoom + 1) . '&size=650,450&l=sat,skl',
-            'left' => $qx[$c] - $tw / 2,
-            'top' => ($rowTop / $VH1) * MAP_H,
-        ];
-    }
-}
+// --- Base map: ONE Esri World_Imagery export for the whole 720x720 map
+// (same satellite source as quake-card.php and the app's Leaflet satellite
+// mode). Single request = no burst throttling, and no curl_multi (disabled
+// on InfinityFree free tier). One transparent Reference export adds labels.
+// Framing keeps the old tile math: volcano at ~57% map height, zoom 11.
+$P = 360 / (256 * (2 ** $zoom)); // lng degrees per px at $zoom
+$leftLng = $lng - (CARD_W / 2) * $P;
+$rightLng = $lng + (CARD_W / 2) * $P;
+$topLat = max(-80, min(80, $lat + 0.57 * MAP_H * $P));
+$botLat = max(-80, min(80, $lat - 0.43 * MAP_H * $P));
+if ($leftLng < -180) { $leftLng += 360; $rightLng += 360; }
+if ($rightLng > 180) { $leftLng -= 360; $rightLng -= 360; }
+$bbox = number_format($leftLng, 6, '.', '') . ',' . number_format($botLat, 6, '.', '')
+    . ',' . number_format($rightLng, 6, '.', '') . ',' . number_format($topLat, 6, '.', '');
+$esriBase = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export';
+$esriRef = 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/export';
+$tileJobs = [[
+    'url' => $esriBase . '?bbox=' . $bbox . '&bboxSR=4326&imageSR=4326'
+        . '&size=' . CARD_W . ',' . MAP_H . '&format=png&f=image',
+    'left' => 0, 'top' => 0,
+], [
+    'url' => $esriRef . '?bbox=' . $bbox . '&bboxSR=4326&imageSR=4326'
+        . '&size=' . CARD_W . ',' . MAP_H . '&format=png32&transparent=true&f=image',
+    'left' => 0, 'top' => 0,
+]];
 
-// --- Fetch tiles ---
+// --- Fetch: 1-2 sequential requests with retries (single curl, never multi) ---
 $tileImages = array_fill(0, count($tileJobs), null);
-if (function_exists('curl_multi_init')) {
-    $mh = curl_multi_init(); $handles = [];
-    foreach ($tileJobs as $i => $job) {
-        $ch = curl_init($job['url']);
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => TILE_TIMEOUT, CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_USERAGENT => 'TerraGuard-Card/1.0', CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 3]);
-        curl_multi_add_handle($mh, $ch); $handles[$i] = $ch;
+function fetchTileBody(string $url) {
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        $opts = [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => TILE_TIMEOUT,
+            CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_USERAGENT => 'TerraGuard-VolcanoCard/2.0 (Esri tiles)',
+            CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 3,
+        ];
+        if (defined('CURL_IPRESOLVE_V4')) $opts[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V4;
+        curl_setopt_array($ch, $opts);
+        $body = curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($body !== false && $body !== '' && $code >= 200 && $code < 300) return $body;
+        return false;
     }
-    $running = null; do { $mrc = curl_multi_exec($mh, $running); if ($running) curl_multi_select($mh, 1.0); } while ($running && $mrc === CURLM_OK);
-    foreach ($handles as $i => $ch) {
-        $body = curl_multi_getcontent($ch); $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        if ($body !== false && $body !== '' && $code >= 200 && $code < 300) {
-            $img = @imagecreatefromstring($body); if ($img !== false) $tileImages[$i] = $img;
+    $ctx = stream_context_create(['http' => ['timeout' => TILE_TIMEOUT, 'header' => 'User-Agent: TerraGuard-VolcanoCard/2.0 (Esri tiles)']]);
+    $body = @file_get_contents($url, false, $ctx);
+    return ($body !== false && $body !== '') ? $body : false;
+}
+foreach ($tileJobs as $i => $job) {
+    // Up to 4 attempts with growing pauses — shared-host DNS flakes return
+    // instantly, so retries are cheap.
+    for ($a = 1; $a <= 4; $a++) {
+        if ($a > 1) usleep(500000 * ($a - 1));
+        $body = fetchTileBody($job['url']);
+        if ($body !== false) {
+            $img = @imagecreatefromstring($body);
+            if ($img !== false) { $tileImages[$i] = $img; break; }
         }
-        curl_multi_remove_handle($mh, $ch); curl_close($ch);
-    }
-    curl_multi_close($mh);
-} else {
-    foreach ($tileJobs as $i => $job) {
-        $ctx = stream_context_create(['http' => ['timeout' => TILE_TIMEOUT, 'header' => 'User-Agent: TerraGuard-Card/1.0']]);
-        $body = @file_get_contents($job['url'], false, $ctx);
-        if ($body !== false) { $img = @imagecreatefromstring($body); if ($img !== false) $tileImages[$i] = $img; }
     }
 }
 
@@ -180,9 +180,11 @@ $colWhite = imagecolorallocate($im, 255, 255, 255);
 $colMuted = imagecolorallocate($im, 156, 163, 175);
 $colRisk = imagecolorallocate($im, $riskRgb[0], $riskRgb[1], $riskRgb[2]);
 imagefill($im, 0, 0, $colBg);
+// Exports are exactly CARD_W x MAP_H: composite 1:1, imagery first with the
+// transparent Reference labels over it.
 foreach ($tileJobs as $i => $job) {
     $tile = $tileImages[$i]; if ($tile === null) continue;
-    imagecopyresampled($im, $tile, (int)round($job['left']), (int)round($job['top']), 0, 0, (int)round($tw), (int)round($th), imagesx($tile), imagesy($tile));
+    imagecopy($im, $tile, $job['left'], $job['top'], 0, 0, imagesx($tile), imagesy($tile));
     imagedestroy($tile);
 }
 

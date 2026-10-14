@@ -203,7 +203,9 @@ function fetchTiles(array $jobs, bool $verify): array {
     ];
     if (!$verify) { $opts[CURLOPT_SSL_VERIFYPEER] = false; $opts[CURLOPT_SSL_VERIFYHOST] = 0; }
     $images = array_fill(0, count($jobs), null);
-    if (function_exists('curl_multi_init')) {
+    // NB: some free hosts (e.g. InfinityFree) define curl_multi_init but disable
+    // curl_multi_exec via disable_functions — gate on every multi function used.
+    if (function_exists('curl_multi_init') && function_exists('curl_multi_exec') && function_exists('curl_multi_getcontent')) {
         $mh = curl_multi_init(); $handles = [];
         foreach ($jobs as $i => $job) {
             $ch = curl_init($job['url']);
