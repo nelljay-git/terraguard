@@ -231,8 +231,10 @@ export interface MosaicView {
   eyD: number;
 }
 
-// Display scale for the 1280x1536 mosaic on the 1080x1440 canvas.
-export const MOSAIC_D = Math.max(W / (COLS * TILE), H / (ROWS * TILE));
+// Display scale for the 1280x1536 mosaic on the 1080x1440 canvas, with
+// 20% headroom so the frame can shift to center the epicenter exactly
+// without ever exposing an edge (even at zoom 1.0).
+export const MOSAIC_D = Math.max(W / (COLS * TILE), H / (ROWS * TILE)) * 1.2;
 
 export function drawFrame(
   ctx: CanvasRenderingContext2D,
@@ -277,14 +279,22 @@ export function drawFrame(
   }
   ctx.fillStyle = '#0a0d12';
   ctx.fillRect(0, 0, W, H);
+  // Epicenter sits dead-center: shift the whole map frame by the
+  // epicenter's sub-tile offset (MOSAIC_D headroom keeps edges covered).
+  const oExD = view ? view.exD : W / 2;
+  const oEyD = view ? view.eyD : H / 2;
+  const shX = W / 2 - oExD;
+  const shY = H / 2 - oEyD;
+  const dex = W / 2;
+  const dey = H / 2;
   // Single pre-composited blit per frame (smooth even while encoding).
   if (view) {
-    const { mosaic, exD, eyD } = view;
+    const { mosaic } = view;
     ctx.save();
-    ctx.translate(exD, eyD);
+    ctx.translate(dex, dey);
     ctx.scale(s, s);
-    ctx.translate(-exD, -eyD);
-    ctx.drawImage(mosaic, (W - COLS * TILE * MOSAIC_D) / 2, (H - ROWS * TILE * MOSAIC_D) / 2, COLS * TILE * MOSAIC_D, ROWS * TILE * MOSAIC_D);
+    ctx.translate(-dex, -dey);
+    ctx.drawImage(mosaic, (W - COLS * TILE * MOSAIC_D) / 2 + shX, (H - ROWS * TILE * MOSAIC_D) / 2 + shY, COLS * TILE * MOSAIC_D, ROWS * TILE * MOSAIC_D);
     ctx.restore();
   } else {
     // No map tiles: keep the backdrop dark. Overlays (epicenter, info)
@@ -312,8 +322,6 @@ export function drawFrame(
   ctx.restore();
   ctx.textAlign = 'left';
   if (shakeActive) { ctx.save(); ctx.translate(shakeX, shakeY); }
-  const dex = view ? view.exD : W / 2;
-  const dey = view ? view.eyD : H / 2;
   const magText = eq.magnitude || '?';
   const [sevWord, sevColor] = severityWord(eq.magnitude);
   // Breathing room under the persistent tsunami strip so the cascading
@@ -579,15 +587,16 @@ export function drawFrame(
     ctx.textAlign = 'left';
 
     // DYFI dots — drawn after gradients (on top) so they aren't dimmed, larger + stronger outline.
-    // Transformed by the same zoom-about-epicenter as the map so points
-    // stay glued to the ground underneath (s is 1.0+ during the pull-out).
+    // Shifted with the centered frame, then transformed by the same
+    // zoom-about-epicenter as the map so points stay glued to the ground
+    // underneath.
     if (dyfi.length > 0 && t >= DYFI_T) {
       ctx.save();
       ctx.globalAlpha = q * (0.95 * dyfiA + 0.05);
       for (const p of dyfi) {
         const { x: bx, y: by } = latLngToDisplayPx(eq, p.lat, p.lng);
-        const x = dex + (bx - dex) * s;
-        const y = dey + (by - dey) * s;
+        const x = dex + (bx + shX - dex) * s;
+        const y = dey + (by + shY - dey) * s;
         if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
         ctx.beginPath();
         ctx.arc(x, y, 7, 0, Math.PI * 2);
