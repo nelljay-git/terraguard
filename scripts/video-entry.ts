@@ -379,6 +379,7 @@ async function main(): Promise<void> {
   const sfxDir = path.join(process.cwd(), 'public', 'sounds');
   const sfxPlan = [
     { file: 'intro.mp3', at: 0 },
+    { file: 'intro-tts-alert.mp3', at: 1000 },
     { file: 'epicenter-appear.mp3', at: Math.round(MAP_T * 1000) },
     ...(hasTsunamiThreat(quake.threat ?? '') ? [{ file: 'tsunami-notif.mp3', at: Math.round(TSU_T * 1000) }] : []),
     { file: 'wave-spread.mp3', at: Math.round(WAVE_T * 1000) },

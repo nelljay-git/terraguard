@@ -348,7 +348,7 @@ export function drawFrame(
     // Brisk pop (first half of the slot), slow fade across the rest —
     // total intro still spans the full 5s.
     const ex = easeOutCubic(Math.min(phase / 0.5, 1));
-    const rr = 30 + ex * 150;
+    const rr = 30 + ex * 225; // +50% spread
     const ra = 1.0 * (1 - phase);
     ctx.save();
     ctx.beginPath();
@@ -1104,8 +1104,8 @@ export function VideoReportModal({
         const actx = new AC({ sampleRate: 48000 });
         audioCtxRef.current = actx;
         await actx.resume().catch(() => {});
-        const files = ['intro.mp3', 'epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
-        const at = [0.0, MAP_T, WAVE_T, INFO_T];
+        const files = ['intro.mp3', 'intro-tts-alert.mp3', 'epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
+        const at = [0.0, 1.0, MAP_T, WAVE_T, INFO_T];
         if (hasTsunamiThreat(threatRef.current ?? '')) {
           files.splice(1, 0, 'tsunami-notif.mp3');
           at.splice(1, 0, TSU_T);
