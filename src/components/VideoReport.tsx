@@ -261,7 +261,9 @@ export function drawFrame(
     const u = easeOutCubic((t - OUT_T) / (OUT_END - OUT_T));
     s = CLOSE_S + 0.03 - (CLOSE_S + 0.03 - 1.0) * u;
   } else {
-    s = 1.0;
+    // Done pulling out: drift slowly back in for the rest of the video.
+    const v = easeInOut(Math.min((t - OUT_END) / (DUR - OUT_END), 1));
+    s = 1.0 + 0.06 * v;
   }
   // Mini shake 0.5s right after the wave appears — watermark excluded.
   const shakeActive = t >= WAVE_T && t < WAVE_T + 0.5;
