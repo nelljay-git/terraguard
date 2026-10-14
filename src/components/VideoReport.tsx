@@ -29,7 +29,7 @@ export const DUR = 20;
 export const MAP_T = 5; // epicenter appears (after the 5s intro)
 export const WAVE_T = 6.0; // shockwave starts (1s after the epicenter)
 export const WAVE_DUR = 2.8; // slow single wave
-export const INFO_T = WAVE_T + WAVE_DUR + 3; // info cascade 3s after the shockwave finishes
+export const INFO_T = WAVE_T + WAVE_DUR + 1; // info cascade 1s after the shockwave finishes
 // Staggered section intros (0.2s cascade, slide + fade over 0.6s each).
 export const EVENT_T = INFO_T; // EVENT DATA from the left
 export const IMPACT_T = INFO_T + 0.2; // IMPACT DATA from the right
