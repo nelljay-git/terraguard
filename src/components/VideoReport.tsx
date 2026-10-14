@@ -337,6 +337,32 @@ export function drawFrame(
     }
   }
 
+  // Intro anticipation: three scaling + fading rings on the epicenter
+  // across the first second, then the badge pops and takes over. The
+  // intro sting plays only ONCE (t=0) — not per ring.
+  const INTRO_N = 3;
+  if (t >= 0 && t < MAP_T) {
+    const pd = MAP_T / INTRO_N;
+    const k = Math.min(Math.floor(t / pd), INTRO_N - 1);
+    const phase = (t - k * pd) / pd; // 0 -> 1 for the active ring
+    const rr = 30 + easeOutCubic(phase) * 150;
+    const ra = 0.85 * (1 - phase);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(dex, dey, rr, 0, Math.PI * 2);
+    ctx.strokeStyle = sevColor;
+    ctx.globalAlpha = Math.max(ra, 0);
+    ctx.lineWidth = 8 * (1 - phase) + 1;
+    ctx.stroke();
+    // Anchoring core dot, breathing with the same phase.
+    ctx.beginPath();
+    ctx.arc(dex, dey, 10 + 8 * phase, 0, Math.PI * 2);
+    ctx.fillStyle = sevColor;
+    ctx.globalAlpha = Math.max(0.9 * (1 - phase) + 0.1, 0);
+    ctx.fill();
+    ctx.restore();
+  }
+
   // Magnitude badge on the epicenter (t>=2), severity-colored.
   if (t >= MAP_T) {
     const sc = easeOutBack(Math.min((t - MAP_T) / 0.4, 1));
@@ -1075,8 +1101,8 @@ export function VideoReportModal({
         const actx = new AC({ sampleRate: 48000 });
         audioCtxRef.current = actx;
         await actx.resume().catch(() => {});
-        const files = ['epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
-        const at = [1.0, 2.0, 4.0];
+        const files = ['intro.mp3', 'epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
+        const at = [0.0, 1.0, 2.0, 4.0];
         if (hasTsunamiThreat(threatRef.current ?? '')) {
           files.splice(1, 0, 'tsunami-notif.mp3');
           at.splice(1, 0, 1.0);
