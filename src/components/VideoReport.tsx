@@ -249,7 +249,7 @@ export function drawFrame(
   // Open tight on the epicenter with a slow push-in while the map intro
   // (pop, wave, toast) plays, then pull out to full context as the info
   // sections step in — locked at 1.0 once data is on screen.
-  const CLOSE_S = 1.6;
+  const CLOSE_S = 2.0;
   const OUT_T = INFO_T;
   const OUT_END = INFO_T + 2.5;
   let s: number;
