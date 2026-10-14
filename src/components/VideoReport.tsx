@@ -40,10 +40,12 @@ export const TSU_T = 5.0; // tsunami toast slides down (same beat as the epicent
 export const TSU_HOLD = 7.45; // toast starts sliding away (visible ~3s: 5.0 -> 8.0)
 export const TSU_GONE = 8.0; // toast fully off-screen exactly as info cards land
 export const DYFI_T = WAVE_T + WAVE_DUR + 0.1; // DYFI fade-in, right after the wave
-// Mosaic: 5 cols x 6 rows of 256px Esri tiles (same map as the app),
-// covering the canvas with a slight crop. Epicenter lands at canvas center.
+// Mosaic: 5 cols x 7 rows of 256px Esri tiles (same map as the app).
+// ROWS is odd so the grid is symmetric around the epicenter (an even row
+// count biases the epicenter off-center and breaks the dead-center shift).
+// Epicenter lands at canvas center.
 export const COLS = 5;
-export const ROWS = 6;
+export const ROWS = 7;
 export const TILE = 256;
 
 function zoomForMag(magRaw: string): number {
@@ -231,10 +233,10 @@ export interface MosaicView {
   eyD: number;
 }
 
-// Display scale for the 1280x1536 mosaic on the 1080x1440 canvas, with
-// 20% headroom so the frame can shift to center the epicenter exactly
+// Display scale for the mosaic on the 1080x1440 canvas, with 30% headroom
+// so the frame can shift ±128 tile-px to center the epicenter exactly
 // without ever exposing an edge (even at zoom 1.0).
-export const MOSAIC_D = Math.max(W / (COLS * TILE), H / (ROWS * TILE)) * 1.2;
+export const MOSAIC_D = Math.max(W / (COLS * TILE), H / (ROWS * TILE)) * 1.3;
 
 export function drawFrame(
   ctx: CanvasRenderingContext2D,
