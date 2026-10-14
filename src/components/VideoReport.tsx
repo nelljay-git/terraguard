@@ -39,6 +39,16 @@ export const SEC_DUR = 0.6; // per-section slide duration
 export const TSU_T = 5.0; // tsunami toast slides down (same beat as the epicenter pop)
 export const TSU_HOLD = 7.45; // toast starts sliding away (visible ~3s: 5.0 -> 8.0)
 export const TSU_GONE = 8.0; // toast fully off-screen exactly as info cards land
+export const MAJ_T = MAP_T; // major banner slides down (same beat as pop + toast)
+export const MAJ_HOLD = 7.6;
+export const MAJ_GONE = 8.1; // clears before the info cascade
+export const MAJ_H = 124; // banner height (tsunami toast stacks below it)
+
+// M7.0+ — the video's "major" threshold (matches severityWord).
+export function isMajorQuake(magRaw: string): boolean {
+  const m = parseFloat(magRaw);
+  return !isNaN(m) && m >= 7;
+}
 export const DYFI_T = WAVE_T + WAVE_DUR + 0.1; // DYFI fade-in, right after the wave
 // Mosaic: 5 cols x 7 rows of 256px Esri tiles (same map as the app).
 // ROWS is odd so the grid is symmetric around the epicenter (an even row
@@ -441,6 +451,76 @@ export function drawFrame(
     ctx.textAlign = 'left';
   }
 
+  // MAJOR banner: same slot/timing language as the tsunami toast, violet.
+  // When both fire, the tsunami toast stacks below and rides the major
+  // banner up as it leaves (majLift coupling).
+  const isMaj = isMajorQuake(eq.magnitude);
+  const majOut = Math.min(Math.max((t - MAJ_HOLD) / (MAJ_GONE - MAJ_HOLD), 0), 1);
+  const majLift = isMaj ? MAJ_H * (1 - easeInOut(majOut)) : 0;
+  if (isMaj) {
+    const majColor = '#a78bfa';
+    const mIn = Math.min(Math.max((t - MAJ_T) / 0.55, 0), 1);
+    if (mIn > 0 && majOut < 1) {
+      const yOff = (1 - easeOutBack(mIn)) * -(MAJ_H + 30) - easeInOut(majOut) * 40;
+      const alpha = Math.min(mIn * 1.4, 1) * (1 - majOut);
+      ctx.save();
+      ctx.globalAlpha = Math.max(alpha, 0);
+      ctx.translate(0, yOff);
+      ctx.fillStyle = 'rgba(8,12,24,0.93)';
+      ctx.fillRect(0, 0, W, MAJ_H);
+      const parked = mIn >= 1 && majOut <= 0 ? 1 : 0;
+      const pulse = 0.55 + 0.35 * Math.sin((t - MAJ_T) * 5.2);
+      ctx.fillStyle = majColor;
+      ctx.globalAlpha = Math.max(alpha, 0) * (parked ? pulse : 1);
+      ctx.fillRect(0, MAJ_H - 7, W, 7);
+      ctx.globalAlpha = Math.max(alpha, 0);
+      // Icon: violet disc with a bold "!" (no emoji font needed).
+      const ix = 92, iy = MAJ_H / 2 - 4;
+      ctx.beginPath();
+      ctx.arc(ix, iy, 34, 0, Math.PI * 2);
+      ctx.fillStyle = majColor;
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 46px Oswald, Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('!', ix, iy + 16);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 42px Oswald, Inter, sans-serif';
+      ctx.fillText('MAJOR EARTHQUAKE', 148, 62);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '400 21px Inter, sans-serif';
+      ctx.fillText('Major seismic event — stay alert, follow official guidance', 148, 96);
+      ctx.save();
+      ctx.globalAlpha = Math.max(alpha, 0) * (parked ? pulse : 1);
+      ctx.beginPath();
+      ctx.arc(W - 92, MAJ_H / 2 - 4, 13, 0, Math.PI * 2);
+      ctx.fillStyle = majColor;
+      ctx.fill();
+      ctx.restore();
+      const shineT = (t - (MAJ_T + 0.55)) / 0.9;
+      if (shineT >= 0 && shineT <= 1) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, W, MAJ_H);
+        ctx.clip();
+        const sx = -260 + easeOutCubic(shineT) * (W + 520);
+        ctx.globalAlpha = Math.max(alpha, 0) * 0.12 * (1 - shineT);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx + 130, 0);
+        ctx.lineTo(sx + 40, MAJ_H);
+        ctx.lineTo(sx - 90, MAJ_H);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+      ctx.textAlign = 'left';
+    }
+  }
+
   // Tsunami toast: notification banner that drops from the top at TSU_T
   // (same beat as the epicenter pop, different screen area), holds with a
   // pulsing alert edge + shine sweep, then hands off to a slim persistent
@@ -456,7 +536,7 @@ export function drawFrame(
       const alpha = Math.min(slideIn * 1.4, 1) * (1 - slideOut);
       ctx.save();
       ctx.globalAlpha = Math.max(alpha, 0);
-      ctx.translate(0, yOff);
+      ctx.translate(0, yOff + majLift);
       // Bar.
       ctx.fillStyle = 'rgba(8,12,24,0.93)';
       ctx.fillRect(0, 0, W, BH);
@@ -538,7 +618,7 @@ export function drawFrame(
         const SH = 44;
         ctx.save();
         ctx.globalAlpha = si;
-        ctx.translate(0, -(1 - si) * (SH + 10));
+        ctx.translate(0, -(1 - si) * (SH + 10) + majLift);
         ctx.fillStyle = 'rgba(8,12,24,0.93)';
         ctx.fillRect(0, 0, W, SH);
         const sPulse = 0.55 + 0.35 * Math.sin((t - TSU_T) * 5.2);
@@ -1138,11 +1218,20 @@ export function VideoReportModal({
         const actx = new AC({ sampleRate: 48000 });
         audioCtxRef.current = actx;
         await actx.resume().catch(() => {});
-        const files = ['intro.mp3', 'intro-tts-alert.mp3', 'epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
-        const at = [0.0, 1.0, MAP_T, WAVE_T, INFO_T];
+        const files = ['intro.mp3', 'epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
+        const at = [0.0, MAP_T, WAVE_T, INFO_T];
+        const majorNow = isMajorQuake(earthquake.magnitude);
+        if (majorNow) {
+          // Major quake: alert sting INSTEAD of the regular intro voice.
+          files.splice(1, 0, 'major-notification.mp3');
+          at.splice(1, 0, MAJ_T);
+        } else {
+          files.splice(1, 0, 'intro-tts-alert.mp3');
+          at.splice(1, 0, 1.0);
+        }
         if (hasTsunamiThreat(threatRef.current ?? '')) {
-          files.splice(1, 0, 'tsunami-notif.mp3');
-          at.splice(1, 0, TSU_T);
+          files.splice(2, 0, 'tsunami-notif.mp3');
+          at.splice(2, 0, TSU_T);
         }
         const dest = actx.createMediaStreamDestination();
         const t0 = actx.currentTime + 0.05;
