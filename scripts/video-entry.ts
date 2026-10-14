@@ -62,8 +62,16 @@ async function fetchTtsLine(place: string | undefined, outFile: string): Promise
       console.error(`TTS audio too small (${buf.length}b), using fallback mp3`);
       return false;
     }
-    fs.writeFileSync(outFile, buf);
-    console.log(`TTS audio: ${buf.length} bytes`);
+    // Google TTS reads slowly — speed to 1.25x so the line lands briskly.
+    const rawFile = outFile.replace(/\.mp3$/i, '-raw.mp3');
+    fs.writeFileSync(rawFile, buf);
+    try {
+      await execFileAsync('ffmpeg', ['-y', '-i', rawFile, '-filter:a', 'atempo=1.25', '-c:a', 'libmp3lame', '-b:a', '128k', outFile]);
+      console.log(`TTS audio: ${buf.length} bytes, sped to 1.25x`);
+    } catch (e) {
+      console.error('TTS atempo failed, using raw speed:', e instanceof Error ? e.message : e);
+      fs.copyFileSync(rawFile, outFile);
+    }
     return true;
   } catch (e) {
     console.error('TTS fetch failed, using fallback mp3:', e instanceof Error ? e.message : e);
