@@ -38,7 +38,7 @@ function encodeBase64(str: string): string {
 // bill every link-preview/crawl as a Cloudflare Pages Function invocation and
 // fetch PHIVOLCS on every request. The PHP host does the scraping.
 const PHP_PHIVOLCS_DEFAULT = 'https://trikefare.x10.mx/terraguard/phivolcs.php';
-const PHP_PHIVOLCS_BACKUP = 'http://nell-systems.x10.mx/terraguard/phivolcs.php';
+const PHP_PHIVOLCS_BACKUP = 'https://terraguard-auto.page.gd/terraguard/phivolcs.php';
 
 function phpBases(base: string): string[] {
   const out = [base];
@@ -186,7 +186,7 @@ export async function onRequest(context: { request: Request; env?: Record<string
     // Route PHIVOLCS scraping through the PHP endpoint (the link), not Cloudflare.
     // This keeps the PHIVOLCS fetch off Cloudflare's function-invocation quota.
     // Each path is tried on the primary host (trikefare) then the backup host
-    // (nell-systems) so a 503 on one host doesn't break link previews.
+    // (backup) so a 503 on one host doesn't break link previews.
     const pathsToTry: (string | undefined)[] = [];
     if (targetYear === currentYear && targetMonthName === currentMonth) {
       pathsToTry.push(undefined);

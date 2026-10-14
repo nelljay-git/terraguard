@@ -243,12 +243,12 @@ export async function onRequest(context: { request: Request; env?: Record<string
       }).toString()
     : '';
   // Primary card renderer (trikefare) with automatic fallback to the backup
-  // host (nell-systems) when the primary 503s or is unreachable.
+  // host (backup) when the primary 503s or is unreachable.
   const cardUrls =
     hasCoords && cardParams
       ? [
           `https://trikefare.x10.mx/terraguard/api/quake-card.php?${cardParams}`,
-          `http://nell-systems.x10.mx/terraguard/api/quake-card.php?${cardParams}`,
+          `https://terraguard-auto.page.gd/terraguard/api/quake-card.php?${cardParams}`,
         ]
       : [];
   for (const cardUrl of cardUrls) {

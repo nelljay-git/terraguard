@@ -188,9 +188,8 @@ async function fetchPhivolcsOnce(): Promise<PhivolcsResponse> {
       : import.meta.env?.DEV
         ? '/api/phivolcs'
         : phivolcsListUrl();
-    // Primary PHP host (trikefare) -> http-only backup (nell-systems) on 503/5xx.
-    // The backup is http-only, so https:// pages block it (mixed content) and
-    // fall through to the /api/* serverless fallback below.
+    // Primary PHP host (trikefare) -> backup (InfinityFree) on 503/5xx, then
+    // the /api/* serverless fallback if both PHP hosts are down.
     try {
       const res = await nativeHttpGetWithPhpFailover(url);
       return await parsePhivolcsListResponse(res);
@@ -404,8 +403,7 @@ export async function fetchBulletins(link: string): Promise<BulletinRef[]> {
     } catch (e) {
       console.warn('Failed to fetch bulletins from API', e);
     }
-    // PHP hosts unreachable (http-only backup is mixed-content-blocked on
-    // https://) — fall back to the serverless prober before giving up.
+    // PHP hosts unreachable — fall back to the serverless prober before giving up.
     if (usePhpApi) {
       try {
         const res = await fetch(apiUrl(`/api/bulletins?url=${encodeURIComponent(link)}`));
@@ -757,7 +755,7 @@ export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDet
     }
 
     // Try PHP endpoint in production web when enabled (default true).
-    // fetchPhpWithFailover tries trikefare first, then nell-systems on 503/5xx.
+    // fetchPhpWithFailover tries trikefare first, then the backup on 503/5xx.
     if (!import.meta.env?.DEV && usePhpApi) {
       try {
         const phpRes = await fetchPhpWithFailover(phivolcsDetailUrl(url));

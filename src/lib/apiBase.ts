@@ -42,10 +42,8 @@ export function apiUrl(path: string): string {
 // Backup base:  VITE_PHP_API_BASE_BACKUP=<origin>/terraguard — tried automatically
 // when the primary answers with a 5xx (e.g. hosting 503) or is unreachable.
 //
-// NOTE: the backup host is http-only (no valid cert), so browsers on an
-// https:// page will block it as mixed content — the request throws and the
-// code moves on to the next fallback (/api/* serverless). Native shells,
-// workers, and http:// pages reach it fine.
+// NOTE: the backup host is a separate provider (InfinityFree), so an
+// account-level outage on the primary doesn't take both down.
 export const usePhpApi = !/^(false|0)$/i.test(
   (import.meta.env?.VITE_USE_PHP_PHIVOLCS_API as string | undefined) ?? 'true',
 );
@@ -57,7 +55,7 @@ export const PHP_API_PRIMARY: string = (
 
 export const PHP_API_BACKUP: string = (
   (import.meta.env?.VITE_PHP_API_BASE_BACKUP as string | undefined)?.trim() ||
-  'http://nell-systems.x10.mx/terraguard'
+  'https://terraguard-auto.page.gd/terraguard'
 ).replace(/\/+$/, '');
 
 function phpApi(pathWithName: string): string {
@@ -65,9 +63,7 @@ function phpApi(pathWithName: string): string {
 }
 
 /**
- * All candidate URLs for a PHP path: primary first, then the http-only backup.
- * The backup fetch throws on https:// pages (mixed content) — callers catch
- * it and move on to the /api/* serverless fallback.
+ * All candidate URLs for a PHP path: primary first, then the backup host.
  */
 export function phpApiCandidates(pathWithName: string): string[] {
   const primary = `${PHP_API_PRIMARY}/${pathWithName}`;
