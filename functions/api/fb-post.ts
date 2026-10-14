@@ -242,9 +242,16 @@ export async function onRequest(context: { request: Request; env?: Record<string
         ...(hasTsunamiThreat ? { tsunami: tsunamiLabel } : {}),
       }).toString()
     : '';
-  const cardUrl =
-    hasCoords && cardParams ? `https://trikefare.x10.mx/terraguard/api/quake-card.php?${cardParams}` : null;
-  if (cardUrl) {
+  // Primary card renderer (trikefare) with automatic fallback to the backup
+  // host (nell-systems) when the primary 503s or is unreachable.
+  const cardUrls =
+    hasCoords && cardParams
+      ? [
+          `https://trikefare.x10.mx/terraguard/api/quake-card.php?${cardParams}`,
+          `https://nell-systems.x10.mx/terraguard/api/quake-card.php?${cardParams}`,
+        ]
+      : [];
+  for (const cardUrl of cardUrls) {
     try {
       const warm = await fetch(cardUrl, { headers: { 'User-Agent': 'TerraGuard-FB-Warmup/1.0' } });
       if (warm.ok) {
@@ -259,7 +266,7 @@ export async function onRequest(context: { request: Request; env?: Record<string
         }
       }
     } catch {
-      /* fall through to /feed */
+      /* try next host, then fall through to /feed */
     }
   }
   try {

@@ -75,8 +75,8 @@ export interface BulletinRef {
   url: string;
 }
 
-import { apiUrl, phivolcsListUrl, phivolcsArchiveUrl, phivolcsDetailUrl, phivolcsBulletinsUrl, usePhpApi } from '../lib/apiBase';
-import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
+import { apiUrl, phivolcsListUrl, phivolcsArchiveUrl, phivolcsDetailUrl, phivolcsBulletinsUrl, fetchPhpWithFailover, usePhpApi } from '../lib/apiBase';
+import { nativeHttpGet, nativeHttpGetWithPhpFailover, IS_NATIVE } from '../lib/nativeHttp';
 import { type UsgsEarthquake, fetchUsgsData, getCachedUsgsData, fetchUsgsArchiveData } from './usgs';
 import { fetchEmscData, getCachedEmscData, fetchEmscArchiveData } from './emsc';
 import { getPreferredApi } from '../lib/apiPreference';
@@ -140,7 +140,8 @@ async function fetchPhivolcsOnce(): Promise<PhivolcsResponse> {
       : import.meta.env?.DEV
         ? '/api/phivolcs'
         : phivolcsListUrl();
-    const res = await nativeHttpGet(url);
+    // Primary PHP host (trikefare) -> backup (nell-systems) on 503/5xx.
+    const res = await nativeHttpGetWithPhpFailover(url);
     clearTimeout(timeout);
     if (!res.ok) throw new Error(`Failed to fetch from proxy (${res.status})`);
     const contentType = res.headers.get('content-type') || '';
@@ -269,7 +270,7 @@ export async function fetchPhivolcsArchiveData(year: number, monthName: string):
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const res = await nativeHttpGet(url);
+    const res = await nativeHttpGetWithPhpFailover(url);
     clearTimeout(timeout);
     if (!res.ok) throw new Error(`Failed to fetch archive from proxy (${res.status})`);
     
@@ -382,7 +383,7 @@ export async function fetchBulletins(link: string): Promise<BulletinRef[]> {
   // Falls back to the in-repo /api/bulletins serverless function otherwise.
   if (!import.meta.env?.DEV) {
     try {
-      const res = await fetch(phivolcsBulletinsUrl(link));
+      const res = await fetchPhpWithFailover(phivolcsBulletinsUrl(link));
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) return json.data as BulletinRef[];
@@ -729,10 +730,11 @@ export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDet
       return parseDetailsHtml(html, url);
     }
 
-    // Try PHP endpoint in production web when enabled (default true)
+    // Try PHP endpoint in production web when enabled (default true).
+    // fetchPhpWithFailover tries trikefare first, then nell-systems on 503/5xx.
     if (!import.meta.env?.DEV && usePhpApi) {
       try {
-        const phpRes = await fetch(phivolcsDetailUrl(url));
+        const phpRes = await fetchPhpWithFailover(phivolcsDetailUrl(url));
         if (phpRes.ok) {
           const contentType = phpRes.headers.get('content-type') || '';
           if (contentType.includes('application/json')) {

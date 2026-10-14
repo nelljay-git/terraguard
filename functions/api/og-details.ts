@@ -38,6 +38,15 @@ function encodeBase64(str: string): string {
 // bill every link-preview/crawl as a Cloudflare Pages Function invocation and
 // fetch PHIVOLCS on every request. The PHP host does the scraping.
 const PHP_PHIVOLCS_DEFAULT = 'https://trikefare.x10.mx/terraguard/phivolcs.php';
+const PHP_PHIVOLCS_BACKUP = 'https://nell-systems.x10.mx/terraguard/phivolcs.php';
+
+function phpBases(base: string): string[] {
+  const out = [base];
+  for (const b of [PHP_PHIVOLCS_BACKUP]) {
+    if (b && !out.includes(b)) out.push(b);
+  }
+  return out;
+}
 
 function phpPhivolcsUrl(base: string, path?: string): string {
   if (!path) return base;
@@ -176,16 +185,23 @@ export async function onRequest(context: { request: Request; env?: Record<string
 
     // Route PHIVOLCS scraping through the PHP endpoint (the link), not Cloudflare.
     // This keeps the PHIVOLCS fetch off Cloudflare's function-invocation quota.
-    const urlsToTry: string[] = [];
+    // Each path is tried on the primary host (trikefare) then the backup host
+    // (nell-systems) so a 503 on one host doesn't break link previews.
+    const pathsToTry: (string | undefined)[] = [];
     if (targetYear === currentYear && targetMonthName === currentMonth) {
-      urlsToTry.push(phpPhivolcsUrl(phpBase));
+      pathsToTry.push(undefined);
     }
-    urlsToTry.push(phpPhivolcsUrl(phpBase, `EQLatest-Monthly/${targetYear}/${targetYear}_${targetMonthName}.html`));
+    pathsToTry.push(`EQLatest-Monthly/${targetYear}/${targetYear}_${targetMonthName}.html`);
 
     const mIdx = MONTHS.indexOf(targetMonthName);
     const prevMonthIdx = mIdx === 0 ? 11 : mIdx - 1;
     const prevYear = mIdx === 0 ? targetYear - 1 : targetYear;
-    urlsToTry.push(phpPhivolcsUrl(phpBase, `EQLatest-Monthly/${prevYear}/${prevYear}_${MONTHS[prevMonthIdx]}.html`));
+    pathsToTry.push(`EQLatest-Monthly/${prevYear}/${prevYear}_${MONTHS[prevMonthIdx]}.html`);
+
+    const urlsToTry: string[] = [];
+    for (const base of phpBases(phpBase)) {
+      for (const p of pathsToTry) urlsToTry.push(phpPhivolcsUrl(base, p));
+    }
 
     let earthquake: { datetime: string; latitude: string; longitude: string; depth: string; magnitude: string; location: string } | null = null;
 

@@ -1,5 +1,5 @@
-import { volcanoListUrl, volcanoDetailUrl, apiUrl } from '../lib/apiBase';
-import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
+import { volcanoListUrl, volcanoDetailUrl, apiUrl, expandPhpFailoverUrls } from '../lib/apiBase';
+import { nativeHttpGet, nativeHttpGetWithPhpFailover, IS_NATIVE } from '../lib/nativeHttp';
 
 export interface VolcanoStatus {
   volcano: string;
@@ -41,7 +41,7 @@ export async function fetchVolcanoHub(): Promise<VolcanoHubResponse> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      const res = isDirectHtml ? await fetch(url, { signal: controller.signal }) : await nativeHttpGet(url);
+      const res = isDirectHtml ? await fetch(url, { signal: controller.signal }) : await nativeHttpGetWithPhpFailover(url);
       clearTimeout(timeout);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const ct = res.headers.get('content-type') || '';
@@ -89,11 +89,13 @@ export async function fetchVolcanoHub(): Promise<VolcanoHubResponse> {
     } catch {}
   }
 
-  // Web: try PHP endpoint first, then Vercel serverless fallback
+  // Web: try PHP endpoint first (primary -> backup via failover), then Vercel serverless fallback
   const candidates: string[] = [];
   if (!IS_NATIVE) {
     const phpUrl = volcanoListUrl();
-    candidates.push(phpUrl);
+    for (const u of expandPhpFailoverUrls(phpUrl)) {
+      if (!candidates.includes(u)) candidates.push(u);
+    }
     // Avoid duplicate if PHP already points at /api/volcano
     const vercelUrl = apiUrl('/api/volcano?page=hub');
     if (!candidates.includes(vercelUrl)) candidates.push(vercelUrl);
@@ -308,14 +310,16 @@ export async function fetchVolcanoDetail(bulletinUrl: string): Promise<VolcanoDe
     const vercelUrl = apiUrl(`/api/volcano?detail=1&url=${encodeURIComponent(bulletinUrl)}`);
     candidates.push(vercelUrl);
     const phpUrl = volcanoDetailUrl(bulletinUrl);
-    candidates.push(phpUrl);
+    for (const u of expandPhpFailoverUrls(phpUrl)) {
+      if (!candidates.includes(u)) candidates.push(u);
+    }
   }
 
   let lastError: unknown = null;
   for (const url of candidates) {
     try {
       const isDirectHtml = url.startsWith('/bulletin/');
-      const res = isDirectHtml ? await fetch(url) : await nativeHttpGet(url);
+      const res = isDirectHtml ? await fetch(url) : await nativeHttpGetWithPhpFailover(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const ct = res.headers.get('content-type') || '';
       if (ct.includes('application/json')) {

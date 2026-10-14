@@ -56,3 +56,36 @@ export async function nativeHttpGet(url: string): Promise<SimpleResponse> {
     headers: { get: (name: string) => res.headers.get(name) },
   };
 }
+
+/**
+ * Same as nativeHttpGet but fails over from the primary PHP host
+ * (https://trikefare.x10.mx/terraguard) to the backup host
+ * (https://nell-systems.x10.mx/terraguard) on network errors or 5xx/404.
+ * Non-PHP URLs behave exactly like nativeHttpGet.
+ */
+export async function nativeHttpGetWithPhpFailover(url: string): Promise<SimpleResponse> {
+  const { expandPhpFailoverUrls } = await import('./apiBase');
+  const candidates = expandPhpFailoverUrls(url);
+  if (candidates.length <= 1) return nativeHttpGet(url);
+  let lastError: unknown = null;
+  let lastResponse: SimpleResponse | null = null;
+  for (const candidate of candidates) {
+    try {
+      const res = await nativeHttpGet(candidate);
+      if (res.ok) return res;
+      const retryable = res.status === 404 || res.status === 408 || res.status === 429 || (res.status >= 500 && res.status <= 599);
+      if (retryable && candidate !== candidates[candidates.length - 1]) {
+        console.warn(`PHP ${res.status} from ${candidate}, trying backup…`);
+        lastResponse = res;
+        continue;
+      }
+      return res;
+    } catch (e) {
+      console.warn(`PHP request failed for ${candidate}, trying backup…`, e);
+      lastError = e;
+      continue;
+    }
+  }
+  if (lastResponse) return lastResponse;
+  throw lastError ?? new Error('All PHP hosts unreachable');
+}

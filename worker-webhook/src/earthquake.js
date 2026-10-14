@@ -237,6 +237,25 @@ function fbPassesFilters(eq, env) {
     return null;
 }
 
+// PHP hosts: primary (trikefare) with automatic fallback to the backup host
+// (nell-systems) when the primary 503s or is unreachable.
+const PHP_PRIMARY_ORIGIN = "https://trikefare.x10.mx/terraguard";
+const PHP_BACKUP_ORIGIN = "https://nell-systems.x10.mx/terraguard";
+
+function quakeCardCandidates(cardParams) {
+    if (!cardParams) return [];
+    return [
+        `${PHP_PRIMARY_ORIGIN}/api/quake-card.php?${cardParams}`,
+        `${PHP_BACKUP_ORIGIN}/api/quake-card.php?${cardParams}`,
+    ];
+}
+
+function phivolcsApiCandidates(env) {
+    const primary = ((env.PHIVOLCS_API_URL ?? `${PHP_PRIMARY_ORIGIN}/phivolcs.php`) + "").trim();
+    const backup = ((env.PHIVOLCS_API_URL_BACKUP ?? `${PHP_BACKUP_ORIGIN}/phivolcs.php`) + "").trim();
+    return primary === backup ? [primary] : [primary, backup];
+}
+
 // Warm a designed card URL before handing it to Facebook (cold PHP-GD +
 // Yandex tiles make FB's scraper time out on first hit). Returns true when renderable.
 async function warmCardUrl(url, tag, timeoutMs = 18000) {
@@ -762,15 +781,13 @@ async function postUsgsToFacebook(eq, env) {
             depth: eq.depth, source: "USGS",
         }).toString()
         : "";
-    const cardUrl = hasCoords && cardParams
-        ? `https://trikefare.x10.mx/terraguard/api/quake-card.php?${cardParams}`
-        : null;
+    const cardUrls = quakeCardCandidates(hasCoords ? cardParams : "");
     const magNum = parseFloat(eq.magnitude);
     const satZoom = isNaN(magNum) ? 7 : magNum >= 7 ? 6 : magNum >= 6 ? 7 : 8;
     const yandexUrl = hasCoords
         ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=${satZoom}&size=600,400&l=sat,skl&pt=${lng},${lat},pm2rdm`
         : null;
-    const photoUrls = [cardUrl, yandexUrl].filter(Boolean);
+    const photoUrls = [...cardUrls, yandexUrl].filter(Boolean);
     const withProof = (params) => {
         if (proof)
             params.appsecret_proof = proof;
@@ -1184,14 +1201,12 @@ async function postEmscToFacebook(eq, env) {
             depth: eq.depth, source: "EMSC",
         }).toString()
         : "";
-    const cardUrl = hasCoords && cardParams
-        ? `https://trikefare.x10.mx/terraguard/api/quake-card.php?${cardParams}`
-        : null;
+    const cardUrls = quakeCardCandidates(hasCoords ? cardParams : "");
     const satZoom = isNaN(magNum) ? 7 : magNum >= 7 ? 6 : magNum >= 6 ? 7 : 8;
     const yandexUrl = hasCoords
         ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=${satZoom}&size=600,400&l=sat,skl&pt=${lng},${lat},pm2rdm`
         : null;
-    const photoUrls = [cardUrl, yandexUrl].filter(Boolean);
+    const photoUrls = [...cardUrls, yandexUrl].filter(Boolean);
     const withProof = (params) => {
         if (proof)
             params.appsecret_proof = proof;
@@ -1286,43 +1301,56 @@ function phivolcsInfoNo(link) {
 }
 
 async function fetchLatestPhivolcs(env) {
-    const apiUrl = (env.PHIVOLCS_API_URL ?? "https://trikefare.x10.mx/terraguard/phivolcs.php").trim();
+    const urls = phivolcsApiCandidates(env);
     const minMag = parseFloat(env.PHIVOLCS_MIN_MAG ?? "3.0");
-    const res = await fetch(apiUrl, { headers: { "User-Agent": "TerraGuard-Cron-PHIVOLCS/1.0" } });
-    if (!res.ok)
-        throw new Error(`PHIVOLCS ${res.status}`);
-    const j = await res.json();
-    const rows = j.data ?? [];
-    if (!Array.isArray(rows) || rows.length === 0)
-        return null;
-    let best = null;
-    for (const r of rows) {
-        const mag = parseFloat(r.magnitude);
-        if (!isNaN(minMag) && (isNaN(mag) || mag < minMag))
+    let lastError = null;
+    for (const apiUrl of urls) {
+        try {
+            const res = await fetch(apiUrl, { headers: { "User-Agent": "TerraGuard-Cron-PHIVOLCS/1.0" } });
+            if (!res.ok) {
+                lastError = new Error(`PHIVOLCS ${res.status} from ${apiUrl}`);
+                console.error(`[phivolcs] ${res.status} from ${apiUrl}, trying backup…`);
+                continue;
+            }
+            const j = await res.json();
+            const rows = j.data ?? [];
+            if (!Array.isArray(rows) || rows.length === 0)
+                return null;
+            let best = null;
+            for (const r of rows) {
+                const mag = parseFloat(r.magnitude);
+                if (!isNaN(minMag) && (isNaN(mag) || mag < minMag))
+                    continue;
+                const timeMs = parsePhivolcsTimeMs(r.datetime);
+                if (isNaN(timeMs))
+                    continue;
+                if (!best || timeMs > best.timeMs)
+                    best = { row: r, mag, timeMs };
+            }
+            if (!best)
+                return null;
+            const { row: r, timeMs } = best;
+            const lat = parseFloat(r.latitude), lng = parseFloat(r.longitude);
+            const latStr = isNaN(lat) ? String(r.latitude ?? "") : (Math.round(lat * 100) / 100).toFixed(2);
+            const lngStr = isNaN(lng) ? String(r.longitude ?? "") : (Math.round(lng * 100) / 100).toFixed(2);
+            return {
+                datetime: String(r.datetime).trim(),
+                latitude: latStr,
+                longitude: lngStr,
+                depth: String(Math.round(parseFloat(r.depth) || 0)),
+                magnitude: (Math.round(best.mag * 10) / 10).toFixed(1),
+                location: String(r.location ?? `${latStr}, ${lngStr}`),
+                link: r.link,
+                infoNo: phivolcsInfoNo(r.link),
+                timeMs,
+            };
+        } catch (e) {
+            lastError = e;
+            console.error(`[phivolcs] fetch failed for ${apiUrl}, trying backup…`, e instanceof Error ? e.message : String(e));
             continue;
-        const timeMs = parsePhivolcsTimeMs(r.datetime);
-        if (isNaN(timeMs))
-            continue;
-        if (!best || timeMs > best.timeMs)
-            best = { row: r, mag, timeMs };
+        }
     }
-    if (!best)
-        return null;
-    const { row: r, timeMs } = best;
-    const lat = parseFloat(r.latitude), lng = parseFloat(r.longitude);
-    const latStr = isNaN(lat) ? String(r.latitude ?? "") : (Math.round(lat * 100) / 100).toFixed(2);
-    const lngStr = isNaN(lng) ? String(r.longitude ?? "") : (Math.round(lng * 100) / 100).toFixed(2);
-    return {
-        datetime: String(r.datetime).trim(),
-        latitude: latStr,
-        longitude: lngStr,
-        depth: String(Math.round(parseFloat(r.depth) || 0)),
-        magnitude: (Math.round(best.mag * 10) / 10).toFixed(1),
-        location: String(r.location ?? `${latStr}, ${lngStr}`),
-        link: r.link,
-        infoNo: phivolcsInfoNo(r.link),
-        timeMs,
-    };
+    throw lastError ?? new Error("PHIVOLCS all hosts unreachable");
 }
 
 function buildPhivolcsFbMessage(eq) {
@@ -1387,15 +1415,13 @@ async function postPhivolcsToFacebook(eq, env) {
             ...(eq.infoNo ? { info: eq.infoNo } : {}),
         }).toString()
         : "";
-    const cardUrl = hasCoords && cardParams
-        ? `https://trikefare.x10.mx/terraguard/api/quake-card.php?${cardParams}`
-        : null;
+    const cardUrls = quakeCardCandidates(hasCoords ? cardParams : "");
     const magNum = parseFloat(eq.magnitude);
     const satZoom = isNaN(magNum) ? 7 : magNum >= 7 ? 6 : magNum >= 6 ? 7 : 8;
     const yandexUrl = hasCoords
         ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=${satZoom}&size=600,400&l=sat,skl&pt=${lng},${lat},pm2rdm`
         : null;
-    const photoUrls = [cardUrl, yandexUrl].filter(Boolean);
+    const photoUrls = [...cardUrls, yandexUrl].filter(Boolean);
     const withProof = (params) => {
         if (proof)
             params.appsecret_proof = proof;

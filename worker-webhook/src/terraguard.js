@@ -2715,7 +2715,8 @@ async function postVolcanoToFacebook(event, imageUrl, env) {
         pdz: parsed.pdzKm ? String(parsed.pdzKm) : "",
     }).toString();
     const cardUrl = `https://trikefare.x10.mx/terraguard/api/volcano-card.php?${cardParams}`;
-    const photoUrls = [cardUrl];
+    const cardBackup = `https://nell-systems.x10.mx/terraguard/api/volcano-card.php?${cardParams}`;
+    const photoUrls = [cardUrl, cardBackup];
     if (imageUrl)
         photoUrls.push(imageUrl); // bulletin map / Himawari as backup
     // Warm the PHP card first (ensure GD tiles are ready for FB's scraper).
@@ -3775,20 +3776,33 @@ const PHIVOLCS_TSUNAMI_BASE =
   "https://trikefare.x10.mx/terraguard/api/tsunami.php";
 const PHIVOLCS_TSUNAMI_API =
   "https://trikefare.x10.mx/terraguard/api/tsunami.php?page=events";
+// Backup host (nell-systems) — tried when the primary 503s / is unreachable.
+const PHIVOLCS_TSUNAMI_API_BACKUP =
+  "https://nell-systems.x10.mx/terraguard/api/tsunami.php?page=events";
 
 // One alert per advisory bulletin. PHIVOLCS re-issues numbered advisories for the
 // same earthquake (sometimes a .html and a .pdf), and each new one is genuinely
 // new information, so the advisory URL is the unit of novelty — and the dedup id.
 async function fetchPhivolcsTsunamiAlerts() {
   try {
-    const r = await fetch(PHIVOLCS_TSUNAMI_API, {
-      headers: {
-        "User-Agent": "TerraGuard-Tsunami/1.0",
-        Accept: "application/json",
-      },
-    });
-    if (!r.ok) {
-      console.warn(`[tsunami] PHIVOLCS HTTP ${r.status}`);
+    let r = null;
+    for (const apiUrl of [PHIVOLCS_TSUNAMI_API, PHIVOLCS_TSUNAMI_API_BACKUP]) {
+      try {
+        r = await fetch(apiUrl, {
+          headers: {
+            "User-Agent": "TerraGuard-Tsunami/1.0",
+            Accept: "application/json",
+          },
+        });
+        if (r.ok) break;
+        console.warn(`[tsunami] PHIVOLCS HTTP ${r.status} from ${apiUrl}, trying backup…`);
+      } catch (e) {
+        console.warn(`[tsunami] PHIVOLCS fetch failed for ${apiUrl}, trying backup…`);
+        r = null;
+      }
+    }
+    if (!r || !r.ok) {
+      console.warn(`[tsunami] PHIVOLCS all hosts unreachable`);
       return [];
     }
     const j = await r.json();
@@ -4260,29 +4274,35 @@ async function ensureTsunamiCard(alert) {
   const coords = quakeCoords(alert);
   if (!coords) return { url: "", ok: false, reason: "no epicenter" };
   const url = tsunamiCardUrl(alert, coords);
+  const backupUrl = url.replace("https://trikefare.x10.mx/terraguard", "https://nell-systems.x10.mx/terraguard");
+  const candidates = backupUrl !== url ? [url, backupUrl] : [url];
   if (tsunamiCardMemo.has(url)) return tsunamiCardMemo.get(url);
   let ok = false, reason = "unknown";
-  for (let attempt = 1; attempt <= 2 && !ok; attempt++) {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 12000);
-      const r = await fetch(url, {
-        method: "GET",
-        signal: ctrl.signal,
-        headers: { "User-Agent": "TerraGuard-CardCheck/1.0" },
-      });
-      clearTimeout(timer);
-      // Require an actual image. A 200 that is text/html means we hit the SPA
-      // catch-all (wrong host path) rather than a card.
-      const ctype = String(r.headers?.get?.("content-type") ?? "").toLowerCase();
-      if (r.ok && ctype.startsWith("image/")) ok = true;
-      else reason = `HTTP ${r.status} ${ctype || "(no content-type)"}`;
-    } catch (e) {
-      reason = e instanceof Error ? e.message : String(e);
+  let workingUrl = url;
+  for (const candidate of candidates) {
+    for (let attempt = 1; attempt <= 2 && !ok; attempt++) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 12000);
+        const r = await fetch(candidate, {
+          method: "GET",
+          signal: ctrl.signal,
+          headers: { "User-Agent": "TerraGuard-CardCheck/1.0" },
+        });
+        clearTimeout(timer);
+        // Require an actual image. A 200 that is text/html means we hit the SPA
+        // catch-all (wrong host path) rather than a card.
+        const ctype = String(r.headers?.get?.("content-type") ?? "").toLowerCase();
+        if (r.ok && ctype.startsWith("image/")) { ok = true; workingUrl = candidate; }
+        else reason = `HTTP ${r.status} ${ctype || "(no content-type)"}`;
+      } catch (e) {
+        reason = e instanceof Error ? e.message : String(e);
+      }
+      if (!ok) await new Promise((r) => setTimeout(r, 800));
     }
-    if (!ok) await new Promise((r) => setTimeout(r, 800));
+    if (ok) break;
   }
-  const out = { url, ok, reason: ok ? "" : reason };
+  const out = { url: workingUrl, ok, reason: ok ? "" : reason };
   if (ok) {
     // Only successes are memoised. Caching a failure would suppress the card
     // image for the remaining life of this isolate after a single transient
