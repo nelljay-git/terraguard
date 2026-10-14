@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Download, Clapperboard } from 'lucide-react';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
-import { estimateAffectedRadiusKm, estimateDamage, type ShakeRow } from '../lib/videoMeta';
+import { estimateAffectedRadiusKm, estimateDamage, isKnownIntensity, type ShakeRow } from '../lib/videoMeta';
 import type { DyfiPoint } from '../lib/dyfi';
 import { fetchDyfiPoints } from '../lib/dyfi';
 import { mmiColor } from '../lib/usgsOverlays';
@@ -865,15 +865,20 @@ export function drawFrame(
     }
 
     // DAMAGE ASSESSMENT (bottom-right) slides in from the right: rough
-    // heuristic estimates from magnitude — wide "~" ranges, never precise
-    // figures. Bottom-anchored.
-    const dmg = estimateDamage(eq.magnitude, intensity);
-    if (dmg) {
+    // heuristic estimates from magnitude + intensity — wide "~" ranges,
+    // never precise figures. With no felt intensity to base on, every
+    // value (including badges) reads Unknown instead of implying
+    // knowledge. Bottom-anchored.
+    const dmg = isKnownIntensity(intensity) ? estimateDamage(eq.magnitude, intensity) : null;
+    const showUnknown = !dmg && !isNaN(parseFloat(eq.magnitude));
+    if (dmg || showUnknown) {
       const pDamage = secP(t, DAMAGE_T);
       if (pDamage > 0) {
       ctx.save();
       ctx.globalAlpha = pDamage;
       ctx.translate((1 - pDamage) * 200, 0);
+      const bWord = dmg ? sevWord : 'Unknown';
+      const bColor = dmg ? sevColor : '#6b7280';
       const dx0 = 648;
       const dmgValY = 1360;
       const dmgLblY = dmgValY - 34;
@@ -893,26 +898,26 @@ export function drawFrame(
         ctx.fillText(value, dx0, baseY);
         const vw = ctx.measureText(value).width;
         ctx.font = '700 16px Oswald, Inter, sans-serif';
-        const bw = Math.max(70, ctx.measureText(sevWord).width + 22);
+        const bw = Math.max(70, ctx.measureText(bWord).width + 22);
         const bx = dx0 + vw + 18;
         ctx.fillStyle = 'rgba(0,0,0,0.55)';
         ctx.fillRect(bx, baseY - 26, bw, 32);
-        ctx.strokeStyle = sevColor;
+        ctx.strokeStyle = bColor;
         ctx.lineWidth = 2;
         ctx.strokeRect(bx, baseY - 26, bw, 32);
-        ctx.fillStyle = sevColor;
+        ctx.fillStyle = bColor;
         ctx.textAlign = 'center';
-        ctx.fillText(sevWord, bx + bw / 2, baseY - 4);
+        ctx.fillText(bWord, bx + bw / 2, baseY - 4);
         ctx.textAlign = 'left';
       };
       ctx.fillStyle = '#9ca3af';
       ctx.font = '400 13px Inter, sans-serif';
       ctx.fillText('ECONOMIC LOSSES', dx0, ecoLblY);
-      sevBadge(ecoValY, dmg.losses);
+      sevBadge(ecoValY, dmg ? dmg.losses : 'Unknown');
       ctx.fillStyle = '#9ca3af';
       ctx.font = '400 13px Inter, sans-serif';
       ctx.fillText('DAMAGE & FATALITIES', dx0, dmgLblY);
-      sevBadge(dmgValY, dmg.fatalities);
+      sevBadge(dmgValY, dmg ? dmg.fatalities : 'Unknown');
       ctx.restore();
       }
     }

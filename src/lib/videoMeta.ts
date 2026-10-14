@@ -73,6 +73,14 @@ function intensityDamageTier(intensity: string): number {
   return 4;
 }
 
+// True only for a real parsed intensity — placeholders mean there is no
+// felt data to base damage figures on (callers must show Unknown then,
+// never magnitude-only numbers next to a severity badge).
+export function isKnownIntensity(v: string | undefined | null): boolean {
+  const s = (v ?? '').trim().toUpperCase();
+  return s !== '' && s !== '—' && s !== '-' && s !== 'N/A' && s !== 'NONE';
+}
+
 export function estimateDamage(magRaw: string, intensity?: string): { losses: string; fatalities: string } | null {
   const fromMag = magDamageTier(magRaw);
   if (fromMag < 0) return null;

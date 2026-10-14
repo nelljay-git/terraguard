@@ -37,7 +37,7 @@ import {
   TILE,
   MOSAIC_D,
 } from '../src/components/VideoReport.js';
-import { estimateAffectedRadiusKm, estimateDamage } from '../src/lib/videoMeta.js';
+import { estimateAffectedRadiusKm, estimateDamage, isKnownIntensity } from '../src/lib/videoMeta.js';
 import { fetchDyfiPoints } from '../src/lib/dyfi.js';
 
 // Re-exported so tests/tools can import the shared render pieces from the
@@ -47,6 +47,7 @@ export {
   esriTileUrls,
   epicenterMosaicPx,
   hasTsunamiThreat,
+  isKnownIntensity,
   W,
   H,
   FPS,
@@ -130,7 +131,7 @@ export function buildVideoCaption(quake: QuakeInput): string {
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
       .join(' ');
   })();
-  const dmg = estimateDamage(quake.magnitude, quake.intensity);
+  const dmg = isKnownIntensity(quake.intensity) ? estimateDamage(quake.magnitude, quake.intensity) : null;
   const detailsUrl = `https://terraguard-ph.pages.dev/details/${detailsSlug(quake.datetime ?? '', lat, lng)}`;
   return [
     `${date}${time ? ` - ${time}` : ''} | Mag ${mag} - ${place} | FLASH REPORT`,
