@@ -345,9 +345,9 @@ export function drawFrame(
     const pd = MAP_T / INTRO_N;
     const k = Math.min(Math.floor(t / pd), INTRO_N - 1);
     const phase = (t - k * pd) / pd; // 0 -> 1 for the active ring
-    // Brisk pop (first half of the slot), slow fade across the rest —
+    // Slow bloom (first three-quarters of the slot), gentle fade after —
     // total intro still spans the full 5s.
-    const ex = easeOutCubic(Math.min(phase / 0.5, 1));
+    const ex = easeOutCubic(Math.min(phase / 0.75, 1));
     const rr = 30 + ex * 225; // +50% spread
     const ra = 1.0 * (1 - phase);
     ctx.save();
