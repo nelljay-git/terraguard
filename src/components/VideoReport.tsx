@@ -14,11 +14,11 @@ import './VideoReport.css';
 // Staged video export of the earthquake report, rendered + captured
 // fully in-browser (canvas.captureStream + MediaRecorder — no server).
 //
-// Timeline (~20s): tight on the epicenter (0-8s, slow push-in) with three
+// Timeline (~20s): tight on the epicenter (slow push-in) with three
 // anticipation rings across the 5s intro -> epicenter pop (5s) + tsunami
-// toast when a real threat exists (5s slide-down, visible ~3s, hands off
-// to the info cards at 8s) -> pull out to full context (8-10.5s) as
-// sections cascade in -> shockwave spreading across the map (6s) -> DYFI felt
+// toast when a real threat exists (5s slide-down, visible ~3s, slim strip
+// after) -> shockwave spreading across the map (6-8.8s) -> 3s beat ->
+// pull out to full context as sections cascade in (11.8-13s) -> DYFI felt
 // responses fade in (2.5s) -> styled info cards fade/slide in (4s) -> idle
 // drift until end.
 
@@ -29,7 +29,7 @@ export const DUR = 20;
 export const MAP_T = 5; // epicenter appears (after the 5s intro)
 export const WAVE_T = 6.0; // shockwave starts (1s after the epicenter)
 export const WAVE_DUR = 2.8; // slow single wave
-export const INFO_T = 8; // info cards appear
+export const INFO_T = WAVE_T + WAVE_DUR + 3; // info cascade 3s after the shockwave finishes
 // Staggered section intros (0.2s cascade, slide + fade over 0.6s each).
 export const EVENT_T = INFO_T; // EVENT DATA from the left
 export const IMPACT_T = INFO_T + 0.2; // IMPACT DATA from the right
@@ -374,7 +374,7 @@ export function drawFrame(
     ctx.arc(dex, dey, badgeR, 0, Math.PI * 2);
     ctx.fillStyle = sevColor;
     ctx.fill();
-    if (sc > 0.6 && t >= INFO_T) {
+    if (sc > 0.6 && t >= MAP_T + 1) {
       ctx.save();
       ctx.globalAlpha = Math.min((t - INFO_T) / 0.3, 1);
       ctx.fillStyle = '#ffffff';
