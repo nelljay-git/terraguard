@@ -39,7 +39,7 @@ export const SEC_DUR = 0.6; // per-section slide duration
 export const TSU_T = 5.0; // tsunami toast slides down (same beat as the epicenter pop)
 export const TSU_HOLD = 7.45; // toast starts sliding away (visible ~3s: 5.0 -> 8.0)
 export const TSU_GONE = 8.0; // toast fully off-screen exactly as info cards land
-export const MAJ_T = 1.0; // major banner drops after a 1s intro, ahead of everything
+export const MAJ_T = 1.0; // major/strong banner drops after a 1s intro, ahead of everything
 export const MAJ_HOLD = 7.6;
 export const MAJ_GONE = 8.1; // clears before the info cascade
 export const MAJ_H = 124; // banner height (tsunami toast stacks below it)
@@ -48,6 +48,12 @@ export const MAJ_H = 124; // banner height (tsunami toast stacks below it)
 export function isMajorQuake(magRaw: string): boolean {
   const m = parseFloat(magRaw);
   return !isNaN(m) && m >= 7;
+}
+
+// M6.0-6.9 — "strong" banner + sting (majors keep their own).
+export function isStrongQuake(magRaw: string): boolean {
+  const m = parseFloat(magRaw);
+  return !isNaN(m) && m >= 6 && m < 7;
 }
 export const DYFI_T = WAVE_T + WAVE_DUR + 0.1; // DYFI fade-in, right after the wave
 // Mosaic: 5 cols x 7 rows of 256px Esri tiles (same map as the app).
@@ -451,14 +457,17 @@ export function drawFrame(
     ctx.textAlign = 'left';
   }
 
-  // MAJOR banner: same slot/timing language as the tsunami toast, violet.
-  // When both fire, the tsunami toast stacks below and rides the major
-  // banner up as it leaves (majLift coupling).
+  // MAJOR / STRONG banner: same slot/timing language as the tsunami
+  // toast (timing shared via MAJ_*). Violet for M7.0+, red for M6.0-6.9.
+  // When a tsunami toast also fires, it stacks below and rides the banner
+  // up as it leaves (topLift coupling).
   const isMaj = isMajorQuake(eq.magnitude);
+  const isStr = !isMaj && isStrongQuake(eq.magnitude);
+  const showAlert = isMaj || isStr;
   const majOut = Math.min(Math.max((t - MAJ_HOLD) / (MAJ_GONE - MAJ_HOLD), 0), 1);
-  const majLift = isMaj ? MAJ_H * (1 - easeInOut(majOut)) : 0;
-  if (isMaj) {
-    const majColor = '#a78bfa';
+  const topLift = showAlert ? MAJ_H * (1 - easeInOut(majOut)) : 0;
+  if (showAlert) {
+    const majColor = isMaj ? '#a78bfa' : '#ef4444';
     const mIn = Math.min(Math.max((t - MAJ_T) / 0.55, 0), 1);
     if (mIn > 0 && majOut < 1) {
       const yOff = (1 - easeOutBack(mIn)) * -(MAJ_H + 30) - easeInOut(majOut) * 40;
@@ -487,10 +496,16 @@ export function drawFrame(
       ctx.textAlign = 'left';
       ctx.fillStyle = '#ffffff';
       ctx.font = '700 42px Oswald, Inter, sans-serif';
-      ctx.fillText('MAJOR EARTHQUAKE', 148, 62);
+      ctx.fillText(isMaj ? 'MAJOR EARTHQUAKE' : 'STRONG EARTHQUAKE', 148, 62);
       ctx.fillStyle = '#cbd5e1';
       ctx.font = '400 21px Inter, sans-serif';
-      ctx.fillText('Major seismic event — stay alert, follow official guidance', 148, 96);
+      ctx.fillText(
+        isMaj
+          ? 'Major seismic event — stay alert, follow official guidance'
+          : 'Strong seismic event — stay alert, follow official guidance',
+        148,
+        96,
+      );
       ctx.save();
       ctx.globalAlpha = Math.max(alpha, 0) * (parked ? pulse : 1);
       ctx.beginPath();
@@ -536,7 +551,7 @@ export function drawFrame(
       const alpha = Math.min(slideIn * 1.4, 1) * (1 - slideOut);
       ctx.save();
       ctx.globalAlpha = Math.max(alpha, 0);
-      ctx.translate(0, yOff + majLift);
+      ctx.translate(0, yOff + topLift);
       // Bar.
       ctx.fillStyle = 'rgba(8,12,24,0.93)';
       ctx.fillRect(0, 0, W, BH);
@@ -618,7 +633,7 @@ export function drawFrame(
         const SH = 44;
         ctx.save();
         ctx.globalAlpha = si;
-        ctx.translate(0, -(1 - si) * (SH + 10) + majLift);
+        ctx.translate(0, -(1 - si) * (SH + 10) + topLift);
         ctx.fillStyle = 'rgba(8,12,24,0.93)';
         ctx.fillRect(0, 0, W, SH);
         const sPulse = 0.55 + 0.35 * Math.sin((t - TSU_T) * 5.2);
@@ -1221,9 +1236,13 @@ export function VideoReportModal({
         const files = ['intro.mp3', 'epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
         const at = [0.0, MAP_T, WAVE_T, INFO_T];
         const majorNow = isMajorQuake(earthquake.magnitude);
+        const strongNow = !majorNow && isStrongQuake(earthquake.magnitude);
         if (majorNow) {
           // Major quake: alert sting INSTEAD of the regular intro voice.
           files.splice(1, 0, 'major-notification.mp3');
+          at.splice(1, 0, MAJ_T);
+        } else if (strongNow) {
+          files.splice(1, 0, 'strong-notification.mp3');
           at.splice(1, 0, MAJ_T);
         } else {
           files.splice(1, 0, 'intro-tts-alert.mp3');

@@ -25,6 +25,7 @@ import {
   epicenterMosaicPx,
   hasTsunamiThreat,
   isMajorQuake,
+  isStrongQuake,
   W,
   H,
   FPS,
@@ -50,6 +51,7 @@ export {
   epicenterMosaicPx,
   hasTsunamiThreat,
   isMajorQuake,
+  isStrongQuake,
   W,
   H,
   FPS,
@@ -380,13 +382,16 @@ async function main(): Promise<void> {
   // video; with none present it renders silent.
   const mp4 = path.join(outDir, 'out.mp4');
   const sfxDir = path.join(process.cwd(), 'public', 'sounds');
-  // Major quakes get major-notification.mp3 INSTEAD of intro-tts-alert.mp3.
+  // Major/strong quakes get their alert sting INSTEAD of intro-tts-alert.mp3.
   const majorNow = isMajorQuake(quake.magnitude);
+  const strongNow = !majorNow && isStrongQuake(quake.magnitude);
   const sfxPlan = [
     { file: 'intro.mp3', at: 0 },
     ...(majorNow
       ? [{ file: 'major-notification.mp3', at: Math.round(MAJ_T * 1000) }]
-      : [{ file: 'intro-tts-alert.mp3', at: 1000 }]),
+      : strongNow
+        ? [{ file: 'strong-notification.mp3', at: Math.round(MAJ_T * 1000) }]
+        : [{ file: 'intro-tts-alert.mp3', at: 1000 }]),
     { file: 'epicenter-appear.mp3', at: Math.round(MAP_T * 1000) },
     ...(hasTsunamiThreat(quake.threat ?? '') ? [{ file: 'tsunami-notif.mp3', at: Math.round(TSU_T * 1000) }] : []),
     { file: 'wave-spread.mp3', at: Math.round(WAVE_T * 1000) },
