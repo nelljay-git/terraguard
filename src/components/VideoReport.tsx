@@ -14,11 +14,11 @@ import './VideoReport.css';
 // Staged video export of the earthquake report, rendered + captured
 // fully in-browser (canvas.captureStream + MediaRecorder — no server).
 //
-// Timeline (~20s): tight on the epicenter (0-4s, slow push-in) -> epicenter
-// pop (1s) + tsunami toast when a real threat exists (1s slide-down,
-// visible ~3s, hands off to the info cards at 4s) -> pull out to full
-// context (4-6.5s) as sections cascade in -> shockwave spreading across
-// the map (1.5s, ~1s) -> DYFI felt
+// Timeline (~20s): tight on the epicenter (0-8s, slow push-in) with three
+// anticipation rings across the 5s intro -> epicenter pop (5s) + tsunami
+// toast when a real threat exists (5s slide-down, visible ~3s, hands off
+// to the info cards at 8s) -> pull out to full context (8-10.5s) as
+// sections cascade in -> shockwave spreading across the map (6s) -> DYFI felt
 // responses fade in (2.5s) -> styled info cards fade/slide in (4s) -> idle
 // drift until end.
 
@@ -26,19 +26,19 @@ export const W = 1080;
 export const H = 1440;
 export const FPS = 60;
 export const DUR = 20;
-export const MAP_T = 1; // epicenter appears
-export const WAVE_T = 2.0; // shockwave starts (1s after the epicenter)
+export const MAP_T = 5; // epicenter appears (after the 5s intro)
+export const WAVE_T = 6.0; // shockwave starts (1s after the epicenter)
 export const WAVE_DUR = 2.8; // slow single wave
-export const INFO_T = 4; // info cards appear
+export const INFO_T = 8; // info cards appear
 // Staggered section intros (0.2s cascade, slide + fade over 0.6s each).
 export const EVENT_T = INFO_T; // EVENT DATA from the left
 export const IMPACT_T = INFO_T + 0.2; // IMPACT DATA from the right
 export const SHAKE_T = INFO_T + 0.4; // SHAKE REPORT from the left
 export const DAMAGE_T = INFO_T + 0.6; // DAMAGE ASSESSMENT from the right
 export const SEC_DUR = 0.6; // per-section slide duration
-export const TSU_T = 1.0; // tsunami toast slides down (same beat as the epicenter pop)
-export const TSU_HOLD = 3.45; // toast starts sliding away (visible ~3s: 1.0 -> 4.0)
-export const TSU_GONE = 4.0; // toast fully off-screen exactly as info cards land
+export const TSU_T = 5.0; // tsunami toast slides down (same beat as the epicenter pop)
+export const TSU_HOLD = 7.45; // toast starts sliding away (visible ~3s: 5.0 -> 8.0)
+export const TSU_GONE = 8.0; // toast fully off-screen exactly as info cards land
 export const DYFI_T = WAVE_T + WAVE_DUR + 0.1; // DYFI fade-in, right after the wave
 // Mosaic: 5 cols x 6 rows of 256px Esri tiles (same map as the app),
 // covering the canvas with a slight crop. Epicenter lands at canvas center.
@@ -250,8 +250,8 @@ export function drawFrame(
   // (pop, wave, toast) plays, then pull out to full context as the info
   // sections step in — locked at 1.0 once data is on screen.
   const CLOSE_S = 1.6;
-  const OUT_T = 4.0;
-  const OUT_END = 6.5;
+  const OUT_T = INFO_T;
+  const OUT_END = INFO_T + 2.5;
   let s: number;
   if (t < OUT_T) {
     s = CLOSE_S + 0.03 * easeInOut(Math.min(Math.max(t / OUT_T, 0), 1));
@@ -363,7 +363,7 @@ export function drawFrame(
     ctx.restore();
   }
 
-  // Magnitude badge on the epicenter (t>=2), severity-colored.
+  // Magnitude badge on the epicenter (t>=MAP_T), severity-colored.
   if (t >= MAP_T) {
     const sc = easeOutBack(Math.min((t - MAP_T) / 0.4, 1));
     const badgeR = 54 * Math.max(sc, 0.01);
@@ -1102,10 +1102,10 @@ export function VideoReportModal({
         audioCtxRef.current = actx;
         await actx.resume().catch(() => {});
         const files = ['intro.mp3', 'epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
-        const at = [0.0, 1.0, 2.0, 4.0];
+        const at = [0.0, MAP_T, WAVE_T, INFO_T];
         if (hasTsunamiThreat(threatRef.current ?? '')) {
           files.splice(1, 0, 'tsunami-notif.mp3');
-          at.splice(1, 0, 1.0);
+          at.splice(1, 0, TSU_T);
         }
         const dest = actx.createMediaStreamDestination();
         const t0 = actx.currentTime + 0.05;

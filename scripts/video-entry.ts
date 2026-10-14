@@ -28,6 +28,10 @@ import {
   H,
   FPS,
   DUR,
+  MAP_T,
+  WAVE_T,
+  INFO_T,
+  TSU_T,
   COLS,
   ROWS,
   TILE,
@@ -367,19 +371,18 @@ async function main(): Promise<void> {
   }
 
   // Encode: PNG frames + timed sound effects (repo public/sounds).
-  // intro @0s (once, under the 3 anticipation rings), epicenter-appear
-  // @1s (pop), tsunami-notif @1s with the toast (only when a real threat
-  // exists), wave-spread @1.5s (shockwave), reports @4s (info cards).
+  // Timings follow the shared timeline consts (intro rings 0-5s, pop at
+  // MAP_T, toast at TSU_T, wave at WAVE_T, info cards at INFO_T).
   // Missing SFX files are skipped so one absent file can never kill the
   // video; with none present it renders silent.
   const mp4 = path.join(outDir, 'out.mp4');
   const sfxDir = path.join(process.cwd(), 'public', 'sounds');
   const sfxPlan = [
     { file: 'intro.mp3', at: 0 },
-    { file: 'epicenter-appear.mp3', at: 1000 },
-    ...(hasTsunamiThreat(quake.threat ?? '') ? [{ file: 'tsunami-notif.mp3', at: 1000 }] : []),
-    { file: 'wave-spread.mp3', at: 2000 },
-    { file: 'reports.mp3', at: 4000 },
+    { file: 'epicenter-appear.mp3', at: Math.round(MAP_T * 1000) },
+    ...(hasTsunamiThreat(quake.threat ?? '') ? [{ file: 'tsunami-notif.mp3', at: Math.round(TSU_T * 1000) }] : []),
+    { file: 'wave-spread.mp3', at: Math.round(WAVE_T * 1000) },
+    { file: 'reports.mp3', at: Math.round(INFO_T * 1000) },
   ].filter((s) => {
     const ok = fs.existsSync(path.join(sfxDir, s.file));
     if (!ok) console.error('sfx missing, skipping:', s.file);
