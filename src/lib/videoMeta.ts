@@ -28,7 +28,7 @@ export function extractMaxIntensity(...texts: Array<string | undefined | null>):
   };
   for (const text of texts) {
     if (!text) continue;
-    for (const m of text.matchAll(/(?:intensity|peis|mmi)\s*([IVXLCDM]{1,4})/gi)) consider(m[1]);
+    for (const m of text.matchAll(/(?:intensity|peis|mmi)\s*([IVXLCDM]{1,4})\b/gi)) consider(m[1]);
     for (const m of text.matchAll(/(?<![A-Z0-9])([IVX]{2,4})(?![A-Z0-9])/g)) consider(m[1]);
   }
   return best > 0 ? ROMAN_1_TO_10[best] : '';
@@ -107,6 +107,9 @@ export function extractShakeRows(text: string | undefined | null, maxRows = 5): 
     const areaTokens = cleanPart.split(',').map((s) => s.trim()).filter(Boolean);
     for (const rawArea of areaTokens) {
       if (/^and\s+\d+\s+more$/i.test(rawArea)) continue;
+      // Boilerplate, not a place (e.g. USGS "Intensity III - Reported
+      // intensity via Did You Feel It?") — never a felt-report row.
+      if (/reported intensity|did you feel|felt report|\bdyfi\b/i.test(rawArea)) continue;
       const area = rawArea.replace(/\s+/g, ' ').slice(0, 40).trim();
       if (!area || seen.has(area.toLowerCase())) continue;
       seen.add(area.toLowerCase());

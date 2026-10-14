@@ -1110,7 +1110,7 @@ export function Details() {
   // Rendering takes minutes: success here means "started", watch the
   // Actions tab / Facebook page for the finished video.
   const handlePostVideo = async () => {
-    if (!earthquake || !isWebhookAuthorized) return;
+    if (!earthquake || !isWebhookAuthorized || detailsLoading) return;
     if (videoPostStatus === 'sending') return;
     setVideoPostStatus('sending');
     setVideoPostError('');
@@ -1258,7 +1258,8 @@ export function Details() {
             <button
               className="action-btn glass flex-center"
               onClick={() => setShowVideoReport(true)}
-              title="Generate video report"
+              disabled={detailsLoading}
+              title={detailsLoading ? 'Loading intensities…' : 'Generate video report'}
             >
               <Clapperboard size={16} />
               <span>Video Report</span>
@@ -1268,8 +1269,8 @@ export function Details() {
             <button
               className="action-btn glass flex-center"
               onClick={handlePostVideo}
-              disabled={videoPostStatus === 'sending'}
-              title="Render + post video via GitHub Actions"
+              disabled={videoPostStatus === 'sending' || detailsLoading}
+              title={detailsLoading ? 'Loading intensities…' : 'Render + post video via GitHub Actions'}
               style={{
                 background: videoPostStatus === 'success' ? 'rgba(16,185,129,0.15)' : videoPostStatus === 'error' ? 'rgba(239,68,68,0.15)' : undefined,
                 borderColor: videoPostStatus === 'success' ? 'rgba(16,185,129,0.4)' : videoPostStatus === 'error' ? 'rgba(239,68,68,0.4)' : undefined,
@@ -1329,15 +1330,15 @@ export function Details() {
               {moreMenuOpen && (
                 <div className="more-dropdown glass" role="menu">
                   {isUsgs && (
-                    <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); setShowVideoReport(true); }}>
-                      <Clapperboard size={14} /> Video Report
+                    <button className="more-item" role="menuitem" disabled={detailsLoading} onClick={() => { setMoreMenuOpen(false); setShowVideoReport(true); }}>
+                      <Clapperboard size={14} /> Video Report{detailsLoading ? '…' : ''}
                     </button>
                   )}
                   <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handleCopyDescription(); }}>
                     {copiedDesc ? <Check size={14} color="#10b981" /> : <Copy size={14} />} Copy description
                   </button>
-                  <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handlePostVideo(); }} disabled={videoPostStatus === 'sending'}>
-                    {videoPostStatus === 'sending' ? <Loader2 size={14} className="spinner-icon" /> : <Upload size={14} />} Post Video
+                  <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handlePostVideo(); }} disabled={videoPostStatus === 'sending' || detailsLoading}>
+                    {videoPostStatus === 'sending' ? <Loader2 size={14} className="spinner-icon" /> : <Upload size={14} />} Post Video{detailsLoading ? '…' : ''}
                   </button>
                   <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handleSendToWebhook(); }} disabled={webhookStatus === 'sending'}>
                     <Send size={14} /> Send to Webhooks

@@ -823,7 +823,20 @@ export function drawFrame(
       }
       for (const row of shakeList) {
         ctx.fillStyle = '#ffffff';
-        const area = row.area.slice(0, 28);
+        // Fit the area name before the chip (chip starts at x=48+275):
+        // drop whole trailing words + ellipsis, never cut mid-word.
+        let area = row.area;
+        const maxAreaW = 262;
+        if (ctx.measureText(area).width > maxAreaW) {
+          const words = area.split(/\s+/);
+          area = '';
+          for (const w of words) {
+            const trial = area ? `${area} ${w}` : w;
+            if (ctx.measureText(`${trial}…`).width <= maxAreaW || !area) area = trial;
+            else break;
+          }
+          if (area.length < row.area.length) area += '…';
+        }
         ctx.fillText(area, 48, sy);
         const chipLabel = row.intensity || '?';
       ctx.font = '700 16px Oswald, Inter, sans-serif';
