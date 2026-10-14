@@ -457,20 +457,19 @@ export function drawFrame(
     ctx.textAlign = 'left';
   }
 
-  // MAJOR / STRONG banner: same slot/timing language as the tsunami
-  // toast (timing shared via MAJ_*). Violet for M7.0+, red for M6.0-6.9.
-  // When a tsunami toast also fires, it stacks below and rides the banner
-  // up as it leaves (topLift coupling).
+  // MAJOR / STRONG banner: bottom-anchored, slides up from below at MAJ_T
+  // and sinks back down before the bottom-anchored cards arrive — so the
+  // tsunami toast always keeps the top slot to itself, no coupling needed.
+  // Violet for M7.0+, red for M6.0-6.9. Accent edge sits on top.
   const isMaj = isMajorQuake(eq.magnitude);
   const isStr = !isMaj && isStrongQuake(eq.magnitude);
   const showAlert = isMaj || isStr;
   const majOut = Math.min(Math.max((t - MAJ_HOLD) / (MAJ_GONE - MAJ_HOLD), 0), 1);
-  const topLift = showAlert ? MAJ_H * (1 - easeInOut(majOut)) : 0;
   if (showAlert) {
     const majColor = isMaj ? '#a78bfa' : '#ef4444';
     const mIn = Math.min(Math.max((t - MAJ_T) / 0.55, 0), 1);
     if (mIn > 0 && majOut < 1) {
-      const yOff = (1 - easeOutBack(mIn)) * -(MAJ_H + 30) - easeInOut(majOut) * 40;
+      const yOff = H - MAJ_H + (1 - easeOutBack(mIn)) * (MAJ_H + 30) + easeInOut(majOut) * 40;
       const alpha = Math.min(mIn * 1.4, 1) * (1 - majOut);
       ctx.save();
       ctx.globalAlpha = Math.max(alpha, 0);
@@ -481,7 +480,7 @@ export function drawFrame(
       const pulse = 0.55 + 0.35 * Math.sin((t - MAJ_T) * 5.2);
       ctx.fillStyle = majColor;
       ctx.globalAlpha = Math.max(alpha, 0) * (parked ? pulse : 1);
-      ctx.fillRect(0, MAJ_H - 7, W, 7);
+      ctx.fillRect(0, 0, W, 7);
       ctx.globalAlpha = Math.max(alpha, 0);
       // Icon: violet disc with a bold "!" (no emoji font needed).
       const ix = 92, iy = MAJ_H / 2 - 4;
@@ -551,7 +550,7 @@ export function drawFrame(
       const alpha = Math.min(slideIn * 1.4, 1) * (1 - slideOut);
       ctx.save();
       ctx.globalAlpha = Math.max(alpha, 0);
-      ctx.translate(0, yOff + topLift);
+      ctx.translate(0, yOff);
       // Bar.
       ctx.fillStyle = 'rgba(8,12,24,0.93)';
       ctx.fillRect(0, 0, W, BH);
@@ -633,7 +632,7 @@ export function drawFrame(
         const SH = 44;
         ctx.save();
         ctx.globalAlpha = si;
-        ctx.translate(0, -(1 - si) * (SH + 10) + topLift);
+        ctx.translate(0, -(1 - si) * (SH + 10));
         ctx.fillStyle = 'rgba(8,12,24,0.93)';
         ctx.fillRect(0, 0, W, SH);
         const sPulse = 0.55 + 0.35 * Math.sin((t - TSU_T) * 5.2);
