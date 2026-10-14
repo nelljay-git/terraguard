@@ -316,6 +316,9 @@ export function drawFrame(
   const dey = view ? view.eyD : H / 2;
   const magText = eq.magnitude || '?';
   const [sevWord, sevColor] = severityWord(eq.magnitude);
+  // Breathing room under the persistent tsunami strip so the cascading
+  // columns never sit squished against it. Zero when no threat exists.
+  const topPad = hasTsunamiThreat(threat) ? 28 : 0;
 
   // Header bar removed per design (clean map opening).
 
@@ -423,7 +426,7 @@ export function drawFrame(
     ctx.fillStyle = '#9ca3af';
     ctx.font = '400 15px Inter, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`\u25CF ${dyfi.length} DYFI FELT REPORTS`, W / 2, 60);
+    ctx.fillText(`\u25CF ${dyfi.length} DYFI FELT REPORTS`, W / 2, 60 + topPad);
     ctx.restore();
     ctx.textAlign = 'left';
   }
@@ -614,7 +617,7 @@ export function drawFrame(
     const radius = estimateAffectedRadiusKm(eq.magnitude) || '—';
     const threatText = !threat || threat.trim() === '—' ? 'None' : threat;
 
-    const colTop = 60;
+    const colTop = 60 + topPad;
     // Left column: EVENT DATA slides in from the left.
     const pEvent = secP(t, EVENT_T);
     if (pEvent > 0) {
