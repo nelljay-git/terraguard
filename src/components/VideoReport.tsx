@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Download, Clapperboard } from 'lucide-react';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
-import { estimateAffectedRadiusKm, estimateDamage, isKnownIntensity, type ShakeRow } from '../lib/videoMeta';
+import { estimateAffectedRadiusKm, estimateDamage, isKnownIntensity, buildTtsLine, type ShakeRow } from '../lib/videoMeta';
 import type { DyfiPoint } from '../lib/dyfi';
 import { fetchDyfiPoints } from '../lib/dyfi';
 import { mmiColor } from '../lib/usgsOverlays';
@@ -1127,29 +1127,58 @@ export function VideoReportModal({
         const actx = new AC({ sampleRate: 48000 });
         audioCtxRef.current = actx;
         await actx.resume().catch(() => {});
-        const files = ['intro.mp3', 'intro-tts-alert.mp3', 'epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
-        const at = [0.0, 1.0, MAP_T, WAVE_T, INFO_T];
+        const files = ['intro.mp3', 'epicenter-appear.mp3', 'wave-spread.mp3', 'reports.mp3'];
+        const at = [0.0, MAP_T, WAVE_T, INFO_T];
         if (hasTsunamiThreat(threatRef.current ?? '')) {
           files.splice(1, 0, 'tsunami-notif.mp3');
           at.splice(1, 0, TSU_T);
         }
         const dest = actx.createMediaStreamDestination();
         const t0 = actx.currentTime + 0.05;
+        const playBuf = (buf: AudioBuffer, when: number) => {
+          const src = actx.createBufferSource();
+          src.buffer = buf;
+          const g = actx.createGain();
+          g.gain.value = 1.0;
+          src.connect(g);
+          g.connect(dest);
+          g.connect(actx.destination);
+          src.start(when);
+        };
         await Promise.all(
           files.map(async (f, i) => {
-            const res = await fetch(`/sounds/${f}`);
-            if (!res.ok) return;
-            const buf = await actx.decodeAudioData(await res.arrayBuffer());
-            const src = actx.createBufferSource();
-            src.buffer = buf;
-            const g = actx.createGain();
-            g.gain.value = 1.0;
-            src.connect(g);
-            g.connect(dest);
-            g.connect(actx.destination);
-            src.start(t0 + at[i]);
+            try {
+              const res = await fetch(`/sounds/${f}`);
+              if (!res.ok) return;
+              playBuf(await actx.decodeAudioData(await res.arrayBuffer()), t0 + at[i]);
+            } catch {
+              /* missing/undecodable sfx is skipped */
+            }
           }),
         );
+        // Spoken intro line ("Seismic activity detected at …") via the
+        // TTS proxy, bundled mp3 as fallback. Always attempted — the line
+        // names the quake's own location.
+        try {
+          let ttsAB: ArrayBuffer | null = null;
+          try {
+            const tr = await fetch(`/api/tts?text=${encodeURIComponent(buildTtsLine(earthquake.location || ''))}`);
+            if (tr.ok) ttsAB = await tr.arrayBuffer();
+          } catch {
+            /* fall through to bundled mp3 */
+          }
+          if (!ttsAB) {
+            try {
+              const fr = await fetch('/sounds/intro-tts-alert.mp3');
+              if (fr.ok) ttsAB = await fr.arrayBuffer();
+            } catch {
+              /* silent */
+            }
+          }
+          if (ttsAB) playBuf(await actx.decodeAudioData(ttsAB), t0 + 1.0);
+        } catch (e) {
+          console.error('[VideoReport] intro voice failed, continuing silent:', e instanceof Error ? e.message : e);
+        }
         const audioTracks = dest.stream.getAudioTracks();
         if (audioTracks.length > 0) {
           recordStream = new MediaStream([...stream.getVideoTracks(), ...audioTracks]);
