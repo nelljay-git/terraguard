@@ -54,7 +54,7 @@ register_shutdown_function(function () {
 define('CARD_W', 720);
 define('CARD_H', 900);
 define('MAP_H', 900); // full-bleed map; bars are overlays
-define('CACHE_TTL', 86400); // cards are immutable per event
+define('CACHE_TTL', 0); // no card cache — always render fresh
 define('CACHE_DIR', sys_get_temp_dir() . '/quakecard_cache');
 define('TILE_TIMEOUT', 20); // export renders server-side; allow slow uplinks
 // Map style: true = satellite + labels (sat,skl), false = normal map.
@@ -367,7 +367,11 @@ if (isset($_GET['glow'])) {
     $gv = strtolower(trim((string)$_GET['glow']));
     $wantGlow = !in_array($gv, ['0', 'false', 'no', 'off'], true);
 }
+$locOnLeft = false;
+if (isset($_GET['loc']) && strtolower(trim((string)$_GET['loc'])) === 'left') $locOnLeft = true;
 if ($wantGlow) {
+    // Default: location box on the right. Set left when the boundary
+    // dominates the right half (or ?loc=left forces it).
     // PHIVOLCS = Philippine events: always the Philippines boundary.
     // Other sources resolve the country from ?place= as before.
     $glowIso = strcasecmp(trim((string)($source ?? '')), 'PHIVOLCS') === 0
@@ -380,17 +384,28 @@ if ($wantGlow) {
             // Only touch the map when the boundary actually crosses the view:
             // a loaded-but-offscreen boundary must leave a normal full-color
             // card (otherwise the mask turns everything gray with no outline).
+            // Also decides the location-box side: boundary mostly right →
+            // box goes left, and vice versa. ?loc=left|right forces it.
             $spanX = $rightLng - $leftLng; $spanY = $topLat - $botLat;
-            $inView = false;
+            $inView = false; $rightPts = 0; $leftPts = 0;
             if ($spanX > 0 && $spanY > 0) {
                 foreach ($rings as $ring) {
                     foreach ($ring as $pt) {
                         if (!is_array($pt) || count($pt) < 2) continue;
                         $px = ($pt[0] - $leftLng) / $spanX * CARD_W;
                         $py = ($topLat - $pt[1]) / $spanY * MAP_H;
-                        if ($px >= -20 && $px <= CARD_W + 20 && $py >= -20 && $py <= MAP_H + 20) { $inView = true; break 2; }
+                        if ($px >= -20 && $px <= CARD_W + 20 && $py >= -20 && $py <= MAP_H + 20) {
+                            $inView = true;
+                            if ($px >= CARD_W / 2) $rightPts++; else $leftPts++;
+                        }
                     }
                 }
+            }
+            $locOnLeft = ($rightPts + $leftPts) > 0 && $rightPts > $leftPts;
+            if (isset($_GET['loc'])) {
+                $lv = strtolower(trim((string)$_GET['loc']));
+                if ($lv === 'left') $locOnLeft = true;
+                elseif ($lv === 'right') $locOnLeft = false;
             }
             if ($inView) {
                 // Country stays in color, everything outside goes black & white.
@@ -500,7 +515,7 @@ function fillScrimX($im, int $x0, int $y0, int $x1, int $y1, array $edgeRgb, arr
 // Side fade for the right-column panels (magnitude / info / tsunami) and the
 // location box: solid $rgb at the right edge, fading to transparent leftward.
 // Rendered small then resampled up so no banding shows.
-function fillFadeRightX($im, int $x0, int $y0, int $x1, int $y1, array $rgb, int $alphaRight, int $alphaLeft): void {
+function fillFadeRightX($im, int $x0, int $y0, int $x1, int $y1, array $rgb, int $alphaRight, int $alphaLeft, bool $fromRight = true): void {
     $w = $x1 - $x0 + 1; $h = $y1 - $y0 + 1;
     if ($w <= 0 || $h <= 0) return;
     $sw = min(96, $w);
@@ -509,6 +524,7 @@ function fillFadeRightX($im, int $x0, int $y0, int $x1, int $y1, array $rgb, int
     imagesavealpha($small, true);
     for ($sx = 0; $sx < $sw; $sx++) {
         $v = $sw > 1 ? $sx / ($sw - 1) : 0; // 0 = left, 1 = right
+        if (!$fromRight) $v = 1 - $v; // opaque edge on the left instead
         $a = max(0, min(127, (int)round($alphaLeft + ($alphaRight - $alphaLeft) * $v)));
         imageline($small, $sx, 0, $sx, $h - 1, imagecolorallocatealpha($small, $rgb[0], $rgb[1], $rgb[2], $a));
     }
@@ -805,11 +821,12 @@ $locLines = wrapLines($fontOswald, 17, $locPlace, 255, 3);
 $coordsLine = number_format($lat, 2) . '°N, ' . number_format($lng, 2) . '°E';
 $locLineH = 24;
 $locBoxH = 17 + count($locLines) * $locLineH + 9 + 26 + 14;
-$locX1 = CARD_W - 16;
-$locX0 = $locX1 - 337;
+// Right by default; mirrored left when the boundary owns the right half.
+if ($locOnLeft) { $locX0 = 16; $locX1 = $locX0 + 337; }
+else { $locX1 = CARD_W - 16; $locX0 = $locX1 - 337; }
 $locY1 = $infoTop - 16;
 $locY0 = $locY1 - $locBoxH;
-fillFadeRightX($im, $locX0, $locY0, $locX1, $locY1, [8, 12, 24], 25, 127);
+fillFadeRightX($im, $locX0, $locY0, $locX1, $locY1, [8, 12, 24], 25, 127, !$locOnLeft);
 // Red map-pin bullet.
 $pinCx = $locX0 + 26;
 $pinCy = $locY0 + 29;
@@ -963,9 +980,15 @@ if (isset($_GET['debug']) && $_GET['debug'] === 'glow') {
     exit;
 }
 header('Content-Type: image/png');
-header('Cache-Control: public, max-age=86400');
-imagepng($im, $cacheFile);
-readfile($cacheFile);
+// Output — no cache when CACHE_TTL is 0
+if (CACHE_TTL > 0) {
+    header('Cache-Control: public, max-age=86400');
+    imagepng($im, $cacheFile);
+    readfile($cacheFile);
+} else {
+    header('Cache-Control: no-store');
+    imagepng($im);
+}
 imagedestroy($im);
 
 
