@@ -37,39 +37,7 @@ import {
   TILE,
   MOSAIC_D,
 } from '../src/components/VideoReport.js';
-import { estimateAffectedRadiusKm, estimateDamage, isKnownIntensity, buildTtsLine, googleTtsUrl } from '../src/lib/videoMeta.js';
-
-// Spoken intro line ("Seismic activity detected at …") synthesized at
-// render time so the place name is dynamic. Keyless TTS; any failure
-// falls back to the bundled intro-tts-alert.mp3 (never fatal).
-async function fetchTtsLine(place: string | undefined, outFile: string): Promise<boolean> {
-  try {
-    const line = buildTtsLine(place);
-    console.log(`TTS line: "${line}"`);
-    const res = await fetch(googleTtsUrl(line), {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
-        Referer: 'https://translate.google.com/',
-      },
-    });
-    if (!res.ok) {
-      console.error(`TTS fetch failed (HTTP ${res.status}), using fallback mp3`);
-      return false;
-    }
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length < 1000) {
-      console.error(`TTS audio too small (${buf.length}b), using fallback mp3`);
-      return false;
-    }
-    fs.writeFileSync(outFile, buf);
-    console.log(`TTS audio: ${buf.length} bytes`);
-    return true;
-  } catch (e) {
-    console.error('TTS fetch failed, using fallback mp3:', e instanceof Error ? e.message : e);
-    return false;
-  }
-}
+import { estimateAffectedRadiusKm, estimateDamage, isKnownIntensity } from '../src/lib/videoMeta.js';
 import { fetchDyfiPoints } from '../src/lib/dyfi.js';
 
 // Re-exported so tests/tools can import the shared render pieces from the
@@ -410,20 +378,15 @@ async function main(): Promise<void> {
   // video; with none present it renders silent.
   const mp4 = path.join(outDir, 'out.mp4');
   const sfxDir = path.join(process.cwd(), 'public', 'sounds');
-  // Dynamic spoken intro (place-aware); absolute path when synthesized,
-  // repo-relative fallback otherwise.
-  const ttsFile = path.join(outDir, 'tts-line.mp3');
-  const ttsOk = await fetchTtsLine(quake.location || quake.place, ttsFile);
-  const resolveSfx = (f: string) => (path.isAbsolute(f) ? f : path.join(sfxDir, f));
   const sfxPlan = [
     { file: 'intro.mp3', at: 0 },
-    ttsOk ? { file: ttsFile, at: 1000 } : { file: 'intro-tts-alert.mp3', at: 1000 },
+    { file: 'intro-tts-alert.mp3', at: 1000 },
     { file: 'epicenter-appear.mp3', at: Math.round(MAP_T * 1000) },
     ...(hasTsunamiThreat(quake.threat ?? '') ? [{ file: 'tsunami-notif.mp3', at: Math.round(TSU_T * 1000) }] : []),
     { file: 'wave-spread.mp3', at: Math.round(WAVE_T * 1000) },
     { file: 'reports.mp3', at: Math.round(INFO_T * 1000) },
   ].filter((s) => {
-    const ok = fs.existsSync(resolveSfx(s.file));
+    const ok = fs.existsSync(path.join(sfxDir, s.file));
     if (!ok) console.error('sfx missing, skipping:', s.file);
     return ok;
   });
@@ -434,7 +397,7 @@ async function main(): Promise<void> {
     '-i',
     path.join(outDir, 'frame%04d.png'),
   ];
-  for (const s of sfxPlan) ffmpegArgs.push('-i', resolveSfx(s.file));
+  for (const s of sfxPlan) ffmpegArgs.push('-i', path.join(sfxDir, s.file));
   if (sfxPlan.length > 0) {
     const mix = sfxPlan
       .map((s, i) => `[${i + 1}:a]adelay=delays=${s.at}:all=1,volume=1.0[a${i}]`)

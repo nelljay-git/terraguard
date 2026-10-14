@@ -73,23 +73,6 @@ function intensityDamageTier(intensity: string): number {
   return 4;
 }
 
-// Spoken intro line for the video ("Seismic activity detected at …").
-// Place is trimmed for natural speech and capped for TTS URL limits.
-export function buildTtsLine(place: string | undefined | null): string {
-  const p =
-    (place || '')
-      .replace(/\(.*?\)/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 60) || 'your area';
-  return `Seismic activity detected at ${p}. Shaking may occur.`;
-}
-
-// Keyless TTS MP3 URL (Google Translate endpoint, ~200 chars/request).
-export function googleTtsUrl(text: string): string {
-  return `https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=${encodeURIComponent(text.slice(0, 180))}`;
-}
-
 // True only for a real parsed intensity — placeholders mean there is no
 // felt data to base damage figures on (callers must show Unknown then,
 // never magnitude-only numbers next to a severity badge).
