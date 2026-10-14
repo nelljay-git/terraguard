@@ -28,8 +28,15 @@ export function extractMaxIntensity(...texts: Array<string | undefined | null>):
   };
   for (const text of texts) {
     if (!text) continue;
-    for (const m of text.matchAll(/(?:intensity|peis|mmi)\s*([IVXLCDM]{1,4})\b/gi)) consider(m[1]);
-    for (const m of text.matchAll(/(?<![A-Z0-9])([IVX]{2,4})(?![A-Z0-9])/g)) consider(m[1]);
+    // Drop DYFI boilerplate segments ("Intensity III - Reported intensity
+    // via Did You Feel It?") so their numerals never become the max.
+    const clean = text
+      .split(/[;\n]/)
+      .filter((seg) => !/reported intensity|did you feel|felt report|\bdyfi\b/i.test(seg))
+      .join(';');
+    if (!clean) continue;
+    for (const m of clean.matchAll(/(?:intensity|peis|mmi)\s*([IVXLCDM]{1,4})\b/gi)) consider(m[1]);
+    for (const m of clean.matchAll(/(?<![A-Z0-9])([IVX]{2,4})(?![A-Z0-9])/g)) consider(m[1]);
   }
   return best > 0 ? ROMAN_1_TO_10[best] : '';
 }

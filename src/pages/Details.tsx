@@ -920,7 +920,7 @@ export function Details() {
     })();
     const detailsUrl = window.location.href.replace(/[?&]_spa=1/, '');
     const agency = reportingAgency;
-    const intensity = extractMaxIntensity(details?.instrumentalIntensities) || 'N/A';
+    const intensity = extractMaxIntensity(details?.instrumentalIntensities, details?.reportedIntensities) || 'N/A';
     const tsunamiThreat = classifyTsunami(details?.tsunami || '')?.label || 'N/A';
     const radius = estimateAffectedRadiusKm(mag) || 'N/A';
     const datePart = datetime.split(' - ')[0] || datetime;
@@ -1134,7 +1134,7 @@ export function Details() {
           // headless renderer has no Details context, so without these the
           // video prints "—" for intensity/threat and a magnitude-only
           // damage estimate.
-          intensity: extractMaxIntensity(details?.instrumentalIntensities),
+          intensity: extractMaxIntensity(details?.instrumentalIntensities, details?.reportedIntensities),
           tsunamiThreat: tsunamiInfo?.label ?? '',
           // Reported (human felt reports with place names) first —
           // instrumental UTM grid codes only when no reported rows exist.
@@ -1919,7 +1919,7 @@ export function Details() {
       {showVideoReport && earthquake && isWebhookAuthorized && (
         <VideoReportModal
           earthquake={earthquake}
-          intensity={extractMaxIntensity(details?.instrumentalIntensities)}
+          intensity={extractMaxIntensity(details?.instrumentalIntensities, details?.reportedIntensities)}
           tsunamiThreat={tsunamiInfo?.label ?? ''}
           shakes={(() => { const s = extractShakeRows(details?.reportedIntensities); return s.length > 0 ? s : extractShakeRows(details?.instrumentalIntensities); })()}
           usgsEventId={isUsgs ? (extractUsgsEventId(earthquake.link) ?? undefined) : undefined}
