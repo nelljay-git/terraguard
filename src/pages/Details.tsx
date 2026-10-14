@@ -1136,7 +1136,9 @@ export function Details() {
           // damage estimate.
           intensity: extractMaxIntensity(details?.instrumentalIntensities),
           tsunamiThreat: tsunamiInfo?.label ?? '',
-          shakes: (() => { const s = extractShakeRows(details?.instrumentalIntensities); return s.length > 0 ? s : extractShakeRows(details?.reportedIntensities); })(),
+          // Reported (human felt reports with place names) first —
+          // instrumental UTM grid codes only when no reported rows exist.
+          shakes: (() => { const s = extractShakeRows(details?.reportedIntensities); return s.length > 0 ? s : extractShakeRows(details?.instrumentalIntensities); })(),
           usgsEventId: isUsgs ? (extractUsgsEventId(activeLink || earthquake.link) ?? undefined) : undefined,
         }),
       });
@@ -1919,7 +1921,7 @@ export function Details() {
           earthquake={earthquake}
           intensity={extractMaxIntensity(details?.instrumentalIntensities)}
           tsunamiThreat={tsunamiInfo?.label ?? ''}
-          shakes={(() => { const s = extractShakeRows(details?.instrumentalIntensities); return s.length > 0 ? s : extractShakeRows(details?.reportedIntensities); })()}
+          shakes={(() => { const s = extractShakeRows(details?.reportedIntensities); return s.length > 0 ? s : extractShakeRows(details?.instrumentalIntensities); })()}
           usgsEventId={isUsgs ? (extractUsgsEventId(earthquake.link) ?? undefined) : undefined}
           quakeSource={dataSource}
           onClose={() => setShowVideoReport(false)}
