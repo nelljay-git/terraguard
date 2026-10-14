@@ -2715,7 +2715,7 @@ async function postVolcanoToFacebook(event, imageUrl, env) {
         pdz: parsed.pdzKm ? String(parsed.pdzKm) : "",
     }).toString();
     const cardUrl = `https://trikefare.x10.mx/terraguard/api/volcano-card.php?${cardParams}`;
-    const cardBackup = `https://nell-systems.x10.mx/terraguard/api/volcano-card.php?${cardParams}`;
+    const cardBackup = `http://nell-systems.x10.mx/terraguard/api/volcano-card.php?${cardParams}`;
     const photoUrls = [cardUrl, cardBackup];
     if (imageUrl)
         photoUrls.push(imageUrl); // bulletin map / Himawari as backup
@@ -3778,7 +3778,7 @@ const PHIVOLCS_TSUNAMI_API =
   "https://trikefare.x10.mx/terraguard/api/tsunami.php?page=events";
 // Backup host (nell-systems) — tried when the primary 503s / is unreachable.
 const PHIVOLCS_TSUNAMI_API_BACKUP =
-  "https://nell-systems.x10.mx/terraguard/api/tsunami.php?page=events";
+  "http://nell-systems.x10.mx/terraguard/api/tsunami.php?page=events";
 
 // One alert per advisory bulletin. PHIVOLCS re-issues numbered advisories for the
 // same earthquake (sometimes a .html and a .pdf), and each new one is genuinely
@@ -4274,7 +4274,7 @@ async function ensureTsunamiCard(alert) {
   const coords = quakeCoords(alert);
   if (!coords) return { url: "", ok: false, reason: "no epicenter" };
   const url = tsunamiCardUrl(alert, coords);
-  const backupUrl = url.replace("https://trikefare.x10.mx/terraguard", "https://nell-systems.x10.mx/terraguard");
+  const backupUrl = url.replace("https://trikefare.x10.mx/terraguard", "http://nell-systems.x10.mx/terraguard");
   const candidates = backupUrl !== url ? [url, backupUrl] : [url];
   if (tsunamiCardMemo.has(url)) return tsunamiCardMemo.get(url);
   let ok = false, reason = "unknown";

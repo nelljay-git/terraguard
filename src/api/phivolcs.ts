@@ -128,21 +128,7 @@ function delay(ms: number): Promise<void> {
 }
 
 
-async function fetchPhivolcsOnce(): Promise<PhivolcsResponse> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-  try {
-    // Native: scrape PHIVOLCS directly (no CORS-blocking proxy needed).
-    // Dev: local Vite proxy (/api/phivolcs). Prod web: PHP endpoint or in-repo functions.
-    const url = IS_NATIVE
-      ? `${PHIVOLCS_BASE}/`
-      : import.meta.env?.DEV
-        ? '/api/phivolcs'
-        : phivolcsListUrl();
-    // Primary PHP host (trikefare) -> backup (nell-systems) on 503/5xx.
-    const res = await nativeHttpGetWithPhpFailover(url);
-    clearTimeout(timeout);
+async function parsePhivolcsListResponse(res: Awaited<ReturnType<typeof nativeHttpGetWithPhpFailover>>): Promise<PhivolcsResponse> {
     if (!res.ok) throw new Error(`Failed to fetch from proxy (${res.status})`);
     const contentType = res.headers.get('content-type') || '';
 
@@ -188,6 +174,33 @@ async function fetchPhivolcsOnce(): Promise<PhivolcsResponse> {
       count: earthquakes.length,
       data: earthquakes
     };
+}
+
+async function fetchPhivolcsOnce(): Promise<PhivolcsResponse> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    // Native: scrape PHIVOLCS directly (no CORS-blocking proxy needed).
+    // Dev: local Vite proxy (/api/phivolcs). Prod web: PHP endpoint or in-repo functions.
+    const url = IS_NATIVE
+      ? `${PHIVOLCS_BASE}/`
+      : import.meta.env?.DEV
+        ? '/api/phivolcs'
+        : phivolcsListUrl();
+    // Primary PHP host (trikefare) -> http-only backup (nell-systems) on 503/5xx.
+    // The backup is http-only, so https:// pages block it (mixed content) and
+    // fall through to the /api/* serverless fallback below.
+    try {
+      const res = await nativeHttpGetWithPhpFailover(url);
+      return await parsePhivolcsListResponse(res);
+    } catch (phpError) {
+      const canFallback = !IS_NATIVE && !import.meta.env?.DEV && usePhpApi;
+      if (!canFallback) throw phpError;
+      console.warn('PHP hosts unreachable, falling back to /api/phivolcs:', phpError);
+      const fallback = await nativeHttpGetWithPhpFailover(apiUrl('/api/phivolcs'));
+      return await parsePhivolcsListResponse(fallback);
+    }
   } finally {
     clearTimeout(timeout);
   }
@@ -390,6 +403,19 @@ export async function fetchBulletins(link: string): Promise<BulletinRef[]> {
       }
     } catch (e) {
       console.warn('Failed to fetch bulletins from API', e);
+    }
+    // PHP hosts unreachable (http-only backup is mixed-content-blocked on
+    // https://) — fall back to the serverless prober before giving up.
+    if (usePhpApi) {
+      try {
+        const res = await fetch(apiUrl(`/api/bulletins?url=${encodeURIComponent(link)}`));
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data)) return json.data as BulletinRef[];
+        }
+      } catch (e) {
+        console.warn('Bulletins serverless fallback failed', e);
+      }
     }
     return [];
   }

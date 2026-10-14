@@ -59,8 +59,8 @@ export async function nativeHttpGet(url: string): Promise<SimpleResponse> {
 
 /**
  * Same as nativeHttpGet but fails over from the primary PHP host
- * (https://trikefare.x10.mx/terraguard) to the backup host
- * (https://nell-systems.x10.mx/terraguard) on network errors or 5xx/404.
+ * (https://trikefare.x10.mx/terraguard) to the http-only backup host
+ * (http://nell-systems.x10.mx/terraguard) on network errors or 5xx/404.
  * Non-PHP URLs behave exactly like nativeHttpGet.
  */
 export async function nativeHttpGetWithPhpFailover(url: string): Promise<SimpleResponse> {

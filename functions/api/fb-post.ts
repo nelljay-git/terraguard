@@ -248,7 +248,7 @@ export async function onRequest(context: { request: Request; env?: Record<string
     hasCoords && cardParams
       ? [
           `https://trikefare.x10.mx/terraguard/api/quake-card.php?${cardParams}`,
-          `https://nell-systems.x10.mx/terraguard/api/quake-card.php?${cardParams}`,
+          `http://nell-systems.x10.mx/terraguard/api/quake-card.php?${cardParams}`,
         ]
       : [];
   for (const cardUrl of cardUrls) {

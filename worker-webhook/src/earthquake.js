@@ -240,7 +240,7 @@ function fbPassesFilters(eq, env) {
 // PHP hosts: primary (trikefare) with automatic fallback to the backup host
 // (nell-systems) when the primary 503s or is unreachable.
 const PHP_PRIMARY_ORIGIN = "https://trikefare.x10.mx/terraguard";
-const PHP_BACKUP_ORIGIN = "https://nell-systems.x10.mx/terraguard";
+const PHP_BACKUP_ORIGIN = "http://nell-systems.x10.mx/terraguard";
 
 function quakeCardCandidates(cardParams) {
     if (!cardParams) return [];
