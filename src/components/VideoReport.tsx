@@ -345,14 +345,17 @@ export function drawFrame(
     const pd = MAP_T / INTRO_N;
     const k = Math.min(Math.floor(t / pd), INTRO_N - 1);
     const phase = (t - k * pd) / pd; // 0 -> 1 for the active ring
-    const rr = 30 + easeOutCubic(phase) * 150;
+    // Fast pop (first quarter of the slot), slow fade across the rest —
+    // total intro still spans the full 5s.
+    const ex = easeOutCubic(Math.min(phase / 0.25, 1));
+    const rr = 30 + ex * 150;
     const ra = 0.85 * (1 - phase);
     ctx.save();
     ctx.beginPath();
     ctx.arc(dex, dey, rr, 0, Math.PI * 2);
     ctx.strokeStyle = sevColor;
     ctx.globalAlpha = Math.max(ra, 0);
-    ctx.lineWidth = 8 * (1 - phase) + 1;
+    ctx.lineWidth = 8 * (1 - ex) + 1;
     ctx.stroke();
     // Anchoring core dot, breathing with the same phase.
     ctx.beginPath();
