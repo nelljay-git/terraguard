@@ -309,6 +309,97 @@ foreach ($tileJobs as $i => $job) {
     );
     imagedestroy($tile);
 }
+// EXPERIMENT (?glow=0 disables): highlight the country named in ?place=
+// (e.g. "..., INDONESIA") with a thin light-blue ADM0 outline from
+// geoBoundaries. Drawn on the bare map; fails soft when unmatched.
+$COUNTRY_ISO3 = [
+    'PHILIPPINES' => 'PHL', 'INDONESIA' => 'IDN', 'MALAYSIA' => 'MYS', 'JAPAN' => 'JPN',
+    'TAIWAN' => 'TWN', 'CHINA' => 'CHN', 'HONG KONG' => 'HKG', 'MONGOLIA' => 'MNG',
+    'SOUTH KOREA' => 'KOR', 'KOREA' => 'KOR', 'NORTH KOREA' => 'PRK', 'THAILAND' => 'THA',
+    'VIETNAM' => 'VNM', 'CAMBODIA' => 'KHM', 'LAOS' => 'LAO', 'MYANMAR' => 'MMR',
+    'BANGLADESH' => 'BGD', 'BHUTAN' => 'BTN', 'NEPAL' => 'NPL', 'INDIA' => 'IND',
+    'PAKISTAN' => 'PAK', 'AFGHANISTAN' => 'AFG', 'SRI LANKA' => 'LKA', 'MALDIVES' => 'MDV',
+    'PAPUA NEW GUINEA' => 'PNG', 'FIJI' => 'FJI', 'VANUATU' => 'VUT', 'SOLOMON ISLANDS' => 'SLB',
+    'NEW CALEDONIA' => 'NCL', 'TONGA' => 'TON', 'SAMOA' => 'WSM', 'NEW ZEALAND' => 'NZL',
+    'AUSTRALIA' => 'AUS', 'PALAU' => 'PLW', 'MICRONESIA' => 'FSM', 'MARSHALL ISLANDS' => 'MHL',
+    'KIRIBATI' => 'KIR', 'TUVALU' => 'TUV', 'NAURU' => 'NRU', 'GUAM' => 'GUM',
+    'HAWAII' => 'USA', 'ALASKA' => 'USA', 'CALIFORNIA' => 'USA', 'UNITED STATES' => 'USA',
+    'USA' => 'USA', 'CANADA' => 'CAN', 'MEXICO' => 'MEX', 'GUATEMALA' => 'GTM',
+    'EL SALVADOR' => 'SLV', 'HONDURAS' => 'HND', 'NICARAGUA' => 'NIC', 'COSTA RICA' => 'CRI',
+    'PANAMA' => 'PAN', 'CUBA' => 'CUB', 'JAMAICA' => 'JAM', 'HAITI' => 'HTI',
+    'DOMINICAN REPUBLIC' => 'DOM', 'PUERTO RICO' => 'PRI', 'COLOMBIA' => 'COL',
+    'VENEZUELA' => 'VEN', 'ECUADOR' => 'ECU', 'PERU' => 'PER', 'BOLIVIA' => 'BOL',
+    'CHILE' => 'CHL', 'ARGENTINA' => 'ARG', 'BRAZIL' => 'BRA', 'URUGUAY' => 'URY',
+    'PARAGUAY' => 'PRY', 'TURKEY' => 'TUR', 'TURKIYE' => 'TUR', 'GREECE' => 'GRC',
+    'ITALY' => 'ITA', 'SPAIN' => 'ESP', 'PORTUGAL' => 'PRT', 'ICELAND' => 'ISL',
+    'UNITED KINGDOM' => 'GBR', 'UK' => 'GBR', 'ENGLAND' => 'GBR', 'IRELAND' => 'IRL',
+    'FRANCE' => 'FRA', 'GERMANY' => 'DEU', 'NETHERLANDS' => 'NLD', 'BELGIUM' => 'BEL',
+    'SWITZERLAND' => 'CHE', 'AUSTRIA' => 'AUT', 'POLAND' => 'POL', 'CZECHIA' => 'CZE',
+    'SLOVAKIA' => 'SVK', 'HUNGARY' => 'HUN', 'ROMANIA' => 'ROU', 'BULGARIA' => 'BGR',
+    'SERBIA' => 'SRB', 'CROATIA' => 'HRV', 'SLOVENIA' => 'SVN', 'BOSNIA' => 'BIH',
+    'ALBANIA' => 'ALB', 'NORTH MACEDONIA' => 'MKD', 'UKRAINE' => 'UKR', 'RUSSIA' => 'RUS',
+    'KAZAKHSTAN' => 'KAZ', 'UZBEKISTAN' => 'UZB', 'TAJIKISTAN' => 'TJK', 'KYRGYZSTAN' => 'KGZ',
+    'TURKMENISTAN' => 'TKM', 'AZERBAIJAN' => 'AZE', 'GEORGIA' => 'GEO', 'ARMENIA' => 'ARM',
+    'IRAN' => 'IRN', 'IRAQ' => 'IRQ', 'SAUDI ARABIA' => 'SAU', 'YEMEN' => 'YEM',
+    'OMAN' => 'OMN', 'UAE' => 'ARE', 'QATAR' => 'QAT', 'KUWAIT' => 'KWT',
+    'ISRAEL' => 'ISR', 'JORDAN' => 'JOR', 'LEBANON' => 'LBN', 'SYRIA' => 'SYR',
+    'EGYPT' => 'EGY', 'MOROCCO' => 'MAR', 'ALGERIA' => 'DZA', 'TUNISIA' => 'TUN',
+    'ETHIOPIA' => 'ETH', 'KENYA' => 'KEN', 'TANZANIA' => 'TZA', 'MOZAMBIQUE' => 'MOZ',
+    'MADAGASCAR' => 'MDG', 'SOUTH AFRICA' => 'ZAF', 'GHANA' => 'GHA', 'NIGERIA' => 'NGA',
+    'SOMALIA' => 'SOM', 'SUDAN' => 'SDN',
+];
+function resolveCountryIso3(string $place, array $table): ?string {
+    $tail = $place;
+    if (($p = strrpos($place, ',')) !== false) $tail = trim(substr($place, $p + 1));
+    $up = strtoupper(trim($tail));
+    if ($up !== '' && isset($table[$up])) return $table[$up];
+    $full = strtoupper($place);
+    foreach ($table as $name => $iso) {
+        if ($up !== '' && (strpos($up, $name) !== false || strpos($name, $up) !== false)) return $iso;
+    }
+    foreach ($table as $name => $iso) {
+        if (strpos($full, $name) !== false) return $iso;
+    }
+    return null;
+}
+$wantGlow = true;
+if (isset($_GET['glow'])) {
+    $gv = strtolower(trim((string)$_GET['glow']));
+    $wantGlow = !in_array($gv, ['0', 'false', 'no', 'off'], true);
+}
+if ($wantGlow) {
+    // PHIVOLCS = Philippine events: always the Philippines boundary.
+    // Other sources resolve the country from ?place= as before.
+    $glowIso = strcasecmp(trim((string)($source ?? '')), 'PHIVOLCS') === 0
+        ? 'PHL'
+        : resolveCountryIso3($place, $COUNTRY_ISO3);
+    if ($glowIso !== null) {
+        $boundary = fetchCountryBoundary($glowIso);
+        if ($boundary !== null) {
+            $rings = countryRings($boundary);
+            // Only touch the map when the boundary actually crosses the view:
+            // a loaded-but-offscreen boundary must leave a normal full-color
+            // card (otherwise the mask turns everything gray with no outline).
+            $spanX = $rightLng - $leftLng; $spanY = $topLat - $botLat;
+            $inView = false;
+            if ($spanX > 0 && $spanY > 0) {
+                foreach ($rings as $ring) {
+                    foreach ($ring as $pt) {
+                        if (!is_array($pt) || count($pt) < 2) continue;
+                        $px = ($pt[0] - $leftLng) / $spanX * CARD_W;
+                        $py = ($topLat - $pt[1]) / $spanY * MAP_H;
+                        if ($px >= -20 && $px <= CARD_W + 20 && $py >= -20 && $py <= MAP_H + 20) { $inView = true; break 2; }
+                    }
+                }
+            }
+            if ($inView) {
+                // Country stays in color, everything outside goes black & white.
+                grayOutsideCountry($im, $rings, $leftLng, $rightLng, $topLat, $botLat, CARD_W, MAP_H);
+                drawBoundaryGlow($im, $boundary, $leftLng, $rightLng, $topLat, $botLat, CARD_W, MAP_H, [147, 197, 253]);
+            }
+        }
+    }
+}
 
 // --- Shape helpers ---
 // Scanline polygon fill (version-proof: imagefilledpolygon() changed its
@@ -425,6 +516,127 @@ function fillFadeRightX($im, int $x0, int $y0, int $x1, int $y1, array $rgb, int
     imagecopyresampled($im, $small, $x0, $y0, 0, 0, $w, $h, $sw, $h);
     imagedestroy($small);
 }
+// --- EXPERIMENT: country-boundary outline (geoBoundaries, ?glow=0 disables) ---
+// Thin light-blue outline only — no blurred shadow. Fails soft.
+function fetchCountryBoundary(string $iso3): ?array {
+    $cache = CACHE_DIR . '/boundary_' . $iso3 . '_ADM0_simp.geojson';
+    $fresh = is_file($cache) && (time() - filemtime($cache)) < 30 * 86400;
+    if (!$fresh) {
+        // Some countries only ship under gbHumanitarian — try both releases.
+        $rels = ['gbAuthoritative', 'gbHumanitarian'];
+        $geo = false;
+        foreach ($rels as $rel) {
+            $info = '';
+            $meta = function_exists('curl_init') ? fetchTileBody('https://www.geoboundaries.org/api/current/' . $rel . '/' . $iso3 . '/ADM0/', $info) : false;
+            if ($meta === false) continue;
+            $j = json_decode((string)$meta, true);
+            // Prefer the pre-simplified geometry (a fraction of the vertices —
+            // full Indonesia is 2.5M); fall back to the standard download.
+            $dl = is_array($j) ? ($j['simplifiedGeometryGeoJSON'] ?? $j['gjDownloadURL'] ?? null) : null;
+            if (!is_string($dl) || $dl === '') continue;
+            $info2 = '';
+            $geo = function_exists('curl_init') ? fetchTileBody($dl, $info2) : false;
+            if ($geo !== false) break;
+        }
+        if ($geo !== false) @file_put_contents($cache, (string)$geo);
+    }
+    $raw = @file_get_contents($cache);
+    if ($raw === false) return null;
+    $j = json_decode($raw, true);
+    return is_array($j) ? $j : null;
+}
+function countryRings(array $geojson): array {
+    $features = $geojson['features'] ?? [$geojson];
+    $rings = [];
+    foreach ($features as $f) {
+        if (!is_array($f)) continue;
+        $g = $f['geometry'] ?? $f;
+        if (!is_array($g)) continue;
+        $type = strtoupper((string)($g['type'] ?? ''));
+        $coords = $g['coordinates'] ?? null;
+        if (!is_array($coords)) continue;
+        if ($type === 'POLYGON') { foreach ($coords as $ring) { if (is_array($ring)) $rings[] = $ring; } }
+        elseif ($type === 'MULTIPOLYGON') { foreach ($coords as $poly) { if (is_array($poly)) foreach ($poly as $ring) { if (is_array($ring)) $rings[] = $ring; } } }
+    }
+    unset($geojson, $features);
+    // Decimate giant rings (Indonesia etc.): sub-pixel vertices are invisible
+    // at card scale, but 100k-point polygons exhaust PHP memory.
+    foreach ($rings as $rk => $ring) {
+        $n = count($ring);
+        if ($n > 1500) {
+            $stride = (int)ceil($n / 1500);
+            $thin = [];
+            for ($k = 0; $k < $n; $k += $stride) $thin[] = $ring[$k];
+            $thin[] = $ring[$n - 1]; // keep closing point
+            $rings[$rk] = $thin;
+        }
+    }
+    return $rings;
+}
+// Grayscale everything OUTSIDE the country: full-res gray copy merged back
+// through a blurred country mask (soft edge). Full resolution throughout —
+// an earlier half-size round trip visibly softened the whole map.
+function grayOutsideCountry($im, array $rings, float $leftLng, float $rightLng, float $topLat, float $botLat, int $mapW, int $mapH): void {
+    $spanX = $rightLng - $leftLng; $spanY = $topLat - $botLat;
+    if ($spanX <= 0 || $spanY <= 0 || count($rings) === 0) return;
+    $gray = imagecreatetruecolor($mapW, $mapH);
+    imagecopy($gray, $im, 0, 0, 0, 0, $mapW, $mapH);
+    if (function_exists('imagefilter')) imagefilter($gray, IMG_FILTER_GRAYSCALE);
+    // Mask built small (fast fill + blur), then sampled up smooth.
+    $mw = 360; $mh = 450;
+    $mask = imagecreatetruecolor($mw, $mh);
+    imagealphablending($mask, false);
+    imagefill($mask, 0, 0, imagecolorallocate($mask, 0, 0, 0));
+    $white = imagecolorallocate($mask, 255, 255, 255);
+    $kx = $mw / $mapW; $ky = $mh / $mapH;
+    foreach ($rings as $ring) {
+        $pts = [];
+        foreach ($ring as $pt) {
+            if (!is_array($pt) || count($pt) < 2) continue;
+            $pts[] = ($pt[0] - $leftLng) / $spanX * $mapW * $kx;
+            $pts[] = ($topLat - $pt[1]) / $spanY * $mapH * $ky;
+        }
+        if (count($pts) >= 6) fillPoly($mask, $pts, $white);
+    }
+    if (function_exists('imagefilter')) { imagefilter($mask, IMG_FILTER_GAUSSIAN_BLUR); imagefilter($mask, IMG_FILTER_GAUSSIAN_BLUR); }
+    $maskFull = imagecreatetruecolor($mapW, $mapH);
+    imagealphablending($maskFull, false);
+    imagecopyresampled($maskFull, $mask, 0, 0, 0, 0, $mapW, $mapH, $mw, $mh);
+    imagedestroy($mask);
+    for ($y = 0; $y < $mapH; $y++) {
+        for ($x = 0; $x < $mapW; $x++) {
+            $m = (imagecolorat($maskFull, $x, $y) >> 16) & 0xFF;
+            if ($m >= 250) continue; // inside: keep original pixel untouched
+            $g = imagecolorat($gray, $x, $y);
+            if ($m <= 5) { imagesetpixel($im, $x, $y, $g); continue; }
+            $c = imagecolorat($im, $x, $y);
+            $t = $m / 255;
+            imagesetpixel($im, $x, $y, imagecolorallocate($im,
+                (int)round((($c >> 16) & 0xFF) * $t + (($g >> 16) & 0xFF) * (1 - $t)),
+                (int)round((($c >> 8) & 0xFF) * $t + (($g >> 8) & 0xFF) * (1 - $t)),
+                (int)round(($c & 0xFF) * $t + ($g & 0xFF) * (1 - $t))));
+        }
+    }
+    imagedestroy($gray); imagedestroy($maskFull);
+}
+function drawBoundaryGlow($im, array $geojson, float $leftLng, float $rightLng, float $topLat, float $botLat, int $mapW, int $mapH, array $rgb): void {
+    $spanX = $rightLng - $leftLng; $spanY = $topLat - $botLat;
+    if ($spanX <= 0 || $spanY <= 0) return;
+    $rings = countryRings($geojson);
+    if (count($rings) === 0) return;
+    $line = imagecolorallocatealpha($im, $rgb[0], $rgb[1], $rgb[2], 20);
+    imagesetthickness($im, 2);
+    foreach ($rings as $ring) {
+        $pts = [];
+        foreach ($ring as $pt) {
+            if (!is_array($pt) || count($pt) < 2) continue;
+            $pts[] = ($pt[0] - $leftLng) / $spanX * $mapW;
+            $pts[] = ($topLat - $pt[1]) / $spanY * $mapH;
+        }
+        if (count($pts) >= 6) imagepolygon($im, $pts, (int)(count($pts) / 2), $line);
+    }
+    imagesetthickness($im, 1);
+}
 // Letter-tracked centered line (airy spacing GD can't do natively).
 function drawTracked($im, string $font, int $size, int $cx, int $baselineY, string $text, int $color, int $tracking = 2): void {
     $chars = preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY);
@@ -471,10 +683,12 @@ $epiX = CARD_W / 2;
 $epiY = (int)round(0.58 * MAP_H);
 
 // --- 1. Alert banner (transparent scrim over the full-bleed map) ---
-// Opaque at the top edge, fading to fully transparent at the map edge.
+// Opaque down past the subline ("MAJOR EVENT", baseline +128), THEN fading
+// to transparent toward the map center — text always sits on solid scrim.
 $bannerTop = 0;
 $bannerH = 150;
-fillScrimX($im, 0, $bannerTop, CARD_W - 1, $bannerTop + $bannerH, [5, 8, 20], [11, 16, 32], 0, 127);
+fillScrimX($im, 0, $bannerTop, CARD_W - 1, $bannerTop + 140, [5, 8, 20], [11, 16, 32], 0, 0);
+fillScrimX($im, 0, $bannerTop + 140, CARD_W - 1, $bannerTop + $bannerH + 75, [5, 8, 20], [11, 16, 32], 0, 127);
 // Title: part 1 white + part 2 red, centered on the card.
 // Advances measured per part (trailing-space bbox is unreliable) so the
 // halves never overlap.
@@ -688,6 +902,66 @@ drawTracked($im, $fontInter, 9, (int)round(CARD_W / 2) + 1, $infoTop + 96 + 1, '
 drawTracked($im, $fontInter, 9, (int)round(CARD_W / 2), $infoTop + 96, 'https://terraguard-ph.pages.dev/', $footUrl, 2);
 
 // --- Output + cache ---
+// Debug mode: plain-text boundary report (browser-checkable, no cache).
+// e.g. quake-card.php?...&place=Panama+City,+PANAMA&debug=glow
+if (isset($_GET['debug']) && $_GET['debug'] === 'glow') {
+    header('Content-Type: text/plain');
+    header('Cache-Control: no-store');
+    $dbgIso = resolveCountryIso3($place, $COUNTRY_ISO3);
+    echo "place=" . $place . "\niso=" . var_export($dbgIso, true) . "\n";
+    echo "curl=" . (function_exists('curl_init') ? 'yes' : 'no') . "\n";
+    echo "bbox=" . $leftLng . ',' . $botLat . ',' . $rightLng . ',' . $topLat . "\n";
+    if ($dbgIso !== null) {
+        $dbgB = fetchCountryBoundary($dbgIso);
+        echo "boundary=" . ($dbgB === null ? 'null' : 'ok') . "\n";
+        if ($dbgB === null) {
+            foreach (['gbAuthoritative', 'gbHumanitarian'] as $rel) {
+                $di = '';
+                $metaUrl = 'https://www.geoboundaries.org/api/current/' . $rel . '/' . $dbgIso . '/ADM0/';
+                $meta = function_exists('curl_init') ? fetchTileBody($metaUrl, $di) : false;
+                echo "meta[$rel]=" . ($meta === false ? 'false' : strlen((string)$meta) . ' bytes') . " [$di]\n";
+                if ($meta !== false) {
+                    $mj = json_decode((string)$meta, true);
+                    $ddl = is_array($mj) ? ($mj['gjDownloadURL'] ?? null) : null;
+                    echo "dl[$rel]=" . (is_string($ddl) ? $ddl : var_export($ddl, true)) . "\n";
+                    if (is_string($ddl) && $ddl !== '') {
+                        $di2 = '';
+                        $geo = fetchTileBody($ddl, $di2);
+                        echo "geo[$rel]=" . ($geo === false ? 'false' : strlen((string)$geo) . ' bytes') . " [$di2]\n";
+                    }
+                }
+            }
+        }
+        if (is_array($dbgB)) {
+            $feats = $dbgB['features'] ?? [$dbgB];
+            echo "features=" . count($feats) . "\n";
+            $ringCount = 0; $ptCount = 0; $inView = 0;
+            foreach ($feats as $f) {
+                $g = is_array($f) ? ($f['geometry'] ?? $f) : null;
+                if (!is_array($g)) continue;
+                $type = strtoupper((string)($g['type'] ?? ''));
+                $coords = $g['coordinates'] ?? null;
+                if (!is_array($coords)) continue;
+                $polys = $type === 'POLYGON' ? [$coords] : ($type === 'MULTIPOLYGON' ? $coords : []);
+                foreach ($polys as $poly) {
+                    foreach ((array)$poly as $ring) {
+                        if (!is_array($ring)) continue;
+                        $ringCount++;
+                        foreach ($ring as $pt) {
+                            if (!is_array($pt) || count($pt) < 2) continue;
+                            $ptCount++;
+                            $px = ($pt[0] - $leftLng) / ($rightLng - $leftLng) * CARD_W;
+                            $py = ($topLat - $pt[1]) / ($topLat - $botLat) * MAP_H;
+                            if ($px >= 0 && $px <= CARD_W && $py >= 0 && $py <= MAP_H) $inView++;
+                        }
+                    }
+                }
+            }
+            echo "rings=$ringCount points=$ptCount inView=$inView\n";
+        }
+    }
+    exit;
+}
 header('Content-Type: image/png');
 header('Cache-Control: public, max-age=86400');
 imagepng($im, $cacheFile);
