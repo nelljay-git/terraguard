@@ -1135,10 +1135,9 @@ export function VideoReportModal({
         }
         const dest = actx.createMediaStreamDestination();
         const t0 = actx.currentTime + 0.05;
-        const playBuf = (buf: AudioBuffer, when: number, rate = 1.0) => {
+        const playBuf = (buf: AudioBuffer, when: number) => {
           const src = actx.createBufferSource();
           src.buffer = buf;
-          src.playbackRate.value = rate;
           const g = actx.createGain();
           g.gain.value = 1.0;
           src.connect(g);
@@ -1176,8 +1175,7 @@ export function VideoReportModal({
               /* silent */
             }
           }
-          // Google TTS reads slowly — 1.25x so the line lands briskly.
-          if (ttsAB) playBuf(await actx.decodeAudioData(ttsAB), t0 + 1.0, 1.25);
+          if (ttsAB) playBuf(await actx.decodeAudioData(ttsAB), t0 + 1.0);
         } catch (e) {
           console.error('[VideoReport] intro voice failed, continuing silent:', e instanceof Error ? e.message : e);
         }
