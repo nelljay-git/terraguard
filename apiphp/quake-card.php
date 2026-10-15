@@ -684,18 +684,55 @@ function drawBoundaryGlow($im, array $geojson, float $leftLng, float $rightLng, 
     if ($spanX <= 0 || $spanY <= 0) return;
     $rings = countryRings($geojson);
     if (count($rings) === 0) return;
-    $line = imagecolorallocatealpha($im, $rgb[0], $rgb[1], $rgb[2], 20);
-    imagesetthickness($im, 3);
+    // Smooth the outline two ways: Chaikin corner-cutting on the projected
+    // points (rounds the simplified-geometry jaggies), then a 2x supersampled
+    // stroke downscaled onto the card (antialiased edges).
+    $ov = imagecreatetruecolor($mapW * 2, $mapH * 2);
+    imagealphablending($ov, false);
+    imagesavealpha($ov, true);
+    imagefill($ov, 0, 0, imagecolorallocatealpha($ov, 0, 0, 0, 127));
+    $olc = imagecolorallocatealpha($ov, $rgb[0], $rgb[1], $rgb[2], 20);
+    imagesetthickness($ov, 6);
     foreach ($rings as $ring) {
         $pts = [];
         foreach ($ring as $pt) {
             if (!is_array($pt) || count($pt) < 2) continue;
-            $pts[] = ($pt[0] - $leftLng) / $spanX * $mapW;
-            $pts[] = ($topLat - $pt[1]) / $spanY * $mapH;
+            $pts[] = ($pt[0] - $leftLng) / $spanX * $mapW * 2;
+            $pts[] = ($topLat - $pt[1]) / $spanY * $mapH * 2;
         }
-        if (count($pts) >= 6) imagepolygon($im, $pts, (int)(count($pts) / 2), $line);
+        if (count($pts) >= 8) {
+            $pts = chaikinSmooth($pts, 2);
+            imagepolygon($ov, $pts, (int)(count($pts) / 2), $olc);
+        }
     }
+    imagesetthickness($ov, 1);
+    imagealphablending($im, true);
+    imagecopyresampled($im, $ov, 0, 0, 0, 0, $mapW, $mapH, $mapW * 2, $mapH * 2);
+    imagedestroy($ov);
     imagesetthickness($im, 1);
+}
+// Chaikin corner-cutting: each iteration replaces every edge with two points
+// at 1/4 and 3/4, rounding corners. Flat [x,y,...], implicitly closed.
+function chaikinSmooth(array $pts, int $iterations = 2): array {
+    for ($it = 0; $it < $iterations; $it++) {
+        $n = (int)(count($pts) / 2);
+        if ($n < 4) break;
+        // Drop a duplicated closing point; the loop below wraps instead.
+        if ($pts[0] === $pts[($n - 1) * 2] && $pts[1] === $pts[($n - 1) * 2 + 1]) {
+            array_splice($pts, ($n - 1) * 2, 2);
+            $n--;
+        }
+        $out = [];
+        for ($i = 0; $i < $n; $i++) {
+            $ax = $pts[$i * 2]; $ay = $pts[$i * 2 + 1];
+            $j = (($i + 1) % $n) * 2;
+            $bx = $pts[$j]; $by = $pts[$j + 1];
+            $out[] = $ax * 0.75 + $bx * 0.25; $out[] = $ay * 0.75 + $by * 0.25;
+            $out[] = $ax * 0.25 + $bx * 0.75; $out[] = $ay * 0.25 + $by * 0.75;
+        }
+        $pts = $out;
+    }
+    return $pts;
 }
 // Letter-tracked centered line (airy spacing GD can't do natively).
 function drawTracked($im, string $font, int $size, int $cx, int $baselineY, string $text, int $color, int $tracking = 2): void {
