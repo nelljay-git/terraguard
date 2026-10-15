@@ -838,6 +838,9 @@ function buildUsgsFbMessage(eq) {
         `Magnitude: ${eq.magnitude}`,
         `Location: ${place}`,
         `Date & Time: ${date} - ${time}`,
+        ...(eq.aftershock
+            ? [`🔁 Aftershock of the M${eq.aftershock.mainMag} ${eq.aftershock.mainPlace} quake (#${eq.aftershock.seqNo} in sequence)`]
+            : []),
         `Depth: ${eq.depth} km`,
         `Coordinates: ${eq.latitude}°N, ${eq.longitude}°E`,
         ``,
@@ -879,6 +882,8 @@ async function postUsgsToFacebook(eq, env) {
     const filterSkip = fbPassesFilters(eq, env);
     if (filterSkip)
         return filterSkip;
+    // Aftershock sequence (shared cross-source tracker -> card banner too).
+    await trackAftershock(env.WEBHOOK_KV, env, eq, eq.usgsId ?? "usgs");
     let pageToken = await getFacebookPageToken(env);
     if (!pageToken)
         pageToken = userToken; // stored token may already be a Page token
@@ -895,6 +900,7 @@ async function postUsgsToFacebook(eq, env) {
             place: String(eq.location ?? "").slice(0, 90),
             date: fbDate, time: fbTime,
             depth: eq.depth, source: "USGS",
+            ...(eq.aftershock ? { aftershock: String(eq.aftershock.seqNo) } : {}),
         }).toString()
         : "";
     const cardUrls = quakeCardCandidates(hasCoords ? cardParams : "");
@@ -1024,7 +1030,7 @@ async function sendEmscWebhook(eq, env) {
 🏛️ **Authority:** ${eq.auth}
 
 📡 **Source:** EMSC-CSEM (${eq.unid})
-
+${eq.aftershock ? `\n🔁 **Aftershock** of M${eq.aftershock.mainMag} ${eq.aftershock.mainPlace} (#${eq.aftershock.seqNo} in sequence)\n` : ``}
 ❓ **Did you feel it?** React ✅ for Yes, ❎ for No`;
     const payload = {
         content,
@@ -1122,6 +1128,82 @@ function findEmscRevision(index, timeMs, lat, lng, mag) {
     return null;
 }
 
+// ===== EMSC aftershock sequences (per-country KV window) =====
+// Every posted EMSC quake is logged under seq:{ISO3} (7d TTL, cap 20). A new
+// event is an aftershock when the same country already has >=
+// AFTERSHOCK_MIN_COUNT (default 3) prior events inside AFTERSHOCK_WINDOW_H
+// (default 168h), it is smaller than the window's largest (the mainshock),
+// and it falls within a mainshock-scaled radius (or AFTERSHOCK_RADIUS_KM).
+const SEQ_TTL_SECONDS = 7 * 24 * 3600;
+
+async function getCountrySeq(kv, iso) {
+    try {
+        const raw = await kv.get(`seq:${iso}`);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr.filter((e) => e && typeof e.timeMs === "number") : [];
+    } catch {
+        return [];
+    }
+}
+
+async function pushCountrySeq(kv, iso, entry) {
+    const seq = await getCountrySeq(kv, iso);
+    // Same physical quake announced by another source: don't double-count.
+    for (const e of seq) {
+        if (Math.abs((e.timeMs ?? 0) - entry.timeMs) <= 120 * 1000 &&
+            haversineKm(e.lat, e.lng, entry.lat, entry.lng) <= 50) {
+            return seq;
+        }
+    }
+    seq.unshift(entry);
+    await kv.put(`seq:${iso}`, JSON.stringify(seq.slice(0, 20)), { expirationTtl: SEQ_TTL_SECONDS });
+    return seq;
+}
+
+// Shared tracker for all sources: detect an aftershock against the country's
+// sequence, log this event, and attach eq.aftershock when flagged.
+// Returns the shock (or null). Never throws.
+async function trackAftershock(kv, env, eq, id) {
+    try {
+        if (!kv) return null;
+        const lat = parseFloat(eq.latitude), lng = parseFloat(eq.longitude), mag = parseFloat(eq.magnitude);
+        const timeMs = typeof eq.timeMs === "number" ? eq.timeMs : NaN;
+        if (isNaN(lat) || isNaN(lng) || isNaN(mag) || isNaN(timeMs)) return null;
+        const iso = locationToIso3(eq.location);
+        if (!iso) return null;
+        const seq = await getCountrySeq(kv, iso);
+        const shock = detectAftershock(seq, timeMs, lat, lng, mag, env);
+        await pushCountrySeq(kv, iso, { timeMs, lat, lng, mag, id, place: eq.location });
+        if (shock) {
+            eq.aftershock = shock;
+            console.log(`[aftershock][${iso}] #${shock.seqNo} of M${shock.mainMag} ${shock.mainPlace} (${shock.distKm}km)`);
+        }
+        return shock;
+    } catch (e) {
+        console.error("[aftershock] tracker failed", e instanceof Error ? e.message : String(e));
+        return null;
+    }
+}
+
+function detectAftershock(seq, timeMs, lat, lng, mag, env) {
+    const windowH = parseFloat(env.AFTERSHOCK_WINDOW_H ?? "168");
+    const minCount = parseInt(env.AFTERSHOCK_MIN_COUNT ?? "3", 10);
+    const windowMs = (isNaN(windowH) ? 168 : windowH) * 3600 * 1000;
+    const need = isNaN(minCount) ? 3 : minCount;
+    const recent = seq.filter((e) => e.timeMs >= timeMs - windowMs && e.timeMs < timeMs);
+    if (recent.length < need) return null;
+    let main = null;
+    for (const e of recent) {
+        if (!main || e.mag > main.mag) main = e;
+    }
+    if (!main || !(mag < main.mag)) return null;
+    const fixedRadius = parseFloat(env.AFTERSHOCK_RADIUS_KM ?? "");
+    const radius = !isNaN(fixedRadius) ? fixedRadius : (main.mag >= 7 ? 200 : main.mag >= 6 ? 120 : 75);
+    const dist = haversineKm(lat, lng, main.lat, main.lng);
+    if (dist > radius) return null;
+    return { mainMag: main.mag, mainPlace: main.place, mainId: main.id, seqNo: recent.length + 1, distKm: Math.round(dist) };
+}
+
 async function handleEmsc(env) {
     const kv = env.WEBHOOK_KV;
     const latest = await fetchLatestEmsc(env);
@@ -1148,6 +1230,9 @@ async function handleEmsc(env) {
         await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, revisionOf: `emsc:${rev.id}`, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
         return `emsc-revision ${dedupKey} (already sent as emsc:${rev.id})`;
     }
+    // Aftershock check: log this event into its country's sequence, and flag
+    // it when it trails a larger mainshock in the same window.
+    await trackAftershock(kv, env, latest, latest.unid);
     await sendEmscWebhook(latest, env);
     // Facebook auto-post — EMSC ONLY. Best-effort: never blocks or throws.
     let fbStatus = "skipped";
@@ -1269,7 +1354,9 @@ function buildFacebookMessage(eq) {
         `Coordinates: ${eq.latitude}°N, ${eq.longitude}°E`,
         ``,
         `Earthquake Info: ${terraLink}`,
-        `Please take note that this is not the final report. pleminary information`,
+        ...(eq.aftershock
+            ? [`🔁 Aftershock of the M${eq.aftershock.mainMag} ${eq.aftershock.mainPlace} quake (#${eq.aftershock.seqNo} in sequence)`]
+            : [`Please take note that this is not the final report. pleminary information`]),
         ``,
         `Source: EMSC-CSEM (${eq.unid})`,
         ``,
@@ -1316,6 +1403,7 @@ async function postEmscToFacebook(eq, env) {
             place: String(eq.location ?? "").slice(0, 90),
             date: fbDate, time: fbTime,
             depth: eq.depth, source: "EMSC",
+            ...(eq.aftershock ? { aftershock: String(eq.aftershock.seqNo) } : {}),
         }).toString()
         : "";
     const cardUrls = quakeCardCandidates(hasCoords ? cardParams : "");
@@ -1489,6 +1577,9 @@ function buildPhivolcsFbMessage(eq) {
         ``,
         `Earthquake Info: ${terraLink}`,
         `A visual representation of the seismic event based on available earthquake data.`,
+        ...(eq.aftershock
+            ? [`🔁 Aftershock of the M${eq.aftershock.mainMag} ${eq.aftershock.mainPlace} quake (#${eq.aftershock.seqNo} in sequence)`]
+            : []),
         `Please take note that this is not the final report. pleminary information`,
         ``,
         `Source: PHIVOLCS`,
@@ -1514,6 +1605,8 @@ async function postPhivolcsToFacebook(eq, env) {
     const filterSkip = fbPassesFilters(eq, env);
     if (filterSkip)
         return filterSkip;
+    // Aftershock sequence (shared cross-source tracker -> card banner too).
+    await trackAftershock(env.WEBHOOK_KV, env, eq, eq.link ?? eq.datetime ?? "phivolcs");
     let pageToken = await getFacebookPageToken(env);
     if (!pageToken)
         pageToken = userToken; // stored token may already be a Page token
@@ -1530,6 +1623,7 @@ async function postPhivolcsToFacebook(eq, env) {
             date: fbDate, time: fbTime,
             depth: eq.depth, source: "PHIVOLCS",
             ...(eq.infoNo ? { info: eq.infoNo } : {}),
+            ...(eq.aftershock ? { aftershock: String(eq.aftershock.seqNo) } : {}),
         }).toString()
         : "";
     const cardUrls = quakeCardCandidates(hasCoords ? cardParams : "");
@@ -1642,8 +1736,122 @@ function json(body, status = 200) {
     });
 }
 
-// Named exports for unit testing (harmless in the worker runtime).
-    export { parsePhivolcsTimeMs, buildPhivolcsFbMessage, fetchLatestPhivolcs, fbPassesFilters, postEmscToFacebook, postPhivolcsToFacebook, buildFacebookMessage, formatUtcDisplayMs, formatLocalDisplayMs, locationToIso3, phivolcsDisplayParts, phivolcsInfoNo, findEmscRevision, buildUsgsFbMessage, postUsgsToFacebook };
+// ===== Admin panel: KV inspection + manual posts (CRON_SECRET authed) =====
+function htmlEsc(s) {
+    return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+async function adminData(kv) {
+    const out = { last: {}, seqs: [], sent: 0, fbPosted: 0 };
+    try {
+        for (const k of ["last_eq_id", "last_emsc_id", "last_phivolcs_id"]) {
+            out.last[k] = (await kv.get(k)) || "—";
+        }
+        const sentIdx = await getSentIndex(kv);
+        out.sent = Array.isArray(sentIdx) ? sentIdx.length : 0;
+        const fbIdx = await getFbPostedIndex(kv);
+        out.fbPosted = Array.isArray(fbIdx) ? fbIdx.length : 0;
+        const listed = await kv.list({ prefix: "seq:" });
+        const names = (listed?.keys ?? []).map((k) => k.name).slice(0, 30);
+        for (const name of names) {
+            const seq = await getCountrySeq(kv, name.slice(4));
+            if (seq.length === 0) continue;
+            const max = seq.reduce((a, b) => (b.mag > a.mag ? b : a), seq[0]);
+            out.seqs.push({ iso: name.slice(4), count: seq.length, maxMag: max.mag, latest: new Date(seq[0].timeMs).toISOString() });
+        }
+        out.seqs.sort((a, b) => b.count - a.count);
+    } catch (e) {
+        out.error = e instanceof Error ? e.message : String(e);
+    }
+    return out;
+}
+
+function adminHtml(d, keyParam) {
+    const rows = d.seqs.map((s) =>
+        `<tr><td>${htmlEsc(s.iso)}</td><td>${s.count}</td><td>M${htmlEsc(String(s.maxMag))}</td><td>${htmlEsc(s.latest)}</td></tr>`
+    ).join("") || `<tr><td colspan="4">no sequences yet</td></tr>`;
+    const trig = (p, label) => `<a href="${p}?key=${htmlEsc(keyParam)}"><button>${label}</button></a>`;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>TerraGuard Earthquake Admin</title><style>
+body{font:14px/1.5 system-ui,sans-serif;background:#0b1220;color:#e6edf7;margin:0;padding:20px}
+h1{font-size:18px}h2{font-size:14px;text-transform:uppercase;letter-spacing:.8px;color:#93a4bf}
+.card{background:#131c2e;border:1px solid #24314a;border-radius:10px;padding:14px;margin-bottom:14px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid #24314a;padding:6px 9px;text-align:left}
+button{background:#1d4ed8;color:#fff;border:0;border-radius:7px;padding:8px 14px;margin:3px;cursor:pointer}
+input,select{background:#0f1726;color:#e6edf7;border:1px solid #24314a;border-radius:7px;padding:7px 9px;margin:3px}
+a{color:#93c5fd}</style></head><body>
+<h1>🌍 TerraGuard Earthquake Admin</h1>
+<div class="card"><h2>Status</h2>
+<div>last_eq_id: ${htmlEsc(d.last.last_eq_id)}<br/>last_emsc_id: ${htmlEsc(d.last.last_emsc_id)}<br/>last_phivolcs_id: ${htmlEsc(d.last.last_phivolcs_id)}</div>
+<div>sent index: ${d.sent} · fb posted: ${d.fbPosted}</div>${d.error ? `<div>KV error: ${htmlEsc(d.error)}</div>` : ``}</div>
+<div class="card"><h2>Aftershock sequences (seq:*)</h2>
+<table><tr><th>ISO</th><th>events</th><th>max</th><th>latest</th></tr>${rows}</table></div>
+<div class="card"><h2>Triggers</h2>
+${trig("/trigger-usgs", "USGS")} ${trig("/trigger-emsc", "EMSC")} ${trig("/trigger-phivolcs", "PHIVOLCS")} ${trig("/trigger", "All")}</div>
+<div class="card"><h2>Manual Facebook post</h2>
+<form method="POST" action="/admin/post?key=${htmlEsc(keyParam)}">
+<select name="source"><option value="emsc">EMSC</option><option value="usgs">USGS</option><option value="phivolcs">PHIVOLCS</option></select><br/>
+<input name="lat" placeholder="latitude" required/> <input name="lng" placeholder="longitude" required/><br/>
+<input name="mag" placeholder="magnitude" required/> <input name="depth" placeholder="depth km" value="10"/><br/>
+<input name="place" placeholder="place, COUNTRY" size="40" required/><br/>
+<input name="datetime" placeholder="15 October 2026 - 03:40 PM (PHIVOLCS wall) or UTC instant" size="40"/><br/>
+<button type="submit">Post to Facebook</button></form>
+<p>Runs the same tracker + card pipeline as auto-posts (aftershock banner included). Marks the event sent so auto-posts won't duplicate it.</p></div>
+</body></html>`;
+}
+
+// Build a synthetic event from admin form fields and run it through the
+// normal poster (tracking + card + FB), then mark it sent/fb-posted so the
+// automatic handlers treat it as already announced.
+async function adminManualPost(env, params) {
+    const kv = env.WEBHOOK_KV;
+    const source = String(params.source ?? "emsc").trim().toLowerCase();
+    const lat = parseFloat(params.lat), lng = parseFloat(params.lng), mag = parseFloat(params.mag);
+    if (isNaN(lat) || isNaN(lng) || isNaN(mag)) return "error: lat/lng/mag required";
+    const place = String(params.place ?? `${lat}, ${lng}`).trim().slice(0, 90);
+    const depth = String(params.depth ?? "10").trim() || "10";
+    const now = Date.now();
+    if (source === "usgs") {
+        const eq = { latitude: String(lat), longitude: String(lng), magnitude: String(mag), location: place, depth, timeMs: now, datetime: new Date(now).toISOString(), usgsId: `manual-${now}`, tsunami: 0, mmi: null };
+        const st = await postUsgsToFacebook(eq, env);
+        if (st.startsWith("posted")) {
+            await recordFbPosted(kv, { source: "usgs", id: eq.usgsId, timeMs: now, lat, lng, mag });
+            await recordSent(kv, { source: "usgs", id: eq.usgsId, timeMs: now, lat, lng, mag });
+        }
+        return `usgs manual: ${st}`;
+    }
+    if (source === "phivolcs") {
+        const dt = String(params.datetime ?? "").trim() || phivolcsNowString();
+        const eq = { datetime: dt, latitude: String(lat), longitude: String(lng), magnitude: String(mag), location: place, depth, link: "", infoNo: "" };
+        eq.timeMs = parsePhivolcsTimeMs(dt);
+        const st = await postPhivolcsToFacebook(eq, env);
+        if (st.startsWith("posted")) {
+            await recordFbPosted(kv, { source: "phivolcs", id: `manual-${now}`, timeMs: isNaN(eq.timeMs) ? now : eq.timeMs, lat, lng, mag });
+        }
+        return `phivolcs manual: ${st}`;
+    }
+    const eq = { latitude: String(lat), longitude: String(lng), magnitude: String(mag), location: place, depth, timeMs: now, datetime: new Date(now).toISOString(), unid: `manual-${now}`, magtype: "m", auth: "MANUAL", source_id: "" };
+    await trackAftershock(kv, env, eq, eq.unid);
+    const st = await postEmscToFacebook(eq, env);
+    if (st.startsWith("posted")) {
+        await recordFbPosted(kv, { source: "emsc", id: eq.unid, timeMs: now, lat, lng, mag });
+        await recordSent(kv, { source: "emsc", id: eq.unid, timeMs: now, lat, lng, mag });
+    }
+    return `emsc manual: ${st}`;
+}
+
+// Current Manila wall time formatted like a PHIVOLCS bulletin datetime.
+function phivolcsNowString() {
+    try {
+        const now = new Date();
+        const md = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Manila", day: "numeric", month: "long", year: "numeric" }).format(now);
+        let t = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", hour12: true }).format(now);
+        return `${md} - ${t}`;
+    } catch {
+        return "";
+    }
+}
+    export { parsePhivolcsTimeMs, buildPhivolcsFbMessage, fetchLatestPhivolcs, fbPassesFilters, postEmscToFacebook, postPhivolcsToFacebook, buildFacebookMessage, formatUtcDisplayMs, formatLocalDisplayMs, locationToIso3, detectAftershock, getCountrySeq, pushCountrySeq, trackAftershock, phivolcsDisplayParts, phivolcsInfoNo, findEmscRevision, buildUsgsFbMessage, postUsgsToFacebook };
 
 export default {
     async fetch(request, env) {
@@ -1698,6 +1906,27 @@ export default {
         if (authed && (url.pathname === "/trigger-phivolcs" || url.pathname === "/cron-phivolcs")) {
             try {
                 return json({ success: true, source: "PHIVOLCS", message: await handlePhivolcsFb(env) });
+            }
+            catch (e) {
+                return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
+            }
+        }
+        if (authed && url.pathname === "/admin" && request.method === "GET") {
+            const d = await adminData(env.WEBHOOK_KV);
+            const keyParam = url.searchParams.get("key") ?? "";
+            return new Response(adminHtml(d, keyParam), { headers: { "Content-Type": "text/html", ...CORS } });
+        }
+        if (authed && url.pathname === "/admin/post" && request.method === "POST") {
+            try {
+                let params = {};
+                const ct = request.headers.get("content-type") || "";
+                if (ct.includes("application/json")) {
+                    params = await request.json();
+                } else {
+                    const form = await request.formData();
+                    for (const [k, v] of form.entries()) params[k] = String(v);
+                }
+                return json({ success: true, message: await adminManualPost(env, params) });
             }
             catch (e) {
                 return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);

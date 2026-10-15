@@ -28,6 +28,9 @@ EMSC_MIN_LAT = "-90"
 EMSC_MAX_LAT = "90"
 EMSC_MIN_LNG = "-180"
 EMSC_MAX_LNG = "180"
+# Aftershock sequences (EMSC): AFTERSHOCK_WINDOW_H (default "168"),
+# AFTERSHOCK_MIN_COUNT (default "3" prior events), AFTERSHOCK_RADIUS_KM
+# (default scaled 75/120/200 by mainshock mag). Unset = defaults.
 
 # Secrets:
 # DISCORD_WEBHOOK_URL = USGS channel (existing)

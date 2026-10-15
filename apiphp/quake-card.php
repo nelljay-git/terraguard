@@ -110,6 +110,14 @@ if ($tsunamiRaw !== '' && !preg_match('/^(none|n\/?a)\b/i', trim($tsunamiRaw))
     && !preg_match('/no tsunami|no threat|no hazard|not expect|does not pose/i', $tsunamiRaw)) {
     $tsunamiText = safeUpper($tsunamiRaw);
 }
+// Aftershock flag (?aftershock=1, or ?aftershock=4 for "#4"): renders an
+// AFTERSHOCK banner pill. The worker sets it from its sequence tracker.
+$aftershockRaw = strtolower(trim((string)($_GET['aftershock'] ?? '')));
+$aftershockNo = '';
+if ($aftershockRaw !== '' && !in_array($aftershockRaw, ['0', 'false', 'no', 'off'], true)) {
+    $digits = preg_replace('/\D+/', '', $aftershockRaw);
+    $aftershockNo = $digits !== '' ? ' #' . $digits : '';
+}
 // Banner headline, two parts: part 1 renders white, part 2 in the alert colour.
 // Defaults keep the original "EARTHQUAKE DETECTED" card byte-identical; the
 // tsunami monitor reuses this generator with title=TSUNAMI INFORMATION so it
@@ -848,6 +856,23 @@ drawCentered($im, $fontInter, 15, $panelCx, $panelTop + 35 + 2, 'MAGNITUDE', $tx
 drawCentered($im, $fontInter, 15, $panelCx, $panelTop + 35, 'MAGNITUDE', $muted);
 drawCentered($im, $fontOswald, $magSize, $panelCx + 2, $panelTop + 102 + 2, $magText, $txtShadow);
 drawCentered($im, $fontOswald, $magSize, $panelCx, $panelTop + 102, $magText, $white);
+// --- 2a. AFTERSHOCK banner (?aftershock= / ?aftershock=N) ---
+// Top-right pill (magnitude stack lives left now): amber accent bar + label.
+if ($aftershockNo !== '' || $aftershockRaw !== '') {
+    $aftText = 'AFTERSHOCK' . $aftershockNo;
+    $aftSize = autofit($fontOswald, $aftText, 26, 280);
+    $aftW = textWidth($fontOswald, $aftSize, $aftText) + 56;
+    $aftX1 = CARD_W - 17;
+    $aftX0 = $aftX1 - $aftW;
+    $aftTop = 16;
+    $aftH = 52;
+    $aftAmber = imagecolorallocate($im, 249, 115, 22);
+    fillFadeRightX($im, $aftX0, $aftTop, $aftX1, $aftTop + $aftH, [8, 12, 24], 25, 127);
+    imagefilledrectangle($im, $aftX1 - 8, $aftTop, $aftX1, $aftTop + $aftH, $aftAmber);
+    $aftCx = (int)round($aftX0 + $aftW / 2);
+    drawCentered($im, $fontOswald, $aftSize, $aftCx + 2, $aftTop + 37 + 2, $aftText, $txtShadow);
+    drawCentered($im, $fontOswald, $aftSize, $aftCx, $aftTop + 37, $aftText, $white);
+}
 
 // --- 2b. Information number pill (PHIVOLCS bulletins only, ?info=) ---
 // Same width/style as the magnitude panel, tucked right below it (clear
