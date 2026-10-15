@@ -760,6 +760,11 @@ async function postUsgsToFacebook(eq, env) {
     const postFlag = String(env.USGS_POST_FB ?? "true").trim().toLowerCase();
     if (["false", "0", "no", "off", "disabled"].includes(postFlag))
         return "skipped (USGS_POST_FB disabled)";
+    // USGS-only magnitude gate: when USGS_MIN_MAG is set, post only quakes
+    // at/above it (e.g. USGS_MIN_MAG="6.0"). Unset = no extra gate.
+    const usgsMinMag = parseFloat(env.USGS_MIN_MAG ?? "");
+    if (!isNaN(usgsMinMag) && parseFloat(eq.magnitude) < usgsMinMag)
+        return `skipped (M${eq.magnitude} < USGS_MIN_MAG ${usgsMinMag})`;
     // Same FB gates as the other sources (no PH exception for finals).
     const filterSkip = fbPassesFilters(eq, env);
     if (filterSkip)
