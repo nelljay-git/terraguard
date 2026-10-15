@@ -1,6 +1,6 @@
 <?php
 /**
- * quake-card.php — PHP/GD earthquake visual-report card (1080x1440 PNG) for
+ * quake-card.php — PHP/GD earthquake visual-report card (750x938 PNG) for
  * Facebook auto-posts. Alert-banner design (no header/footer bars):
  * full-bleed Esri satellite stitch (the same "satellite mode" tiles the
  * app's Leaflet map shows), "EARTHQUAKE DETECTED" banner,
@@ -8,7 +8,7 @@
  * bottom info bar (date/source/synthetic seismograph).
  *
  * (Leaflet itself is a browser JS lib and can't run inside PHP/GD — but
- * its tile *source* can: one Esri export request renders the whole 1080x1440
+ * its tile *source* can: one Esri export request renders the whole 750x938
  * map server-side (plus one transparent labels overlay). This replaced the
  * old Yandex static-maps endpoint, which shared hosts increasingly
  * block/rate-limit, yielding blank dark cards.)
@@ -20,7 +20,7 @@
  *                   the tsunami monitor passes TSUNAMI / INFORMATION)
  *   debug=tiles  plain-text tile-fetch report (no image, no cache) to
  *                   diagnose blank maps from the browser
- * Output: image/png (1080x1440), rendered fresh per query.
+ * Output: image/png (750x938), rendered fresh per query.
  *
  * Requirements: PHP 8+ with GD + FreeType (imagettftext), cURL (or
  * allow_url_fopen for tile fetch). Fonts: apiphp/fonts/*.ttf (bundled)
@@ -51,12 +51,17 @@ register_shutdown_function(function () {
 });
 
 // --- Configuration ---
-define('CARD_W', 1080);
-define('CARD_H', 1440);
-define('MAP_H', 1440); // full-bleed map; bars are overlays
+define('CARD_W', 750);
+define('CARD_H', 938);
+define('MAP_H', 938); // full-bleed map; bars are overlays
 define('CACHE_TTL', 0); // no card cache — always render fresh
 define('CACHE_DIR', sys_get_temp_dir() . '/quakecard_cache');
 define('TILE_TIMEOUT', 20); // export renders server-side; allow slow uplinks
+// Banner headline text ("EARTHQUAKE DETECTED" + severity subline).
+// Hidden for now — flip back to true to restore. The top scrim stays as a
+// pure edge fade regardless.
+// Overridable per request: ?bannertext=1 shows it again without re-upload.
+define('SHOW_BANNER_TEXT', false);
 // Map style: true = satellite + labels (sat,skl), false = normal map.
 // Overridable per request with ?sat=1 / ?sat=0. Otherwise auto day/night:
 // event time 6PM-6AM -> satellite, 6AM-6PM -> normal map. When the event
@@ -128,9 +133,9 @@ function eventHour24(string $t): ?int {
 if (isset($_GET['sat'])) {
     $satellite = ($_GET['sat'] !== '0' && strtolower((string)$_GET['sat']) !== 'false');
 } else {
-    $hour = eventHour24($time);
-    // Night (6PM-6AM) reads better on satellite; day (6AM-6PM) on the map.
-    $satellite = ($hour === null) ? SATELLITE_MODE : ($hour >= 18 || $hour < 6);
+    // Night (satellite) map is the main look — day auto-switch disabled.
+    // Pass ?sat=0 to preview the street map.
+    $satellite = true;
 }
 $mapLayer = $satellite ? 'esri-exp-sat' : 'esri-exp-map'; // cache key (v3: single-export, busts old caches)
 
@@ -171,7 +176,7 @@ if ($fontInter === null) $fontInter = $fontOswald; // fallback, better than fata
 // --- Zoom by magnitude (tighter framing than the old pill design) ---
 $zoom = $mag >= 7 ? 5 : ($mag >= 6 ? 6 : 7);
 
-// --- Base map: ONE Esri export request for the whole 1080x1440 card (same
+// --- Base map: ONE Esri export request for the whole 750x938 card (same
 // World_Imagery source as the app's Leaflet satellite mode + video
 // renderer). Single-export avoids the burst throttling that kills
 // multi-tile stitching on shared hosting (32 parallel tiles -> 429s).
@@ -184,9 +189,11 @@ $leftLng = $lng - (CARD_W / 2) * $P;
 $rightLng = $lng + (CARD_W / 2) * $P;
 $topLat = max(-80, min(80, $lat + 0.58 * MAP_H * $P));
 $botLat = max(-80, min(80, $lat - 0.42 * MAP_H * $P));
-// Wrap antimeridian (PH never crosses it, but keep it correct).
-if ($leftLng < -180) { $leftLng += 360; $rightLng += 360; }
-if ($rightLng > 180) { $leftLng -= 360; $rightLng -= 360; }
+// Clamp to valid lon range. (The old ±360 wrap cancelled itself out and sent
+// Esri an invalid cross-dateline bbox — e.g. Fiji at -179.73 — which comes
+// back as a blank white image. Clamping keeps a valid, slightly shifted window.)
+if ($leftLng < -180) $leftLng = -180;
+if ($rightLng > 180) $rightLng = 180;
 $bbox = number_format($leftLng, 6, '.', '') . ',' . number_format($botLat, 6, '.', '')
     . ',' . number_format($rightLng, 6, '.', '') . ',' . number_format($topLat, 6, '.', '');
 $esriBase = $satellite
@@ -234,6 +241,23 @@ function fetchTileBody(string $url, string &$info) { // no union return type: st
     if ($body === false || $body === '' || $code < 200 || $code >= 300) return false;
     return $body;
 }
+// Esri answers invalid bboxes with HTTP 200 + a blank (near-uniform) image.
+// Reject those so the retry loop treats them as failures. Overlays are
+// mostly transparent by design, so only imagery jobs are checked.
+function tileLooksBlank($img): bool {
+    $w = imagesx($img); $h = imagesy($img);
+    if ($w < 8 || $h < 8) return true;
+    $min = 255; $max = 0;
+    for ($gy = 0; $gy < 8; $gy++) {
+        for ($gx = 0; $gx < 8; $gx++) {
+            $c = imagecolorat($img, (int)($gx * ($w - 1) / 7), (int)($gy * ($h - 1) / 7));
+            $v = (($c >> 16) & 0xFF) + (($c >> 8) & 0xFF) + ($c & 0xFF);
+            if ($v < $min) $min = $v;
+            if ($v > $max) $max = $v;
+        }
+    }
+    return ($max - $min) < 30;
+}
 if (function_exists('curl_init')) {
     // 1-2 sequential requests: no burst, nothing to throttle.
     // Up to 4 attempts with growing pauses — x10 DNS flakes (err 6) and
@@ -247,8 +271,15 @@ if (function_exists('curl_init')) {
             $tries[] = "try$a: $info";
             if ($body !== false) {
                 $img = @imagecreatefromstring($body);
-                if ($img !== false) { $tileImages[$i] = $img; break; }
-                $tries[count($tries) - 1] .= ' (bad image)';
+                if ($img !== false) {
+                    // Blank white exports (invalid bbox) don't count.
+                    if (empty($job['overlay']) && tileLooksBlank($img)) {
+                        $tries[count($tries) - 1] .= ' (blank image)';
+                        imagedestroy($img);
+                    } else { $tileImages[$i] = $img; break; }
+                } else {
+                    $tries[count($tries) - 1] .= ' (bad image)';
+                }
             }
         }
         $tileInfo[$i] = implode(' / ', $tries);
@@ -260,6 +291,7 @@ if (function_exists('curl_init')) {
         $tileInfo[$i] = 'file_get_contents len=' . strlen((string)$body);
         if ($body !== false) {
             $img = @imagecreatefromstring($body);
+            if ($img !== false && (empty($job['overlay']) && tileLooksBlank($img))) { imagedestroy($img); $img = false; $tileInfo[$i] .= ' (blank image)'; }
             if ($img !== false) $tileImages[$i] = $img;
         }
     }
@@ -296,15 +328,18 @@ if (isset($_GET['debug']) && $_GET['debug'] === 'tiles') {
     exit;
 }
 
-// Composite tiles (1:1; imagery first, transparent Reference labels over).
+// Composite tiles (imagery first, transparent Reference labels over).
+// Resampled to the full rect so a smaller-than-requested export can't leave
+// a half-dark map — it stretches to cover instead.
 imagealphablending($im, true);
 foreach ($tileJobs as $i => $job) {
     $tile = $tileImages[$i];
     if ($tile === null) continue;
-    imagecopy(
+    imagecopyresampled(
         $im, $tile,
         (int)round($job['left']), (int)round($job['top']),
         0, 0,
+        CARD_W, MAP_H,
         imagesx($tile), imagesy($tile)
     );
     imagedestroy($tile);
@@ -394,7 +429,7 @@ if ($wantGlow) {
                         if (!is_array($pt) || count($pt) < 2) continue;
                         $px = ($pt[0] - $leftLng) / $spanX * CARD_W;
                         $py = ($topLat - $pt[1]) / $spanY * MAP_H;
-                        if ($px >= -30 && $px <= CARD_W + 30 && $py >= -30 && $py <= MAP_H + 30) {
+                        if ($px >= -21 && $px <= CARD_W + 21 && $py >= -21 && $py <= MAP_H + 21) {
                             $inView = true;
                             if ($px >= CARD_W / 2) $rightPts++; else $leftPts++;
                         }
@@ -408,8 +443,13 @@ if ($wantGlow) {
                 elseif ($lv === 'right') $locOnLeft = false;
             }
             if ($inView) {
-                // Country stays in color, everything outside goes black & white.
-                grayOutsideCountry($im, $rings, $leftLng, $rightLng, $topLat, $botLat, CARD_W, MAP_H);
+                // Country stays in color; outside goes black & white — warmed
+                // slightly red while a tsunami threat is posted.
+                $tsuTint = null;
+                if ($tsunamiText !== '') {
+                    $tsuTint = stripos($tsunamiText, 'ADVISORY') !== false ? [30, 0, 0] : [55, 0, 0];
+                }
+                grayOutsideCountry($im, $rings, $leftLng, $rightLng, $topLat, $botLat, CARD_W, MAP_H, $tsuTint);
                 drawBoundaryGlow($im, $boundary, $leftLng, $rightLng, $topLat, $botLat, CARD_W, MAP_H, [147, 197, 253]);
             }
         }
@@ -592,14 +632,18 @@ function countryRings(array $geojson): array {
 // Grayscale everything OUTSIDE the country: full-res gray copy merged back
 // through a blurred country mask (soft edge). Full resolution throughout —
 // an earlier half-size round trip visibly softened the whole map.
-function grayOutsideCountry($im, array $rings, float $leftLng, float $rightLng, float $topLat, float $botLat, int $mapW, int $mapH): void {
+function grayOutsideCountry($im, array $rings, float $leftLng, float $rightLng, float $topLat, float $botLat, int $mapW, int $mapH, ?array $tint = null): void {
     $spanX = $rightLng - $leftLng; $spanY = $topLat - $botLat;
     if ($spanX <= 0 || $spanY <= 0 || count($rings) === 0) return;
     $gray = imagecreatetruecolor($mapW, $mapH);
     imagecopy($gray, $im, 0, 0, 0, 0, $mapW, $mapH);
-    if (function_exists('imagefilter')) imagefilter($gray, IMG_FILTER_GRAYSCALE);
+    if (function_exists('imagefilter')) {
+        imagefilter($gray, IMG_FILTER_GRAYSCALE);
+        // Tsunami threat: warm the outside toward red (slight for advisory).
+        if ($tint !== null) imagefilter($gray, IMG_FILTER_COLORIZE, $tint[0], $tint[1], $tint[2]);
+    }
     // Mask built small (fast fill + blur), then sampled up smooth.
-    $mw = 540; $mh = 675;
+    $mw = 375; $mh = 469;
     $mask = imagecreatetruecolor($mw, $mh);
     imagealphablending($mask, false);
     imagefill($mask, 0, 0, imagecolorallocate($mask, 0, 0, 0));
@@ -671,9 +715,9 @@ function drawTracked($im, string $font, int $size, int $cx, int $baselineY, stri
         $x += (int)round($widths[$i][0] + $tracking);
     }
 }
-function autofit(string $font, string $text, int $startSize, int $maxWidth, int $minSize = 30): int {
+function autofit(string $font, string $text, int $startSize, int $maxWidth, int $minSize = 19): int {
     $size = $startSize;
-    while ($size > $minSize && textWidth($font, $size, $text) > $maxWidth) $size -= 3;
+    while ($size > $minSize && textWidth($font, $size, $text) > $maxWidth) $size -= 2;
     return $size;
 }
 function wrapLines(string $font, int $size, string $text, int $maxWidth, int $maxLines = 3): array {
@@ -698,102 +742,109 @@ function wrapLines(string $font, int $size, string $text, int $maxWidth, int $ma
 $epiX = CARD_W / 2;
 $epiY = (int)round(0.58 * MAP_H);
 
-// --- 1. Alert banner (transparent scrim over the full-bleed map) ---
-// Opaque down past the subline ("MAJOR EVENT", baseline +192), THEN fading
-// to transparent toward the map center — text always sits on solid scrim.
+// --- 1. Top edge fade (pure gradient, no text by default) ---
+// Fades from the top edge itself — no solid zone since no text sits here now.
 $bannerTop = 0;
-$bannerH = 225;
-fillScrimX($im, 0, $bannerTop, CARD_W - 1, $bannerTop + 210, [5, 8, 20], [11, 16, 32], 0, 0);
-fillScrimX($im, 0, $bannerTop + 210, CARD_W - 1, $bannerTop + $bannerH + 112, [5, 8, 20], [11, 16, 32], 0, 127);
+$bannerH = 146;
+fillScrimX($im, 0, $bannerTop, CARD_W - 1, $bannerTop + $bannerH + 73, [5, 8, 20], [11, 16, 32], 0, 127);
 // Title: part 1 white + part 2 red, centered on the card.
 // Advances measured per part (trailing-space bbox is unreliable) so the
-// halves never overlap.
-$titleSize = 84;
+// halves never overlap. Hidden unless SHOW_BANNER_TEXT (or ?bannertext=1).
+$titleSize = 53;
 $titleW1 = textWidth($fontOswald, $titleSize, $titleA);
 $titleW2 = textWidth($fontOswald, $titleSize, $titleB);
 $titleWS = textWidth($fontOswald, $titleSize, $titleA . ' ' . $titleB) - $titleW1 - $titleW2;
-$titleWS = max(6, $titleWS); // degenerate bbox guard
-while ($titleW1 + $titleWS + $titleW2 > 705 && $titleSize > 42) {
-    $titleSize -= 3;
+$titleWS = max(4, $titleWS); // degenerate bbox guard
+while ($titleW1 + $titleWS + $titleW2 > 489 && $titleSize > 29) {
+    $titleSize -= 2;
     $titleW1 = textWidth($fontOswald, $titleSize, $titleA);
     $titleW2 = textWidth($fontOswald, $titleSize, $titleB);
-    $titleWS = max(6, textWidth($fontOswald, $titleSize, $titleA . ' ' . $titleB) - $titleW1 - $titleW2);
+    $titleWS = max(4, textWidth($fontOswald, $titleSize, $titleA . ' ' . $titleB) - $titleW1 - $titleW2);
 }
-$titleY = $bannerTop + 138;
-$titleX0 = (int)round(540 - ($titleW1 + $titleWS + $titleW2) / 2);
+$titleY = $bannerTop + 90;
+$titleX0 = (int)round(375 - ($titleW1 + $titleWS + $titleW2) / 2);
 if (!isset($txtShadow)) $txtShadow = imagecolorallocatealpha($im, 0, 0, 0, 70);
+// Hidden unless SHOW_BANNER_TEXT (or ?bannertext=1) — easy to restore.
+$showBannerText = SHOW_BANNER_TEXT;
+if (isset($_GET['bannertext'])) {
+    $bv = strtolower(trim((string)$_GET['bannertext']));
+    $showBannerText = !in_array($bv, ['0', 'false', 'no', 'off'], true);
+}
+if ($showBannerText) {
 drawLeft($im, $fontOswald, $titleSize, $titleX0 + 3, $titleY + 3, $titleA, $txtShadow);
 drawLeft($im, $fontOswald, $titleSize, $titleX0, $titleY, $titleA, $white);
 drawLeft($im, $fontOswald, $titleSize, (int)round($titleX0 + $titleW1 + $titleWS) + 3, $titleY + 3, $titleB, $txtShadow);
 drawLeft($im, $fontOswald, $titleSize, (int)round($titleX0 + $titleW1 + $titleWS), $titleY, $titleB, $red);
 // "{WORD} EVENT" subline with severity color, centered under the title.
-$subY = $bannerTop + 192;
+$subY = $bannerTop + 125;
 [$sevWord, $sevRgb] = severityWord($mag);
 $sevDot = imagecolorallocate($im, $sevRgb[0], $sevRgb[1], $sevRgb[2]);
-$sevWordW = textWidth($fontInter, 28, $sevWord);
-$sevEventW = textWidth($fontInter, 28, 'EVENT');
-$sevGap = 15;
-$sevX0 = (int)round(540 - (21 + $sevGap + $sevWordW + $sevGap + $sevEventW) / 2);
-imagefilledellipse($im, $sevX0 + 10, $subY - 10, 21, 21, $sevDot);
-drawLeft($im, $fontInter, 28, $sevX0 + 21 + $sevGap + 3, $subY + 3, $sevWord, $txtShadow);
-drawLeft($im, $fontInter, 28, $sevX0 + 21 + $sevGap, $subY, $sevWord, $sevDot);
-drawLeft($im, $fontInter, 28, $sevX0 + 21 + $sevGap + $sevWordW + $sevGap + 3, $subY + 3, 'EVENT', $txtShadow);
-drawLeft($im, $fontInter, 28, $sevX0 + 21 + $sevGap + $sevWordW + $sevGap, $subY, 'EVENT', $muted);
+$sevWordW = textWidth($fontInter, 19, $sevWord);
+$sevEventW = textWidth($fontInter, 19, 'EVENT');
+$sevGap = 11;
+$sevX0 = (int)round(375 - (14 + $sevGap + $sevWordW + $sevGap + $sevEventW) / 2);
+imagefilledellipse($im, $sevX0 + 7, $subY - 7, 14, 14, $sevDot);
+drawLeft($im, $fontInter, 19, $sevX0 + 14 + $sevGap + 2, $subY + 2, $sevWord, $txtShadow);
+drawLeft($im, $fontInter, 19, $sevX0 + 14 + $sevGap, $subY, $sevWord, $sevDot);
+drawLeft($im, $fontInter, 19, $sevX0 + 14 + $sevGap + $sevWordW + $sevGap + 2, $subY + 2, 'EVENT', $txtShadow);
+drawLeft($im, $fontInter, 19, $sevX0 + 14 + $sevGap + $sevWordW + $sevGap, $subY, 'EVENT', $muted);
+}
 
-// --- 2. Magnitude panel (right side, dark translucent, compact) ---
-$panelW = 432;
-$panelX1 = CARD_W - 24;
-$panelX0 = $panelX1 - $panelW;
-$panelTop = $bannerTop + $bannerH + 39;
-$panelH = 204;
-fillFadeRightX($im, $panelX0, $panelTop, $panelX1, $panelTop + $panelH, [8, 12, 24], 25, 127);
-// Vertical bar on the panel's right edge, severity word-coding color.
+// --- 2. Magnitude panel (LEFT side, dark translucent, compact) ---
+// Sits at the very top now that the banner text is hidden.
+$panelW = 300;
+$panelX0 = 17;
+$panelX1 = $panelX0 + $panelW;
+$panelTop = $bannerTop + 16;
+$panelH = 133;
+fillFadeRightX($im, $panelX0, $panelTop, $panelX1, $panelTop + $panelH, [8, 12, 24], 25, 127, false);
+// Vertical bar on the panel's left edge, severity word-coding color.
 [$sevBarWord, $sevBarRgb] = severityWord(is_finite($mag) ? $mag : 0);
 $magBar = imagecolorallocate($im, $sevBarRgb[0], $sevBarRgb[1], $sevBarRgb[2]);
-imagefilledrectangle($im, $panelX1 - 12, $panelTop, $panelX1, $panelTop + $panelH, $magBar);
+imagefilledrectangle($im, $panelX0, $panelTop, $panelX0 + 8, $panelTop + $panelH, $magBar);
 // Magnitude panel (single centered column; depth lives in the footer now).
 $magText = 'M' . ($magRaw !== '' ? $magRaw : '?');
 $depthText = ($depth !== '' ? $depth : '?') . ' KM';
-$magSize = autofit($fontOswald, $magText, 80, 300);
+$magSize = autofit($fontOswald, $magText, 56, 208);
 $panelCx = (int)round($panelX0 + ($panelX1 - $panelX0) / 2);
-drawCentered($im, $fontInter, 22, $panelCx, $panelTop + 54 + 3, 'MAGNITUDE', $txtShadow);
-drawCentered($im, $fontInter, 22, $panelCx, $panelTop + 54, 'MAGNITUDE', $muted);
-drawCentered($im, $fontOswald, $magSize, $panelCx + 3, $panelTop + 156 + 3, $magText, $txtShadow);
-drawCentered($im, $fontOswald, $magSize, $panelCx, $panelTop + 156, $magText, $white);
+drawCentered($im, $fontInter, 15, $panelCx, $panelTop + 35 + 2, 'MAGNITUDE', $txtShadow);
+drawCentered($im, $fontInter, 15, $panelCx, $panelTop + 35, 'MAGNITUDE', $muted);
+drawCentered($im, $fontOswald, $magSize, $panelCx + 2, $panelTop + 102 + 2, $magText, $txtShadow);
+drawCentered($im, $fontOswald, $magSize, $panelCx, $panelTop + 102, $magText, $white);
 
 // --- 2b. Information number pill (PHIVOLCS bulletins only, ?info=) ---
 // Same width/style as the magnitude panel, tucked right below it (clear
 // of the epicenter rings, which start ~40px lower).
 if ($infoNo !== '') {
     $infoText = 'INFORMATION NO. ' . $infoNo;
-    $pillTop = $panelTop + $panelH + 15;
-    $pillH = 66;
-    fillFadeRightX($im, $panelX0, $pillTop, $panelX1, $pillTop + $pillH, [8, 12, 24], 25, 127);
-    imagefilledrectangle($im, $panelX1 - 12, $pillTop, $panelX1, $pillTop + $pillH, $magBar);
-    $infoSize = autofit($fontOswald, $infoText, 33, $panelW - 48);
-    drawCentered($im, $fontOswald, $infoSize, $panelCx + 3, $pillTop + 46 + 3, $infoText, $txtShadow);
-    drawCentered($im, $fontOswald, $infoSize, $panelCx, $pillTop + 46, $infoText, $white);
+    $pillTop = $panelTop + $panelH + 10;
+    $pillH = 43;
+    fillFadeRightX($im, $panelX0, $pillTop, $panelX1, $pillTop + $pillH, [8, 12, 24], 25, 127, false);
+    imagefilledrectangle($im, $panelX0, $pillTop, $panelX0 + 8, $pillTop + $pillH, $magBar);
+    $infoSize = autofit($fontOswald, $infoText, 23, $panelW - 33);
+    drawCentered($im, $fontOswald, $infoSize, $panelCx + 2, $pillTop + 30 + 2, $infoText, $txtShadow);
+    drawCentered($im, $fontOswald, $infoSize, $panelCx, $pillTop + 30, $infoText, $white);
 }
 
-// --- 2c. Tsunami threat pill (?tsunami=, right column under the magnitude
+// --- 2c. Tsunami threat pill (?tsunami=, left column under the magnitude
 // panel, below the info pill when shown). Same width/style as the magnitude
-// panel with the severity bar on the right edge.
+// panel with the severity bar on the left edge.
 // Warning = red, advisory = amber. Plain "!!" markers (GD fonts lack emoji).
 if ($tsunamiText !== '') {
     $isAdvisory = stripos($tsunamiText, 'ADVISORY') !== false;
     $tsuRgb = $isAdvisory ? [249, 115, 22] : [239, 68, 68];
     $tsuBar = imagecolorallocate($im, $tsuRgb[0], $tsuRgb[1], $tsuRgb[2]);
     $tsuText = $tsunamiText;
-    $tsuSize = autofit($fontOswald, $tsuText, 33, $panelW - 48);
+    $tsuSize = autofit($fontOswald, $tsuText, 23, $panelW - 33);
     $tsuX0 = $panelX0;
     $tsuX1 = $panelX1;
-    $tsuTop = $panelTop + $panelH + 15;
-    if ($infoNo !== '') $tsuTop += 66 + 15; // stack under the info pill
-    $tsuH = 66;
-    fillFadeRightX($im, $tsuX0, $tsuTop, $tsuX1, $tsuTop + $tsuH, [8, 12, 24], 25, 127);
-    imagefilledrectangle($im, $tsuX1 - 12, $tsuTop, $tsuX1, $tsuTop + $tsuH, $tsuBar);
-    drawCentered($im, $fontOswald, $tsuSize, $panelCx + 3, $tsuTop + 46 + 3, $tsuText, $txtShadow);
-    drawCentered($im, $fontOswald, $tsuSize, $panelCx, $tsuTop + 46, $tsuText, $white);
+    $tsuTop = $panelTop + $panelH + 10;
+    if ($infoNo !== '') $tsuTop += 43 + 10; // stack under the info pill
+    $tsuH = 43;
+    // Solid severity background (amber advisory / red warning), no fade.
+    imagefilledrectangle($im, $tsuX0, $tsuTop, $tsuX1, $tsuTop + $tsuH, $tsuBar);
+    drawCentered($im, $fontOswald, $tsuSize, $panelCx + 2, $tsuTop + 30 + 2, $tsuText, $txtShadow);
+    drawCentered($im, $fontOswald, $tsuSize, $panelCx, $tsuTop + 30, $tsuText, $white);
 }
 
 // --- 3. Epicenter rings + dot, severity word-coding color ---
@@ -802,54 +853,54 @@ $sevRingFaint = imagecolorallocatealpha($im, $sevBarRgb[0], $sevBarRgb[1], $sevB
 $sevRingMid = imagecolorallocatealpha($im, $sevBarRgb[0], $sevBarRgb[1], $sevBarRgb[2], 70);
 $sevRingInner = imagecolorallocatealpha($im, $sevBarRgb[0], $sevBarRgb[1], $sevBarRgb[2], 44);
 $sevSolid = imagecolorallocate($im, $sevBarRgb[0], $sevBarRgb[1], $sevBarRgb[2]);
-imagesetthickness($im, 15);
-imageellipse($im, $epiX, $epiY, 174, 174, $sevRingInner);
-imagesetthickness($im, 8);
-imageellipse($im, $epiX, $epiY, 264, 264, $sevRingMid);
-imagesetthickness($im, 4);
-imageellipse($im, $epiX, $epiY, 354, 354, $sevRingFaint);
+imagesetthickness($im, 10);
+imageellipse($im, $epiX, $epiY, 117, 117, $sevRingInner);
+imagesetthickness($im, 6);
+imageellipse($im, $epiX, $epiY, 178, 178, $sevRingMid);
+imagesetthickness($im, 3);
+imageellipse($im, $epiX, $epiY, 238, 238, $sevRingFaint);
 imagesetthickness($im, 1);
 // Solid severity dot with a white outline ring.
-imagefilledellipse($im, $epiX, $epiY, 81, 81, $white);
-imagefilledellipse($im, $epiX, $epiY, 69, 69, $sevSolid);
+imagefilledellipse($im, $epiX, $epiY, 54, 54, $white);
+imagefilledellipse($im, $epiX, $epiY, 46, 46, $sevSolid);
 
 // --- 4. Location box (bottom-right, above the info bar) ---
-$infoBarH = 168;
+$infoBarH = 109;
 $infoTop = CARD_H - $infoBarH;
 $locPlace = safeUpper($place);
-$locLines = wrapLines($fontOswald, 26, $locPlace, 382, 3);
+$locLines = wrapLines($fontOswald, 18, $locPlace, 265, 3);
 $coordsLine = number_format($lat, 2) . '°N, ' . number_format($lng, 2) . '°E';
-$locLineH = 36;
-$locBoxH = 26 + count($locLines) * $locLineH + 14 + 39 + 21;
+$locLineH = 24;
+$locBoxH = 17 + count($locLines) * $locLineH + 9 + 26 + 14;
 // Right by default; mirrored left when the boundary owns the right half.
-if ($locOnLeft) { $locX0 = 24; $locX1 = $locX0 + 506; }
-else { $locX1 = CARD_W - 24; $locX0 = $locX1 - 506; }
-$locY1 = $infoTop - 24;
+if ($locOnLeft) { $locX0 = 17; $locX1 = $locX0 + 351; }
+else { $locX1 = CARD_W - 17; $locX0 = $locX1 - 351; }
+$locY1 = $infoTop - 16;
 $locY0 = $locY1 - $locBoxH;
 fillFadeRightX($im, $locX0, $locY0, $locX1, $locY1, [8, 12, 24], 25, 127, !$locOnLeft);
 // Red map-pin bullet.
-$pinCx = $locX0 + 39;
-$pinCy = $locY0 + 44;
-imagefilledellipse($im, $pinCx, $pinCy, 33, 33, $red);
-fillPoly($im, [$pinCx - 14, $pinCy + 11, $pinCx + 14, $pinCy + 11, $pinCx, $pinCy + 33], $red);
-imagefilledellipse($im, $pinCx, $pinCy, 12, 12, $white);
-$tx = $locX0 + 66;
-$ty = $locY0 + 51;
+$pinCx = $locX0 + 27;
+$pinCy = $locY0 + 29;
+imagefilledellipse($im, $pinCx, $pinCy, 23, 23, $red);
+fillPoly($im, [$pinCx - 10, $pinCy + 8, $pinCx + 10, $pinCy + 8, $pinCx, $pinCy + 23], $red);
+imagefilledellipse($im, $pinCx, $pinCy, 8, 8, $white);
+$tx = $locX0 + 46;
+$ty = $locY0 + 33;
 if (!isset($txtShadow)) $txtShadow = imagecolorallocatealpha($im, 0, 0, 0, 70);
 foreach ($locLines as $line) {
-    drawLeft($im, $fontOswald, 26, $tx + 3, $ty + 3, $line, $txtShadow);
-    drawLeft($im, $fontOswald, 26, $tx, $ty, $line, $white);
+    drawLeft($im, $fontOswald, 18, $tx + 2, $ty + 2, $line, $txtShadow);
+    drawLeft($im, $fontOswald, 18, $tx, $ty, $line, $white);
     $ty += $locLineH;
 }
 // Divider sits just under the last text line (no extra bottom margin).
-$ty -= 21;
-imageline($im, $tx, $ty, $locX1 - 26, $ty, $divider);
-$ty += 33;
+$ty -= 14;
+imageline($im, $tx, $ty, $locX1 - 18, $ty, $divider);
+$ty += 21;
 // Crosshair bullet + coords.
-imageellipse($im, $tx + 14, $ty - 9, 26, 26, $white);
-imagefilledellipse($im, $tx + 14, $ty - 9, 6, 6, $white);
-drawLeft($im, $fontInter, 18, $tx + 36 + 3, $ty + 3, $coordsLine, $txtShadow);
-drawLeft($im, $fontInter, 18, $tx + 36, $ty, $coordsLine, $white);
+imageellipse($im, $tx + 10, $ty - 6, 18, 18, $white);
+imagefilledellipse($im, $tx + 10, $ty - 6, 4, 4, $white);
+drawLeft($im, $fontInter, 13, $tx + 25 + 2, $ty + 2, $coordsLine, $txtShadow);
+drawLeft($im, $fontInter, 13, $tx + 25, $ty, $coordsLine, $white);
 
 // --- 5. Bottom info bar: date | source ---
 // Transparent scrim: fades in from the map edge to opaque at the bottom.
@@ -857,66 +908,66 @@ fillScrimX($im, 0, $infoTop, CARD_W - 1, CARD_H - 1, [5, 8, 20], [11, 16, 32], 1
 // Date / time (left) with calendar icon aligned to the date line only.
 // Text shadow (soft black offset) under every footer text line.
 $txtShadow = imagecolorallocatealpha($im, 0, 0, 0, 70);
-$calX0 = 36;
-$calTop = $infoTop + 42;
-$calX1 = 75;
-$calBot = $infoTop + 84;
+$calX0 = 25;
+$calTop = $infoTop + 28;
+$calX1 = 52;
+$calBot = $infoTop + 55;
 imagerectangle($im, $calX0, $calTop, $calX1, $calBot, $white);
 imagerectangle($im, $calX0 + 1, $calTop + 1, $calX1 - 1, $calBot - 1, $white);
-imagefilledrectangle($im, $calX0, $calTop, $calX1, $calTop + 12, $white);
-imagefilledrectangle($im, $calX0 + 9, $calTop - 9, $calX0 + 15, $calTop + 6, $white);
-imagefilledrectangle($im, $calX1 - 15, $calTop - 9, $calX1 - 9, $calTop + 6, $white);
+imagefilledrectangle($im, $calX0, $calTop, $calX1, $calTop + 8, $white);
+imagefilledrectangle($im, $calX0 + 6, $calTop - 6, $calX0 + 11, $calTop + 4, $white);
+imagefilledrectangle($im, $calX1 - 11, $calTop - 6, $calX1 - 6, $calTop + 4, $white);
 $dateShort = $date;
 if (preg_match('/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/', $date, $dm)) {
     $dateShort = $dm[1] . ' ' . strtoupper(substr($dm[2], 0, 3)) . ' ' . $dm[3];
 } else {
     $dateShort = safeUpper($date);
 }
-drawLeft($im, $fontOswald, 33, 87 + 3, $infoTop + 68 + 3, $dateShort, $txtShadow);
-drawLeft($im, $fontOswald, 33, 87, $infoTop + 68, $dateShort, $white);
-drawLeft($im, $fontOswald, 27, 87 + 3, $infoTop + 122 + 3, safeUpper($time), $txtShadow);
-drawLeft($im, $fontOswald, 27, 87, $infoTop + 122, safeUpper($time), $depthGray);
+drawLeft($im, $fontOswald, 23, 61 + 2, $infoTop + 44 + 2, $dateShort, $txtShadow);
+drawLeft($im, $fontOswald, 23, 61, $infoTop + 44, $dateShort, $white);
+drawLeft($im, $fontOswald, 19, 61 + 2, $infoTop + 79 + 2, safeUpper($time), $txtShadow);
+drawLeft($im, $fontOswald, 19, 61, $infoTop + 79, safeUpper($time), $depthGray);
 // Depth (middle): down-arrow icon + value, tucked right after the date
 // block so there's no dead space regardless of date length.
-$depthSize = autofit($fontOswald, $depthText, 39, 180);
-$depthMidY = $infoTop + 65;
-// Depth block: centered in the footer, then nudged right 21px. Divider
+$depthSize = autofit($fontOswald, $depthText, 27, 125);
+$depthMidY = $infoTop + 43;
+// Depth block: centered in the footer, then nudged right 14px. Divider
 // and source follow automatically downstream.
 $depthW = textWidth($fontOswald, $depthSize, $depthText);
-$arrowCx = (int)round(560 - (52 + $depthW) / 2 + 21);
-$depthTextX = $arrowCx + 33;
+$arrowCx = (int)round(389 - (36 + $depthW) / 2 + 14);
+$depthTextX = $arrowCx + 23;
 $depthRight = $depthTextX + textWidth($fontOswald, $depthSize, $depthText);
 // Divider between depth and source, then the source block.
 // Divider between depth and source, then the source block right-anchored
 // so no dead space remains on the right.
 $srcDivX = 0;
 $srcX = 0;
-$sourceSize = autofit($fontOswald, safeUpper($source), 33, 255);
+$sourceSize = autofit($fontOswald, safeUpper($source), 23, 177);
 $srcW = textWidth($fontOswald, $sourceSize, safeUpper($source));
-$srcX = 1014 - $srcW;
-$srcDivX = $srcX - 24;
-if ($srcDivX < $depthRight + 18) {
-    $srcDivX = $depthRight + 18;
-    $srcX = $srcDivX + 24;
+$srcX = 704 - $srcW;
+$srcDivX = $srcX - 17;
+if ($srcDivX < $depthRight + 13) {
+    $srcDivX = $depthRight + 13;
+    $srcX = $srcDivX + 17;
 }
-if ($srcX + $srcW > 1032) {
-    $sourceSize = autofit($fontOswald, safeUpper($source), $sourceSize, max(60, 1032 - $srcX));
+if ($srcX + $srcW > 717) {
+    $sourceSize = autofit($fontOswald, safeUpper($source), $sourceSize, max(42, 717 - $srcX));
 }
-imageline($im, $srcDivX, $infoTop + 48, $srcDivX, $infoTop + 93, $divider);
-drawLeft($im, $fontInter, 18, $srcX + 6 + 3, $infoTop + 56 + 3, 'S O U R C E', $txtShadow);
-drawLeft($im, $fontInter, 18, $srcX + 6, $infoTop + 56, 'S O U R C E', $muted);
-drawLeft($im, $fontOswald, $sourceSize, $srcX + 3, $infoTop + 104 + 3, safeUpper($source), $txtShadow);
-drawLeft($im, $fontOswald, $sourceSize, $srcX, $infoTop + 104, safeUpper($source), $white);
-imagefilledrectangle($im, $arrowCx - 8, $depthMidY - 30, $arrowCx + 8, $depthMidY + 3, $white);
-fillPoly($im, [$arrowCx - 20, $depthMidY - 3, $arrowCx + 20, $depthMidY - 3, $arrowCx, $depthMidY + 24], $white);
-drawLeft($im, $fontOswald, $depthSize, $depthTextX + 3, $depthMidY + 14 + 3, $depthText, $txtShadow);
-drawLeft($im, $fontOswald, $depthSize, $depthTextX, $depthMidY + 14, $depthText, $white);
-// Site URL, letter-tracked, low-opacity, with a 6px bottom margin so the
+imageline($im, $srcDivX, $infoTop + 31, $srcDivX, $infoTop + 61, $divider);
+drawLeft($im, $fontInter, 13, $srcX + 4 + 2, $infoTop + 36 + 2, 'S O U R C E', $txtShadow);
+drawLeft($im, $fontInter, 13, $srcX + 4, $infoTop + 36, 'S O U R C E', $muted);
+drawLeft($im, $fontOswald, $sourceSize, $srcX + 2, $infoTop + 68 + 2, safeUpper($source), $txtShadow);
+drawLeft($im, $fontOswald, $sourceSize, $srcX, $infoTop + 68, safeUpper($source), $white);
+imagefilledrectangle($im, $arrowCx - 6, $depthMidY - 19, $arrowCx + 6, $depthMidY + 2, $white);
+fillPoly($im, [$arrowCx - 14, $depthMidY - 2, $arrowCx + 14, $depthMidY - 2, $arrowCx, $depthMidY + 17], $white);
+drawLeft($im, $fontOswald, $depthSize, $depthTextX + 2, $depthMidY + 9 + 2, $depthText, $txtShadow);
+drawLeft($im, $fontOswald, $depthSize, $depthTextX, $depthMidY + 9, $depthText, $white);
+// Site URL, letter-tracked, low-opacity, with a 4px bottom margin so the
 // descenders clear the bar edge.
 $footUrl = imagecolorallocatealpha($im, 156, 163, 175, 44);
 $footShadow = imagecolorallocatealpha($im, 0, 0, 0, 90);
-drawTracked($im, $fontInter, 14, (int)round(CARD_W / 2) + 2, $infoTop + 144 + 2, 'https://terraguard-ph.pages.dev/', $footShadow, 3);
-drawTracked($im, $fontInter, 14, (int)round(CARD_W / 2), $infoTop + 144, 'https://terraguard-ph.pages.dev/', $footUrl, 3);
+drawTracked($im, $fontInter, 10, (int)round(CARD_W / 2) + 1, $infoTop + 94 + 1, 'https://terraguard-ph.pages.dev/', $footShadow, 2);
+drawTracked($im, $fontInter, 10, (int)round(CARD_W / 2), $infoTop + 94, 'https://terraguard-ph.pages.dev/', $footUrl, 2);
 
 // --- Output + cache ---
 // Debug mode: plain-text boundary report (browser-checkable, no cache).
