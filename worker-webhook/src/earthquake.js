@@ -60,6 +60,115 @@ function formatUtcDisplayMs(timeMs) {
     return { date, time: `${String(h).padStart(2, "0")}:${m} ${ampm} UTC` };
 }
 
+// Country name (as it appears in ?place= tails) -> ISO3. Mirrors the
+// quake-card.php table so posts and cards resolve the same country.
+const COUNTRY_ISO3 = {
+    "PHILIPPINES": "PHL", "INDONESIA": "IDN", "MALAYSIA": "MYS", "JAPAN": "JPN",
+    "TAIWAN": "TWN", "CHINA": "CHN", "HONG KONG": "HKG", "MONGOLIA": "MNG",
+    "SOUTH KOREA": "KOR", "KOREA": "KOR", "NORTH KOREA": "PRK", "THAILAND": "THA",
+    "VIETNAM": "VNM", "CAMBODIA": "KHM", "LAOS": "LAO", "MYANMAR": "MMR",
+    "BANGLADESH": "BGD", "BHUTAN": "BTN", "NEPAL": "NPL", "INDIA": "IND",
+    "PAKISTAN": "PAK", "AFGHANISTAN": "AFG", "SRI LANKA": "LKA", "MALDIVES": "MDV",
+    "PAPUA NEW GUINEA": "PNG", "FIJI": "FJI", "VANUATU": "VUT", "SOLOMON ISLANDS": "SLB",
+    "NEW CALEDONIA": "NCL", "TONGA": "TON", "SAMOA": "WSM", "NEW ZEALAND": "NZL",
+    "AUSTRALIA": "AUS", "PALAU": "PLW", "MICRONESIA": "FSM", "MARSHALL ISLANDS": "MHL",
+    "KIRIBATI": "KIR", "TUVALU": "TUV", "NAURU": "NRU", "GUAM": "GUM",
+    "HAWAII": "USA", "ALASKA": "USA", "CALIFORNIA": "USA", "UNITED STATES": "USA",
+    "USA": "USA", "CANADA": "CAN", "MEXICO": "MEX", "GUATEMALA": "GTM",
+    "EL SALVADOR": "SLV", "HONDURAS": "HND", "NICARAGUA": "NIC", "COSTA RICA": "CRI",
+    "PANAMA": "PAN", "CUBA": "CUB", "JAMAICA": "JAM", "HAITI": "HTI",
+    "DOMINICAN REPUBLIC": "DOM", "PUERTO RICO": "PRI", "COLOMBIA": "COL",
+    "VENEZUELA": "VEN", "ECUADOR": "ECU", "PERU": "PER", "BOLIVIA": "BOL",
+    "CHILE": "CHL", "ARGENTINA": "ARG", "BRAZIL": "BRA", "URUGUAY": "URY",
+    "PARAGUAY": "PRY", "TURKEY": "TUR", "TURKIYE": "TUR", "GREECE": "GRC",
+    "ITALY": "ITA", "SPAIN": "ESP", "PORTUGAL": "PRT", "ICELAND": "ISL",
+    "UNITED KINGDOM": "GBR", "UK": "GBR", "ENGLAND": "GBR", "IRELAND": "IRL",
+    "FRANCE": "FRA", "GERMANY": "DEU", "NETHERLANDS": "NLD", "BELGIUM": "BEL",
+    "SWITZERLAND": "CHE", "AUSTRIA": "AUT", "POLAND": "POL", "CZECHIA": "CZE",
+    "SLOVAKIA": "SVK", "HUNGARY": "HUN", "ROMANIA": "ROU", "BULGARIA": "BGR",
+    "SERBIA": "SRB", "CROATIA": "HRV", "SLOVENIA": "SVN", "BOSNIA": "BIH",
+    "ALBANIA": "ALB", "NORTH MACEDONIA": "MKD", "UKRAINE": "UKR", "RUSSIA": "RUS",
+    "KAZAKHSTAN": "KAZ", "UZBEKISTAN": "UZB", "TAJIKISTAN": "TJK", "KYRGYZSTAN": "KGZ",
+    "TURKMENISTAN": "TKM", "AZERBAIJAN": "AZE", "GEORGIA": "GEO", "ARMENIA": "ARM",
+    "IRAN": "IRN", "IRAQ": "IRQ", "SAUDI ARABIA": "SAU", "YEMEN": "YEM",
+    "OMAN": "OMN", "UAE": "ARE", "QATAR": "QAT", "KUWAIT": "KWT",
+    "ISRAEL": "ISR", "JORDAN": "JOR", "LEBANON": "LBN", "SYRIA": "SYR",
+    "EGYPT": "EGY", "MOROCCO": "MAR", "ALGERIA": "DZA", "TUNISIA": "TUN",
+    "ETHIOPIA": "ETH", "KENYA": "KEN", "TANZANIA": "TZA", "MOZAMBIQUE": "MOZ",
+    "MADAGASCAR": "MDG", "SOUTH AFRICA": "ZAF", "GHANA": "GHA", "NIGERIA": "NGA",
+    "SOMALIA": "SOM", "SUDAN": "SDN",
+};
+
+// Representative IANA zone per ISO3 (single zone per country; big multi-zone
+// countries use their population center — documented approximation).
+const COUNTRY_TZ = {
+    "PHL": "Asia/Manila", "IDN": "Asia/Jakarta", "MYS": "Asia/Kuala_Lumpur", "JPN": "Asia/Tokyo",
+    "TWN": "Asia/Taipei", "CHN": "Asia/Shanghai", "HKG": "Asia/Hong_Kong", "MNG": "Asia/Ulaanbaatar",
+    "KOR": "Asia/Seoul", "PRK": "Asia/Pyongyang", "THA": "Asia/Bangkok", "VNM": "Asia/Ho_Chi_Minh",
+    "KHM": "Asia/Phnom_Penh", "LAO": "Asia/Vientiane", "MMR": "Asia/Yangon", "BGD": "Asia/Dhaka",
+    "BTN": "Asia/Thimphu", "NPL": "Asia/Kathmandu", "IND": "Asia/Kolkata", "PAK": "Asia/Karachi",
+    "AFG": "Asia/Kabul", "LKA": "Asia/Colombo", "MDV": "Indian/Maldives", "PNG": "Pacific/Port_Moresby",
+    "FJI": "Pacific/Fiji", "VUT": "Pacific/Efate", "SLB": "Pacific/Guadalcanal", "NCL": "Pacific/Noumea",
+    "TON": "Pacific/Tongatapu", "WSM": "Pacific/Apia", "NZL": "Pacific/Auckland", "AUS": "Australia/Sydney",
+    "PLW": "Pacific/Palau", "FSM": "Pacific/Chuuk", "MHL": "Pacific/Majuro", "KIR": "Pacific/Tarawa",
+    "TUV": "Pacific/Funafuti", "NRU": "Pacific/Nauru", "GUM": "Pacific/Guam", "USA": "America/New_York",
+    "CAN": "America/Toronto", "MEX": "America/Mexico_City", "GTM": "America/Guatemala", "SLV": "America/El_Salvador",
+    "HND": "America/Tegucigalpa", "NIC": "America/Managua", "CRI": "America/Costa_Rica", "PAN": "America/Panama",
+    "CUB": "America/Havana", "JAM": "America/Jamaica", "HTI": "America/Port-au-Prince", "DOM": "America/Santo_Domingo",
+    "PRI": "America/Puerto_Rico", "COL": "America/Bogota", "VEN": "America/Caracas", "ECU": "America/Guayaquil",
+    "PER": "America/Lima", "BOL": "America/La_Paz", "CHL": "America/Santiago", "ARG": "America/Argentina/Buenos_Aires",
+    "BRA": "America/Sao_Paulo", "URY": "America/Montevideo", "PRY": "America/Asuncion", "TUR": "Europe/Istanbul",
+    "GRC": "Europe/Athens", "ITA": "Europe/Rome", "ESP": "Europe/Madrid", "PRT": "Europe/Lisbon",
+    "ISL": "Atlantic/Reykjavik", "GBR": "Europe/London", "IRL": "Europe/Dublin", "FRA": "Europe/Paris",
+    "DEU": "Europe/Berlin", "NLD": "Europe/Amsterdam", "BEL": "Europe/Brussels", "CHE": "Europe/Zurich",
+    "AUT": "Europe/Vienna", "POL": "Europe/Warsaw", "CZE": "Europe/Prague", "SVK": "Europe/Bratislava",
+    "HUN": "Europe/Budapest", "ROU": "Europe/Bucharest", "BGR": "Europe/Sofia", "SRB": "Europe/Belgrade",
+    "HRV": "Europe/Zagreb", "SVN": "Europe/Ljubljana", "BIH": "Europe/Sarajevo", "ALB": "Europe/Tirane",
+    "MKD": "Europe/Skopje", "UKR": "Europe/Kyiv", "RUS": "Europe/Moscow", "KAZ": "Asia/Almaty",
+    "UZB": "Asia/Samarkand", "TJK": "Asia/Dushanbe", "KGZ": "Asia/Bishkek", "TKM": "Asia/Ashgabat",
+    "AZE": "Asia/Baku", "GEO": "Asia/Tbilisi", "ARM": "Asia/Yerevan", "IRN": "Asia/Tehran",
+    "IRQ": "Asia/Baghdad", "SAU": "Asia/Riyadh", "YEM": "Asia/Aden", "OMN": "Asia/Muscat",
+    "ARE": "Asia/Dubai", "QAT": "Asia/Qatar", "KWT": "Asia/Kuwait", "ISR": "Asia/Jerusalem",
+    "JOR": "Asia/Amman", "LBN": "Asia/Beirut", "SYR": "Asia/Damascus", "EGY": "Africa/Cairo",
+    "MAR": "Africa/Casablanca", "DZA": "Africa/Algiers", "TUN": "Africa/Tunis", "ETH": "Africa/Addis_Ababa",
+    "KEN": "Africa/Nairobi", "TZA": "Africa/Dar_es_Salaam", "MOZ": "Africa/Maputo", "MDG": "Indian/Antananarivo",
+    "ZAF": "Africa/Johannesburg", "GHA": "Africa/Accra", "NGA": "Africa/Lagos", "SOM": "Africa/Mogadishu",
+    "SDN": "Africa/Khartoum",
+};
+
+function locationToIso3(location) {
+    const loc = String(location ?? "");
+    let tail = loc;
+    const p = loc.lastIndexOf(",");
+    if (p !== -1) tail = loc.slice(p + 1).trim();
+    const up = tail.toUpperCase();
+    if (up && COUNTRY_ISO3[up]) return COUNTRY_ISO3[up];
+    const full = loc.toUpperCase();
+    for (const name of Object.keys(COUNTRY_ISO3)) {
+        if (up && (up.includes(name) || name.includes(up))) return COUNTRY_ISO3[name];
+    }
+    for (const name of Object.keys(COUNTRY_ISO3)) {
+        if (full.includes(name)) return COUNTRY_ISO3[name];
+    }
+    return null;
+}
+
+// UTC instant -> display parts in the quake country's local zone when known
+// (labelled, e.g. "03:40 PM CST"), otherwise plain UTC parts as before.
+function formatLocalDisplayMs(timeMs, location) {
+    const iso = locationToIso3(location);
+    const tz = iso ? COUNTRY_TZ[iso] : null;
+    if (!tz) return formatUtcDisplayMs(timeMs);
+    try {
+        const d = new Date(timeMs);
+        const date = new Intl.DateTimeFormat("en-GB", { timeZone: tz, day: "2-digit", month: "long", year: "numeric" }).format(d);
+        const time = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: true, timeZoneName: "short" }).format(d);
+        return { date, time };
+    } catch {
+        return formatUtcDisplayMs(timeMs);
+    }
+}
+
 // PHIVOLCS bulletin wall time (PHT) split for display — the real published
 // time, no conversion. "14 September 2026 - 05:22 PM" ->
 // { date: "14 September 2026", time: "05:22 PM PHT" }.
@@ -712,23 +821,23 @@ async function handleUsgs(env) {
 // buildUsgsFbMessage remain as fallback + caption reference.
 
 function buildUsgsFbMessage(eq) {
-    const { date, time } = formatUtcDisplayMs(eq.timeMs);
-    const terraLink = `https://terraguard-ph.pages.dev/details/${earthquakeToEqId(eq)}`;
     const place = String(eq.location ?? "").trim() || `${eq.latitude}, ${eq.longitude}`;
-    const timeBare = String(time).replace(/\s*(UTC|PHT|UST)\s*$/i, "").trim();
-    const timeUtc = timeBare ? `${timeBare} UTC` : String(time).trim();
+    // Local country time when resolvable (labelled, e.g. "03:40 PM CST"),
+    // otherwise UTC — never bare.
+    const { date, time } = formatLocalDisplayMs(eq.timeMs, place);
+    const terraLink = `https://terraguard-ph.pages.dev/details/${earthquakeToEqId(eq)}`;
     const mag = parseFloat(eq.magnitude);
     const prefix = isNaN(mag) ? "🌍 " : mag >= 7 ? "🟥 " : mag >= 6 ? "🟥 " : mag >= 5 ? "🟧 " : mag >= 4 ? "🟨 " : mag >= 3 ? "🟦 " : "🟩 ";
     return [
         `${prefix}USGS FINAL REPORT`,
         ``,
-        `A magnitude ${eq.magnitude} earthquake was recorded near ${place} on ${date} at ${timeUtc}.`,
+        `A magnitude ${eq.magnitude} earthquake was recorded near ${place} on ${date} at ${time}.`,
         ``,
         `EARTHQUAKE INFORMATION`,
         ``,
         `Magnitude: ${eq.magnitude}`,
         `Location: ${place}`,
-        `Date & Time: ${date} - ${timeUtc}`,
+        `Date & Time: ${date} - ${time}`,
         `Depth: ${eq.depth} km`,
         `Coordinates: ${eq.latitude}°N, ${eq.longitude}°E`,
         ``,
@@ -778,7 +887,8 @@ async function postUsgsToFacebook(eq, env) {
     const lat = parseFloat(eq.latitude), lng = parseFloat(eq.longitude);
     const hasCoords = !isNaN(lat) && !isNaN(lng);
     // Designed card (same x10 renderer) first, raw Yandex satellite backup.
-    const { date: fbDate, time: fbTime } = formatUtcDisplayMs(eq.timeMs);
+    // Card shows the same local country time as the post.
+    const { date: fbDate, time: fbTime } = formatLocalDisplayMs(eq.timeMs, eq.location);
     const cardParams = hasCoords
         ? new URLSearchParams({
             lat: eq.latitude, lng: eq.longitude, mag: eq.magnitude,
@@ -1143,19 +1253,18 @@ function fbHashtags(location, source = "EMSC") {
 }
 
 function buildFacebookMessage(eq) {
-    const { date, time } = formatUtcDisplayMs(eq.timeMs);
-    const terraLink = `https://terraguard-ph.pages.dev/details/${emscEqId(eq.datetime, eq.latitude, eq.longitude)}`;
     const place = String(eq.location ?? "").trim() || `${eq.latitude}, ${eq.longitude}`;
-    const timeBare = String(time).replace(/\s*(UTC|PHT|UST)\s*$/i, "").trim();
-    const timeUtc = timeBare ? `${timeBare} UTC` : String(time).trim();
+    // Local country time when resolvable (labelled), otherwise UTC — never bare.
+    const { date, time } = formatLocalDisplayMs(eq.timeMs, place);
+    const terraLink = `https://terraguard-ph.pages.dev/details/${emscEqId(eq.datetime, eq.latitude, eq.longitude)}`;
     const mag = parseFloat(eq.magnitude);
     const magPrefix = isNaN(mag) ? "" : mag >= 7 ? "‼️MAJOR‼️ " : mag >= 6 ? "🟥 " : mag >= 5 ? "🟧 " : mag >= 4 ? "🟨 " : mag >= 3 ? "🟦 " : "🟩 ";
     return [
-        `${magPrefix}JUST IN: A Magnitude: ${eq.magnitude} struck near ${place} on ${date} - ${timeUtc}`,
+        `${magPrefix}JUST IN: A Magnitude: ${eq.magnitude} struck near ${place} on ${date} - ${time}`,
         ``,
         `Magnitude: ${eq.magnitude}`,
         `Location: ${place}`,
-        `Date & Time: ${date} - ${timeUtc}`,
+        `Date & Time: ${date} - ${time}`,
         `Depth: ${eq.depth} km`,
         `Coordinates: ${eq.latitude}°N, ${eq.longitude}°E`,
         ``,
@@ -1199,7 +1308,8 @@ async function postEmscToFacebook(eq, env) {
     const hasCoords = !isNaN(lat) && !isNaN(lng);
     // 3:4 designed card (self-hosted PNG) first, raw Yandex satellite as
     // backup. FB tries each in order; /feed text post is the last resort.
-    const { date: fbDate, time: fbTime } = formatUtcDisplayMs(eq.timeMs);
+    // Card shows the same local country time as the post.
+    const { date: fbDate, time: fbTime } = formatLocalDisplayMs(eq.timeMs, eq.location);
     const cardParams = hasCoords
         ? new URLSearchParams({
             lat: eq.latitude, lng: eq.longitude, mag: eq.magnitude,
@@ -1533,7 +1643,7 @@ function json(body, status = 200) {
 }
 
 // Named exports for unit testing (harmless in the worker runtime).
-    export { parsePhivolcsTimeMs, buildPhivolcsFbMessage, fetchLatestPhivolcs, fbPassesFilters, postEmscToFacebook, postPhivolcsToFacebook, buildFacebookMessage, formatUtcDisplayMs, phivolcsDisplayParts, phivolcsInfoNo, findEmscRevision, buildUsgsFbMessage, postUsgsToFacebook };
+    export { parsePhivolcsTimeMs, buildPhivolcsFbMessage, fetchLatestPhivolcs, fbPassesFilters, postEmscToFacebook, postPhivolcsToFacebook, buildFacebookMessage, formatUtcDisplayMs, formatLocalDisplayMs, locationToIso3, phivolcsDisplayParts, phivolcsInfoNo, findEmscRevision, buildUsgsFbMessage, postUsgsToFacebook };
 
 export default {
     async fetch(request, env) {

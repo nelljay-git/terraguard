@@ -61,8 +61,9 @@ function infoNoFromLink(link: string): string {
 
 // Split a Details-page datetime into display parts. PHIVOLCS strings are
 // PHT wall time ("14 September 2026 - 05:22 PM"); USGS/EMSC normalized
-// strings are UTC ("14 September 2026 - 09:22:15 UTC").
-function displayParts(datetime: string, source: string): { date: string; time: string } {
+// strings are UTC ("14 September 2026 - 09:22:15 UTC") and are converted to
+// the quake country's local zone when resolvable (labelled), else UTC.
+function displayParts(datetime: string, source: string, place: string): { date: string; time: string } {
   const raw = esc(datetime);
   if (sourceTag(source) === 'PHIVOLCS') {
     const m = /(\d{1,2}\s+[A-Za-z]+\s+\d{4})\s*-\s*(\d{1,2}:\d{2})(?::\d{2})?\s*(AM|PM)?/i.exec(raw);
@@ -70,14 +71,135 @@ function displayParts(datetime: string, source: string): { date: string; time: s
     const ap = (m[3] || '').toUpperCase();
     return { date: m[1].trim(), time: `${m[2]}${ap ? ` ${ap}` : ''} PHT`.trim() };
   }
-  const m = /(\d{1,2}\s+[A-Za-z]+\s+\d{4})\s*-\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i.exec(raw);
-  if (!m) return { date: raw, time: '' };
-  let h = parseInt(m[2], 10);
-  const ap = (m[4] || '').toUpperCase();
-  if (ap) return { date: m[1].trim(), time: `${h}:${m[3]} ${ap} UTC` };
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return { date: m[1].trim(), time: `${h}:${m[3]} ${ampm} UTC` };
+  const utcFallback = (): { date: string; time: string } => {
+    const m = /(\d{1,2}\s+[A-Za-z]+\s+\d{4})\s*-\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i.exec(raw);
+    if (!m) return { date: raw, time: '' };
+    let h = parseInt(m[2], 10);
+    const ap = (m[4] || '').toUpperCase();
+    if (ap) return { date: m[1].trim(), time: `${h}:${m[3]} ${ap} UTC` };
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return { date: m[1].trim(), time: `${h}:${m[3]} ${ampm} UTC` };
+  };
+  const ms = utcMsFromDisplay(raw);
+  if (ms == null) return utcFallback();
+  const iso = locationToIso3(place);
+  const tz = iso ? COUNTRY_TZ[iso] : null;
+  if (!tz) return utcFallback();
+  try {
+    const d = new Date(ms);
+    return {
+      date: new Intl.DateTimeFormat('en-GB', { timeZone: tz, day: '2-digit', month: 'long', year: 'numeric' }).format(d),
+      time: new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: true, timeZoneName: 'short' }).format(d),
+    };
+  } catch {
+    return utcFallback();
+  }
+}
+
+// "14 September 2026 - 09:22:15 UTC" (or 12h variant) -> UTC epoch ms.
+// PHT-suffixed strings are shifted back by +8. Null when unparseable.
+function utcMsFromDisplay(datetime: string): number | null {
+  const m = /(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\s*-\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i.exec(datetime.trim());
+  if (!m) return null;
+  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const mi = months.indexOf(m[2].slice(0, 3).toLowerCase());
+  if (mi === -1) return null;
+  let h = parseInt(m[4], 10);
+  const ap = ((m[7] || '') as string).toUpperCase();
+  if (ap === 'PM' && h < 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  const offMs = /PHT/i.test(datetime) ? 8 * 3600 * 1000 : 0;
+  return Date.UTC(parseInt(m[3], 10), mi, parseInt(m[1], 10), h, parseInt(m[5], 10), m[6] ? parseInt(m[6], 10) : 0) - offMs;
+}
+
+// Country name -> ISO3, and ISO3 -> representative IANA zone.
+// Mirrors worker-webhook/src/earthquake.js and apiphp/quake-card.php.
+const COUNTRY_ISO3: Record<string, string> = {
+  'PHILIPPINES': 'PHL', 'INDONESIA': 'IDN', 'MALAYSIA': 'MYS', 'JAPAN': 'JPN',
+  'TAIWAN': 'TWN', 'CHINA': 'CHN', 'HONG KONG': 'HKG', 'MONGOLIA': 'MNG',
+  'SOUTH KOREA': 'KOR', 'KOREA': 'KOR', 'NORTH KOREA': 'PRK', 'THAILAND': 'THA',
+  'VIETNAM': 'VNM', 'CAMBODIA': 'KHM', 'LAOS': 'LAO', 'MYANMAR': 'MMR',
+  'BANGLADESH': 'BGD', 'BHUTAN': 'BTN', 'NEPAL': 'NPL', 'INDIA': 'IND',
+  'PAKISTAN': 'PAK', 'AFGHANISTAN': 'AFG', 'SRI LANKA': 'LKA', 'MALDIVES': 'MDV',
+  'PAPUA NEW GUINEA': 'PNG', 'FIJI': 'FJI', 'VANUATU': 'VUT', 'SOLOMON ISLANDS': 'SLB',
+  'NEW CALEDONIA': 'NCL', 'TONGA': 'TON', 'SAMOA': 'WSM', 'NEW ZEALAND': 'NZL',
+  'AUSTRALIA': 'AUS', 'PALAU': 'PLW', 'MICRONESIA': 'FSM', 'MARSHALL ISLANDS': 'MHL',
+  'KIRIBATI': 'KIR', 'TUVALU': 'TUV', 'NAURU': 'NRU', 'GUAM': 'GUM',
+  'HAWAII': 'USA', 'ALASKA': 'USA', 'CALIFORNIA': 'USA', 'UNITED STATES': 'USA',
+  'USA': 'USA', 'CANADA': 'CAN', 'MEXICO': 'MEX', 'GUATEMALA': 'GTM',
+  'EL SALVADOR': 'SLV', 'HONDURAS': 'HND', 'NICARAGUA': 'NIC', 'COSTA RICA': 'CRI',
+  'PANAMA': 'PAN', 'CUBA': 'CUB', 'JAMAICA': 'JAM', 'HAITI': 'HTI',
+  'DOMINICAN REPUBLIC': 'DOM', 'PUERTO RICO': 'PRI', 'COLOMBIA': 'COL',
+  'VENEZUELA': 'VEN', 'ECUADOR': 'ECU', 'PERU': 'PER', 'BOLIVIA': 'BOL',
+  'CHILE': 'CHL', 'ARGENTINA': 'ARG', 'BRAZIL': 'BRA', 'URUGUAY': 'URY',
+  'PARAGUAY': 'PRY', 'TURKEY': 'TUR', 'TURKIYE': 'TUR', 'GREECE': 'GRC',
+  'ITALY': 'ITA', 'SPAIN': 'ESP', 'PORTUGAL': 'PRT', 'ICELAND': 'ISL',
+  'UNITED KINGDOM': 'GBR', 'UK': 'GBR', 'ENGLAND': 'GBR', 'IRELAND': 'IRL',
+  'FRANCE': 'FRA', 'GERMANY': 'DEU', 'NETHERLANDS': 'NLD', 'BELGIUM': 'BEL',
+  'SWITZERLAND': 'CHE', 'AUSTRIA': 'AUT', 'POLAND': 'POL', 'CZECHIA': 'CZE',
+  'SLOVAKIA': 'SVK', 'HUNGARY': 'HUN', 'ROMANIA': 'ROU', 'BULGARIA': 'BGR',
+  'SERBIA': 'SRB', 'CROATIA': 'HRV', 'SLOVENIA': 'SVN', 'BOSNIA': 'BIH',
+  'ALBANIA': 'ALB', 'NORTH MACEDONIA': 'MKD', 'UKRAINE': 'UKR', 'RUSSIA': 'RUS',
+  'KAZAKHSTAN': 'KAZ', 'UZBEKISTAN': 'UZB', 'TAJIKISTAN': 'TJK', 'KYRGYZSTAN': 'KGZ',
+  'TURKMENISTAN': 'TKM', 'AZERBAIJAN': 'AZE', 'GEORGIA': 'GEO', 'ARMENIA': 'ARM',
+  'IRAN': 'IRN', 'IRAQ': 'IRQ', 'SAUDI ARABIA': 'SAU', 'YEMEN': 'YEM',
+  'OMAN': 'OMN', 'UAE': 'ARE', 'QATAR': 'QAT', 'KUWAIT': 'KWT',
+  'ISRAEL': 'ISR', 'JORDAN': 'JOR', 'LEBANON': 'LBN', 'SYRIA': 'SYR',
+  'EGYPT': 'EGY', 'MOROCCO': 'MAR', 'ALGERIA': 'DZA', 'TUNISIA': 'TUN',
+  'ETHIOPIA': 'ETH', 'KENYA': 'KEN', 'TANZANIA': 'TZA', 'MOZAMBIQUE': 'MOZ',
+  'MADAGASCAR': 'MDG', 'SOUTH AFRICA': 'ZAF', 'GHANA': 'GHA', 'NIGERIA': 'NGA',
+  'SOMALIA': 'SOM', 'SUDAN': 'SDN',
+};
+const COUNTRY_TZ: Record<string, string> = {
+  'PHL': 'Asia/Manila', 'IDN': 'Asia/Jakarta', 'MYS': 'Asia/Kuala_Lumpur', 'JPN': 'Asia/Tokyo',
+  'TWN': 'Asia/Taipei', 'CHN': 'Asia/Shanghai', 'HKG': 'Asia/Hong_Kong', 'MNG': 'Asia/Ulaanbaatar',
+  'KOR': 'Asia/Seoul', 'PRK': 'Asia/Pyongyang', 'THA': 'Asia/Bangkok', 'VNM': 'Asia/Ho_Chi_Minh',
+  'KHM': 'Asia/Phnom_Penh', 'LAO': 'Asia/Vientiane', 'MMR': 'Asia/Yangon', 'BGD': 'Asia/Dhaka',
+  'BTN': 'Asia/Thimphu', 'NPL': 'Asia/Kathmandu', 'IND': 'Asia/Kolkata', 'PAK': 'Asia/Karachi',
+  'AFG': 'Asia/Kabul', 'LKA': 'Asia/Colombo', 'MDV': 'Indian/Maldives', 'PNG': 'Pacific/Port_Moresby',
+  'FJI': 'Pacific/Fiji', 'VUT': 'Pacific/Efate', 'SLB': 'Pacific/Guadalcanal', 'NCL': 'Pacific/Noumea',
+  'TON': 'Pacific/Tongatapu', 'WSM': 'Pacific/Apia', 'NZL': 'Pacific/Auckland', 'AUS': 'Australia/Sydney',
+  'PLW': 'Pacific/Palau', 'FSM': 'Pacific/Chuuk', 'MHL': 'Pacific/Majuro', 'KIR': 'Pacific/Tarawa',
+  'TUV': 'Pacific/Funafuti', 'NRU': 'Pacific/Nauru', 'GUM': 'Pacific/Guam', 'USA': 'America/New_York',
+  'CAN': 'America/Toronto', 'MEX': 'America/Mexico_City', 'GTM': 'America/Guatemala', 'SLV': 'America/El_Salvador',
+  'HND': 'America/Tegucigalpa', 'NIC': 'America/Managua', 'CRI': 'America/Costa_Rica', 'PAN': 'America/Panama',
+  'CUB': 'America/Havana', 'JAM': 'America/Jamaica', 'HTI': 'America/Port-au-Prince', 'DOM': 'America/Santo_Domingo',
+  'PRI': 'America/Puerto_Rico', 'COL': 'America/Bogota', 'VEN': 'America/Caracas', 'ECU': 'America/Guayaquil',
+  'PER': 'America/Lima', 'BOL': 'America/La_Paz', 'CHL': 'America/Santiago', 'ARG': 'America/Argentina/Buenos_Aires',
+  'BRA': 'America/Sao_Paulo', 'URY': 'America/Montevideo', 'PRY': 'America/Asuncion', 'TUR': 'Europe/Istanbul',
+  'GRC': 'Europe/Athens', 'ITA': 'Europe/Rome', 'ESP': 'Europe/Madrid', 'PRT': 'Europe/Lisbon',
+  'ISL': 'Atlantic/Reykjavik', 'GBR': 'Europe/London', 'IRL': 'Europe/Dublin', 'FRA': 'Europe/Paris',
+  'DEU': 'Europe/Berlin', 'NLD': 'Europe/Amsterdam', 'BEL': 'Europe/Brussels', 'CHE': 'Europe/Zurich',
+  'AUT': 'Europe/Vienna', 'POL': 'Europe/Warsaw', 'CZE': 'Europe/Prague', 'SVK': 'Europe/Bratislava',
+  'HUN': 'Europe/Budapest', 'ROU': 'Europe/Bucharest', 'BGR': 'Europe/Sofia', 'SRB': 'Europe/Belgrade',
+  'HRV': 'Europe/Zagreb', 'SVN': 'Europe/Ljubljana', 'BIH': 'Europe/Sarajevo', 'ALB': 'Europe/Tirane',
+  'MKD': 'Europe/Skopje', 'UKR': 'Europe/Kyiv', 'RUS': 'Europe/Moscow', 'KAZ': 'Asia/Almaty',
+  'UZB': 'Asia/Samarkand', 'TJK': 'Asia/Dushanbe', 'KGZ': 'Asia/Bishkek', 'TKM': 'Asia/Ashgabat',
+  'AZE': 'Asia/Baku', 'GEO': 'Asia/Tbilisi', 'ARM': 'Asia/Yerevan', 'IRN': 'Asia/Tehran',
+  'IRQ': 'Asia/Baghdad', 'SAU': 'Asia/Riyadh', 'YEM': 'Asia/Aden', 'OMN': 'Asia/Muscat',
+  'ARE': 'Asia/Dubai', 'QAT': 'Asia/Qatar', 'KWT': 'Asia/Kuwait', 'ISR': 'Asia/Jerusalem',
+  'JOR': 'Asia/Amman', 'LBN': 'Asia/Beirut', 'SYR': 'Asia/Damascus', 'EGY': 'Africa/Cairo',
+  'MAR': 'Africa/Casablanca', 'DZA': 'Africa/Algiers', 'TUN': 'Africa/Tunis', 'ETH': 'Africa/Addis_Ababa',
+  'KEN': 'Africa/Nairobi', 'TZA': 'Africa/Dar_es_Salaam', 'MOZ': 'Africa/Maputo', 'MDG': 'Indian/Antananarivo',
+  'ZAF': 'Africa/Johannesburg', 'GHA': 'Africa/Accra', 'NGA': 'Africa/Lagos', 'SOM': 'Africa/Mogadishu',
+  'SDN': 'Africa/Khartoum',
+};
+function locationToIso3(location: string): string | null {
+  const loc = String(location ?? '');
+  let tail = loc;
+  const p = loc.lastIndexOf(',');
+  if (p !== -1) tail = loc.slice(p + 1).trim();
+  const up = tail.toUpperCase();
+  if (up && COUNTRY_ISO3[up]) return COUNTRY_ISO3[up];
+  const full = loc.toUpperCase();
+  for (const name of Object.keys(COUNTRY_ISO3)) {
+    if (up && (up.includes(name) || name.includes(up))) return COUNTRY_ISO3[name];
+  }
+  for (const name of Object.keys(COUNTRY_ISO3)) {
+    if (full.includes(name)) return COUNTRY_ISO3[name];
+  }
+  return null;
 }
 
 function hashtags(location: string, tag: string): string {
@@ -159,7 +281,7 @@ export async function onRequest(context: { request: Request; env?: Record<string
   const sourceLink = esc(body.sourceLink);
   if (!place || !pageUrl) return json({ success: false, error: 'Missing location/pageUrl' }, 400);
 
-  const { date, time } = displayParts(esc(body.datetime), tag);
+  const { date, time } = displayParts(esc(body.datetime), tag, place);
   const timeBare = time.replace(/\s*(UTC|PHT|UST)\s*$/i, '').trim();
   // PHIVOLCS-only: bulletin number. Prefer the explicit number the
   // Details page sends (it already resolved Final variants); fall back to
