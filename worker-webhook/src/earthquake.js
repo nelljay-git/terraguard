@@ -716,18 +716,19 @@ function buildUsgsFbMessage(eq) {
     const terraLink = `https://terraguard-ph.pages.dev/details/${earthquakeToEqId(eq)}`;
     const place = String(eq.location ?? "").trim() || `${eq.latitude}, ${eq.longitude}`;
     const timeBare = String(time).replace(/\s*(UTC|PHT|UST)\s*$/i, "").trim();
+    const timeUtc = timeBare ? `${timeBare} UTC` : String(time).trim();
     const mag = parseFloat(eq.magnitude);
     const prefix = isNaN(mag) ? "🌍 " : mag >= 7 ? "🟥 " : mag >= 6 ? "🟥 " : mag >= 5 ? "🟧 " : mag >= 4 ? "🟨 " : mag >= 3 ? "🟦 " : "🟩 ";
     return [
         `${prefix}USGS FINAL REPORT`,
         ``,
-        `A magnitude ${eq.magnitude} earthquake was recorded near ${place} on ${date} at ${timeBare}.`,
+        `A magnitude ${eq.magnitude} earthquake was recorded near ${place} on ${date} at ${timeUtc}.`,
         ``,
         `EARTHQUAKE INFORMATION`,
         ``,
         `Magnitude: ${eq.magnitude}`,
         `Location: ${place}`,
-        `Date & Time: ${date} - ${timeBare}`,
+        `Date & Time: ${date} - ${timeUtc}`,
         `Depth: ${eq.depth} km`,
         `Coordinates: ${eq.latitude}°N, ${eq.longitude}°E`,
         ``,
@@ -1146,14 +1147,15 @@ function buildFacebookMessage(eq) {
     const terraLink = `https://terraguard-ph.pages.dev/details/${emscEqId(eq.datetime, eq.latitude, eq.longitude)}`;
     const place = String(eq.location ?? "").trim() || `${eq.latitude}, ${eq.longitude}`;
     const timeBare = String(time).replace(/\s*(UTC|PHT|UST)\s*$/i, "").trim();
+    const timeUtc = timeBare ? `${timeBare} UTC` : String(time).trim();
     const mag = parseFloat(eq.magnitude);
     const magPrefix = isNaN(mag) ? "" : mag >= 7 ? "‼️MAJOR‼️ " : mag >= 6 ? "🟥 " : mag >= 5 ? "🟧 " : mag >= 4 ? "🟨 " : mag >= 3 ? "🟦 " : "🟩 ";
     return [
-        `${magPrefix}JUST IN: A Magnitude: ${eq.magnitude} struck near ${place} on ${date} - ${timeBare}`,
+        `${magPrefix}JUST IN: A Magnitude: ${eq.magnitude} struck near ${place} on ${date} - ${timeUtc}`,
         ``,
         `Magnitude: ${eq.magnitude}`,
         `Location: ${place}`,
-        `Date & Time: ${date} - ${timeBare}`,
+        `Date & Time: ${date} - ${timeUtc}`,
         `Depth: ${eq.depth} km`,
         `Coordinates: ${eq.latitude}°N, ${eq.longitude}°E`,
         ``,
