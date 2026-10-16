@@ -326,6 +326,33 @@ export function drawFrame(
   vg.addColorStop(1, 'rgba(0,0,0,0.72)');
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, W, H);
+  // DYFI dots live UNDER glow/badge/wave/info so reports can never cover
+  // the magnitude badge or text — same map-locked transform as the mosaic.
+  const dyfiA = dyfi.length > 0 && t >= DYFI_T ? easeOutCubic(Math.min((t - DYFI_T) / 0.8, 1)) : 0;
+  if (dyfiA > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.95 * dyfiA + 0.05;
+    for (const p of dyfi) {
+      const { x: bx, y: by } = latLngToDisplayPx(eq, p.lat, p.lng);
+      const x = dex + (bx + shX - dex) * s;
+      const y = dey + (by + shY - dey) * s;
+      if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
+      ctx.beginPath();
+      ctx.arc(x, y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = p.cdi != null ? mmiColor(p.cdi) : '#ffd166';
+      ctx.fill();
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+      ctx.stroke();
+      // subtle outer glow for visibility on dark map
+      ctx.beginPath();
+      ctx.arc(x, y, 10, 0, Math.PI * 2);
+      ctx.strokeStyle = p.cdi != null ? mmiColor(p.cdi) + '55' : 'rgba(255,209,102,0.35)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   if (shakeActive) ctx.restore();
   // Watermark: vertical "TERRA GUARD PH" on the right center, 50% opacity — not shaken.
@@ -442,11 +469,8 @@ export function drawFrame(
     }
   }
 
-  // DYFI felt responses — keep the caption here but defer dot
-  // drawing until after the side gradients so points stay on top.
-  let dyfiA = 0;
-  if (dyfi.length > 0 && t >= DYFI_T) {
-    dyfiA = easeOutCubic(Math.min((t - DYFI_T) / 0.8, 1));
+  // DYFI caption (dots are drawn up front, underneath everything).
+  if (dyfiA > 0) {
     ctx.save();
     ctx.globalAlpha = dyfiA;
     ctx.fillStyle = '#9ca3af';
@@ -681,35 +705,6 @@ export function drawFrame(
     }
     ctx.globalAlpha = q;
     ctx.textAlign = 'left';
-
-    // DYFI dots — drawn after gradients (on top) so they aren't dimmed, larger + stronger outline.
-    // Shifted with the centered frame, then transformed by the same
-    // zoom-about-epicenter as the map so points stay glued to the ground
-    // underneath.
-    if (dyfi.length > 0 && t >= DYFI_T) {
-      ctx.save();
-      ctx.globalAlpha = q * (0.95 * dyfiA + 0.05);
-      for (const p of dyfi) {
-        const { x: bx, y: by } = latLngToDisplayPx(eq, p.lat, p.lng);
-        const x = dex + (bx + shX - dex) * s;
-        const y = dey + (by + shY - dey) * s;
-        if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
-        ctx.beginPath();
-        ctx.arc(x, y, 7, 0, Math.PI * 2);
-        ctx.fillStyle = p.cdi != null ? mmiColor(p.cdi) : '#ffd166';
-        ctx.fill();
-        ctx.lineWidth = 2.2;
-        ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-        ctx.stroke();
-        // subtle outer glow for visibility on dark map
-        ctx.beginPath();
-        ctx.arc(x, y, 10, 0, Math.PI * 2);
-        ctx.strokeStyle = p.cdi != null ? mmiColor(p.cdi) + '55' : 'rgba(255,209,102,0.35)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
 
     const depthNum = eq.depth || '?';
     const depthTag = (() => {
