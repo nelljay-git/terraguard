@@ -791,11 +791,15 @@ async function handleUsgs(env) {
     if (wantsVideo && !usgsFbOff && !fbPassesFilters(latest, env)) {
         const isAuto = env._isAuto === true;
         const videoMsg = await scheduleVideoWithRetry(isAuto);
+        // Image now + video when ready: the designed card posts immediately,
+        // the rendered video closes the report later.
+        const fbStatus = await tryFbFinal();
+        await recordFb(fbStatus);
         await kv.put("last_eq_id", dedupKey);
-        await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, videoFinal: true, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
+        await kv.put(`sent:${dedupKey}`, JSON.stringify({ ...latest, videoFinal: true, fbStatus, sentAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
         await kv.put(`sent:${earthquakeToEqId(latest)}`, dedupKey, { expirationTtl: 60 * 60 * 24 * 30 });
         await recordSent(kv, { source: "usgs", id: latest.usgsId, timeMs: latest.timeMs, lat, lng, mag });
-        return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | ${videoMsg ?? "video dispatched (USGS final closes on render)"}`;
+        return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | fb: ${fbStatus} | ${videoMsg ?? "video dispatched (USGS final closes on render)"}`;
     }
     if (!wantsVideo) {
         await kv.put("last_eq_id", dedupKey);
@@ -813,10 +817,11 @@ async function handleUsgs(env) {
     return `sent ${dedupKey} M${latest.magnitude} ${latest.location} | fb: ${fbStatus}`;
 }
 
-// ===== USGS → Facebook: video close (no image posts) =====
-// At/above RENDER_MIN_MAG the USGS confirmation IS the rendered video
-// (dispatched here, posted by Actions). Below threshold USGS stays off
-// Facebook entirely — Discord still fires. Same FB_MAG_MIN /
+// ===== USGS → Facebook: image now + video close =====
+// At/above RENDER_MIN_MAG the designed card posts immediately and the
+// rendered video closes the report later (dispatched here, posted by
+// Actions). Below threshold USGS stays off Facebook entirely — Discord
+// still fires. Same FB_MAG_MIN /
 // FB_COUNTRY_FOCUS gates, no PH exception. postUsgsToFacebook /
 // buildUsgsFbMessage remain as fallback + caption reference.
 
