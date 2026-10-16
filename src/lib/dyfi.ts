@@ -26,6 +26,27 @@ export interface DyfiQuery {
   longitude?: string;
 }
 
+// Pick the DYFI responses geojson from a product's contents map. Current
+// events publish exactly 'dyfi_geo.geojson'; older ones (e.g. 2017
+// Tehuantepec) only carry variants like 'dyfi_geo_10km.geojson' — an
+// exact-key lookup silently yields zero dots for those.
+export function pickDyfiGeojsonUrl(contents: unknown): string | null {
+  if (!contents || typeof contents !== 'object') return null;
+  const keys = Object.keys(contents as Record<string, unknown>);
+  const rank = (k: string): number => {
+    if (k === 'dyfi_geo.geojson') return 0;
+    if (/dyfi.*10km.*\.geojson$/i.test(k)) return 1;
+    if (/dyfi.*\.geojson$/i.test(k)) return 2;
+    return 3;
+  };
+  const cands = keys
+    .filter((k) => /\.geojson$/i.test(k) && /dyfi/i.test(k))
+    .sort((a, b) => rank(a) - rank(b));
+  if (cands.length === 0) return null;
+  const entry = (contents as Record<string, { url?: unknown }>)[cands[0]];
+  return typeof entry?.url === 'string' ? entry.url : null;
+}
+
 const USGS_QUERY = 'https://earthquake.usgs.gov/fdsnws/event/1/query';
 // Canvas arcs are cheap, but a big US event can ship 10k+ responses;
 // stride-sample down to this cap while keeping spatial spread.
@@ -110,17 +131,49 @@ export async function fetchDyfiPoints(q: DyfiQuery, timeoutMs = 9000): Promise<D
       if (!eventId) return [];
     }
     const detail = await fetchJson(`${USGS_QUERY}?format=geojson&eventid=${encodeURIComponent(eventId)}`, timeoutMs);
-    const url = detail?.properties?.products?.dyfi?.[0]?.contents?.['dyfi_geo.geojson']?.url;
-    if (typeof url !== 'string' || !url) return [];
+    const url = pickDyfiGeojsonUrl(detail?.properties?.products?.dyfi?.[0]?.contents);
+    if (!url) return [];
     const gj = await fetchJson(url, timeoutMs);
     const feats: any[] = gj?.features ?? [];
     const pts: DyfiPoint[] = [];
+    // Centroid of a Polygon exterior ring (gridded products like
+    // dyfi_geo_10km.geojson aggregate responses into cells).
+    const centroid = (rings: unknown): [number, number] | null => {
+      const outer = Array.isArray(rings) ? (rings as unknown[])[0] : null;
+      if (!Array.isArray(outer) || outer.length === 0) return null;
+      let sx = 0, sy = 0, n = 0;
+      for (const p of outer as unknown[]) {
+        const q = p as unknown[];
+        if (Array.isArray(q) && typeof q[0] === 'number' && typeof q[1] === 'number') {
+          sx += q[0] as number;
+          sy += q[1] as number;
+          n++;
+        }
+      }
+      return n > 0 ? [sx / n, sy / n] : null;
+    };
     for (const f of feats) {
-      if (f?.geometry?.type !== 'Point') continue;
-      const c = f.geometry.coordinates;
-      if (!Array.isArray(c) || typeof c[0] !== 'number' || typeof c[1] !== 'number') continue;
+      const gtype = f?.geometry?.type;
+      let lng: number | null = null;
+      let lat: number | null = null;
+      if (gtype === 'Point') {
+        const c = f.geometry.coordinates;
+        if (Array.isArray(c) && typeof c[0] === 'number' && typeof c[1] === 'number') {
+          lng = c[0];
+          lat = c[1];
+        }
+      } else if (gtype === 'Polygon') {
+        const cc = centroid(f.geometry.coordinates);
+        if (cc) {
+          lng = cc[0];
+          lat = cc[1];
+        }
+      } else {
+        continue;
+      }
+      if (lng == null || lat == null) continue;
       const cdiRaw = typeof f?.properties?.cdi === 'number' ? f.properties.cdi : parseFloat(f?.properties?.cdi);
-      pts.push({ lat: c[1], lng: c[0], cdi: isNaN(cdiRaw) ? null : cdiRaw });
+      pts.push({ lat, lng, cdi: isNaN(cdiRaw) ? null : cdiRaw });
     }
     if (pts.length > MAX_POINTS) {
       const stride = pts.length / MAX_POINTS;
