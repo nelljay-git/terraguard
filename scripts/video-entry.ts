@@ -40,8 +40,8 @@ import {
   TILE,
   MOSAIC_D,
 } from '../src/components/VideoReport.js';
-import { estimateAffectedRadiusKm, estimateDamage, isKnownIntensity } from '../src/lib/videoMeta.js';
-import { fetchDyfiPoints } from '../src/lib/dyfi.js';
+import { estimateAffectedRadiusKm, estimateDamage, isKnownIntensity, extractShakeRows } from '../src/lib/videoMeta.js';
+import { fetchDyfiPoints, fetchDyfiShakeText, fetchUsgsCityShakeText } from '../src/lib/dyfi.js';
 
 // Re-exported so tests/tools can import the shared render pieces from the
 // bundled output (esbuild tree-shakes otherwise-unreferenced exports).
@@ -363,6 +363,28 @@ async function main(): Promise<void> {
     longitude: quake.longitude,
   });
   console.log(`dyfi points: ${dyfi.length}`);
+
+  // Felt-report rows for SHAKE REPORT: worker dispatches carry no felt
+  // text (manual posts get it from /details), so build it here from the
+  // same USGS products the Details page uses — reported (DYFI) first,
+  // instrumental (PAGER cities) as fallback. Skipped when the dispatch
+  // already supplied rows; never fatal.
+  if ((quake.shakes ?? []).length === 0 && quake.usgsEventId) {
+    const reportedText = await fetchDyfiShakeText(quake.usgsEventId);
+    let rows = extractShakeRows(reportedText);
+    let via = 'dyfi';
+    if (rows.length === 0) {
+      rows = extractShakeRows(await fetchUsgsCityShakeText(quake.usgsEventId));
+      via = 'pager';
+    }
+    if (rows.length > 0) {
+      quake.shakes = rows;
+      // Rows win over feed MMI: extractShakeRows sorts strongest-first,
+      // so rows[0] is the same max the manual modal computes from text.
+      quake.intensity = rows[0].intensity;
+      console.log(`shake rows via ${via}: ${rows.length} (intensity now ${quake.intensity || '—'})`);
+    }
+  }
 
   // Frames (deterministic timesteps — smoother than realtime capture).
   const total = Math.round(DUR * FPS);

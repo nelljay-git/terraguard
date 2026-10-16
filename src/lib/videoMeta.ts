@@ -83,6 +83,17 @@ function intensityDamageTier(intensity: string): number {
 // True only for a real parsed intensity — placeholders mean there is no
 // felt data to base damage figures on (callers must show Unknown then,
 // never magnitude-only numbers next to a severity badge).
+// Max across several roman-numeral labels ('' when none parse) — keeps
+// MAX INTENSITY consistent with whichever source supplied the rows.
+export function maxIntensityLabel(...labels: Array<string | undefined | null>): string {
+  let best = 0;
+  for (const label of labels) {
+    const n = romanToInt((label ?? '').trim().toUpperCase());
+    if (n >= 1 && n <= 10 && n > best) best = n;
+  }
+  return best > 0 ? ROMAN_1_TO_10[best] : '';
+}
+
 export function isKnownIntensity(v: string | undefined | null): boolean {
   const s = (v ?? '').trim().toUpperCase();
   return s !== '' && s !== '—' && s !== '-' && s !== 'N/A' && s !== 'NONE';

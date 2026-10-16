@@ -119,6 +119,93 @@ async function resolveEventId(utcMs: number, lat: number, lng: number, timeoutMs
   return bestId;
 }
 
+const ROMAN_1_TO_12 = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+
+function romanIntensity(value: number): string {
+  const level = Math.max(1, Math.min(12, Math.round(value)));
+  return ROMAN_1_TO_12[level];
+}
+
+// "UTM:(15P 056 164 10000)<br>Mazatán" -> "Mazatán" (mirrors the
+// Details-page builder so headless rows read identically).
+function cleanIntensityName(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw) return '';
+  return raw
+    .replace(/UTM:\([^)]*\)/g, '')
+    .replace(/<br\s*\/?>/gi, ', ')
+    .replace(/^[,\s;]+|[,\s;]+$/g, '')
+    .trim();
+}
+
+// Felt-report TEXT in the exact "Intensity V - Name (2 responses)" format
+// the Details page builds, so the headless auto renderer lists the same
+// rows the manual modal shows. Empty string when unavailable (never throws).
+export async function fetchDyfiShakeText(usgsEventId: string, timeoutMs = 9000): Promise<string> {
+  try {
+    if (!usgsEventId) return '';
+    const detail = await fetchJson(`${USGS_QUERY}?format=geojson&eventid=${encodeURIComponent(usgsEventId)}`, timeoutMs);
+    const url = pickDyfiGeojsonUrl(detail?.properties?.products?.dyfi?.[0]?.contents);
+    if (!url) return '';
+    const gj = await fetchJson(url, timeoutMs);
+    const feats: any[] = gj?.features ?? [];
+    const groups = new Map<number, { names: string[]; dropped: number }>();
+    for (const f of feats) {
+      const name = cleanIntensityName(f?.properties?.name);
+      const cdiRaw = typeof f?.properties?.cdi === 'number' ? f.properties.cdi : parseFloat(f?.properties?.cdi);
+      if (!name || isNaN(cdiRaw)) continue;
+      const level = Math.max(1, Math.min(12, Math.round(cdiRaw)));
+      if (!groups.has(level)) groups.set(level, { names: [], dropped: 0 });
+      const group = groups.get(level)!;
+      const nresp = f?.properties?.nresp;
+      const extra =
+        typeof nresp === 'number' ? `${nresp} ${nresp === 1 ? 'response' : 'responses'}` : undefined;
+      if (group.names.length < 12) {
+        group.names.push(extra ? `${name} (${extra})` : name);
+      } else {
+        group.dropped += 1;
+      }
+    }
+    return [...groups.keys()]
+      .sort((a, b) => b - a)
+      .map((level) => {
+        const group = groups.get(level)!;
+        const tail = group.dropped > 0 ? ` and ${group.dropped} more` : '';
+        return `Intensity ${romanIntensity(level)} - ${group.names.join(', ')}${tail}`;
+      })
+      .join('\n');
+  } catch {
+    return '';
+  }
+}
+
+// Instrumental felt text from PAGER cities.json in the exact
+// "Intensity V - Name (2 k)" format the Details page builds (pop shown in
+// thousands). Empty string when unavailable (never throws).
+export async function fetchUsgsCityShakeText(usgsEventId: string, timeoutMs = 9000): Promise<string> {
+  try {
+    if (!usgsEventId) return '';
+    const detail = await fetchJson(`${USGS_QUERY}?format=geojson&eventid=${encodeURIComponent(usgsEventId)}`, timeoutMs);
+    const products = detail?.properties?.products ?? {};
+    const pager = Array.isArray(products.losspager) ? products.losspager[0] : undefined;
+    const contents = pager?.contents ?? {};
+    const entry = contents['cities.json'] ?? contents['json/cities.json'];
+    const url = typeof entry?.url === 'string' ? entry.url : null;
+    if (!url) return '';
+    const cities = await fetchJson(url, timeoutMs);
+    const list = cities?.all_cities;
+    if (!Array.isArray(list) || list.length === 0) return '';
+    const lines: string[] = [];
+    for (const c of list) {
+      if (!c?.name || c?.mmi == null || isNaN(Number(c.mmi))) continue;
+      const pop = typeof c.pop === 'number' && c.pop > 0 ? Math.round(c.pop / 1000).toLocaleString('en-US') : '';
+      lines.push(`Intensity ${romanIntensity(Number(c.mmi))} - ${c.name}${pop ? ` (${pop} k)` : ''}`);
+    }
+    return lines.join('\n');
+  } catch {
+    return '';
+  }
+}
+
 export async function fetchDyfiPoints(q: DyfiQuery, timeoutMs = 9000): Promise<DyfiPoint[]> {
   try {
     let eventId = q.usgsEventId;
