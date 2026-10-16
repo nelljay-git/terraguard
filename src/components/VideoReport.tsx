@@ -55,7 +55,7 @@ export function isStrongQuake(magRaw: string): boolean {
   const m = parseFloat(magRaw);
   return !isNaN(m) && m >= 6 && m < 7;
 }
-export const DYFI_T = WAVE_T + WAVE_DUR + 0.1; // DYFI fade-in, right after the wave
+export const DYFI_T = WAVE_T + 0.5; // DYFI caption joins mid-wave; dots wipe in with the front itself
 // Mosaic: 5 cols x 7 rows of 256px Esri tiles (same map as the app).
 // ROWS is odd so the grid is symmetric around the epicenter (an even row
 // count biases the epicenter off-center and breaks the dead-center shift).
@@ -328,25 +328,29 @@ export function drawFrame(
   ctx.fillRect(0, 0, W, H);
   // DYFI dots live UNDER glow/badge/wave/info so reports can never cover
   // the magnitude badge or text — same map-locked transform as the mosaic.
+  // Reveal is a radial wipe synced to the shockwave front: each dot pops
+  // as the wave passes over it (no white outline — clean filled dots).
   const dyfiA = dyfi.length > 0 && t >= DYFI_T ? easeOutCubic(Math.min((t - DYFI_T) / 0.8, 1)) : 0;
-  if (dyfiA > 0) {
+  const waveWt = (t - WAVE_T) / WAVE_DUR;
+  const waveR = waveWt < 0 ? -1 : waveWt > 1 ? Infinity : 45 + easeOutCubic(waveWt) * 1140;
+  if (dyfi.length > 0 && waveR > 0) {
     ctx.save();
-    ctx.globalAlpha = 0.95 * dyfiA + 0.05;
     for (const p of dyfi) {
       const { x: bx, y: by } = latLngToDisplayPx(eq, p.lat, p.lng);
       const x = dex + (bx + shX - dex) * s;
       const y = dey + (by + shY - dey) * s;
       if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
+      const reveal = Math.min(Math.max((waveR - Math.hypot(x - dex, y - dey)) / 140, 0), 1);
+      if (reveal <= 0) continue;
+      ctx.globalAlpha = reveal;
+      const rr = 7 * (0.3 + 0.7 * easeOutCubic(reveal));
       ctx.beginPath();
-      ctx.arc(x, y, 7, 0, Math.PI * 2);
+      ctx.arc(x, y, rr, 0, Math.PI * 2);
       ctx.fillStyle = p.cdi != null ? mmiColor(p.cdi) : '#ffd166';
       ctx.fill();
-      ctx.lineWidth = 2.2;
-      ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-      ctx.stroke();
       // subtle outer glow for visibility on dark map
       ctx.beginPath();
-      ctx.arc(x, y, 10, 0, Math.PI * 2);
+      ctx.arc(x, y, rr + 3, 0, Math.PI * 2);
       ctx.strokeStyle = p.cdi != null ? mmiColor(p.cdi) + '55' : 'rgba(255,209,102,0.35)';
       ctx.lineWidth = 1;
       ctx.stroke();
