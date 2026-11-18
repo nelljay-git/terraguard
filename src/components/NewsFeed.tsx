@@ -47,7 +47,7 @@ export function NewsFeed({ limit = 5, showViewAll = true }: NewsFeedProps) {
   }
 
   return (
-    <div className="news-feed glass">
+    <div className="news-feed">
       <div className="news-feed-header">
         <div className="news-feed-title-row">
           <Newspaper size={18} className="news-feed-icon" />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Star, Trash2, LogIn, Clock, Activity, MapPin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -6,6 +6,22 @@ import { fetchUserStars, deleteStar, getErrorMessage, type StarredEarthquake } f
 import { getSeverityColor } from '../lib/utils';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
 import './Stars.css';
+
+function StarsEmpty({ icon, title, children, action }: {
+  icon: ReactNode;
+  title: string;
+  children: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="stars-empty">
+      <div className="stars-empty-icon" aria-hidden="true">{icon}</div>
+      <h2 className="stars-empty-title">{title}</h2>
+      <p className="stars-empty-body">{children}</p>
+      {action && <div className="stars-empty-action">{action}</div>}
+    </div>
+  );
+}
 
 export function Stars() {
   const { user, loading: authLoading } = useAuth();
@@ -52,36 +68,36 @@ export function Stars() {
 
   if (authLoading) {
     return (
-      <div className="stars-container container flex-center" style={{ minHeight: '40vh' }}>
-        <div className="loader">Loading your stars...</div>
+      <div className="stars-page container stars-loading">
+        <span className="stars-loading-text">Loading your stars…</span>
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="stars-container container">
-        <div className="stars-empty glass">
-          <LogIn size={40} className="stars-empty-icon" />
-          <h2>Sign in to star earthquakes</h2>
-          <p className="text-muted">
-            Create a free account to save earthquakes you want to track and revisit later.
-          </p>
-          <button className="stars-cta" onClick={() => navigate('/auth')}>
-            Go to Sign In
-          </button>
-        </div>
+      <div className="stars-page container">
+        <StarsEmpty
+          icon={<LogIn size={26} />}
+          title="Sign in to star earthquakes"
+          action={
+            <button className="stars-cta" onClick={() => navigate('/auth')}>
+              Go to Sign In
+            </button>
+          }
+        >
+          Create a free account to save earthquakes you want to track and revisit later.
+        </StarsEmpty>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="stars-container container">
-        <div className="stars-empty glass">
-          <h2>Something went wrong</h2>
-          <p className="text-muted">{error}</p>
-        </div>
+      <div className="stars-page container">
+        <StarsEmpty icon={<Activity size={26} />} title="Something went wrong">
+          {error}
+        </StarsEmpty>
       </div>
     );
   }
@@ -90,76 +106,72 @@ export function Stars() {
 
   if (!stars) {
     return (
-      <div className="stars-container container flex-center" style={{ minHeight: '40vh' }}>
-        <div className="loader">Loading your stars...</div>
+      <div className="stars-page container stars-loading">
+        <span className="stars-loading-text">Loading your stars…</span>
       </div>
     );
   }
 
   return (
-    <div className="stars-container container">
-      <div className="stars-header">
-        <h1 className="stars-title">My Starred Earthquakes</h1>
-        <p className="stars-subtitle text-muted">
-          {stars.length === 0
-            ? 'Earthquakes you star will show up here.'
-            : `${stars.length} saved ${stars.length === 1 ? 'event' : 'events'}`}
-        </p>
-      </div>
+    <div className="stars-page container">
+      <header className="stars-header">
+        <div>
+          <span className="stars-kicker">My collection</span>
+          <h1 className="stars-title">Starred Earthquakes</h1>
+          <p className="stars-subtitle">
+            {stars.length === 0
+              ? 'Earthquakes you star will show up here.'
+              : `${stars.length} saved ${stars.length === 1 ? 'event' : 'events'} — newest first`}
+          </p>
+        </div>
+        <Link to="/archive" className="stars-browse-btn">Browse the Archive</Link>
+      </header>
 
       {stars.length === 0 ? (
-        <div className="stars-empty glass">
-          <Star size={40} className="stars-empty-icon" />
-          <h2>No stars yet</h2>
-          <p className="text-muted">
-            Open any earthquake from the dashboard or archive and hit the star button to save it here.
-          </p>
-          <Link to="/archive" className="stars-cta">
-            Browse the Archive
-          </Link>
-        </div>
+        <StarsEmpty
+          icon={<Star size={26} />}
+          title="No stars yet"
+          action={<Link to="/archive" className="stars-cta">Browse the Archive</Link>}
+        >
+          Open any earthquake from the dashboard or archive and hit the star button to save it here.
+        </StarsEmpty>
       ) : (
-        <div className="stars-grid">
+        <ul className="stars-list">
           {stars.map((s) => {
             const mag = parseFloat(s.magnitude ?? '');
             const color = getSeverityColor(isNaN(mag) ? 0 : mag);
             return (
-              <div key={s.id} className="stars-card glass-card">
+              <li key={s.id} className="stars-row">
                 <Link
                   to={`/details/${s.eq_id}`}
                   state={{ earthquake: snapshotToEarthquake(s) }}
-                  className="stars-card-link"
+                  className="stars-row-link"
                 >
-                  <div className="stars-card-mag" style={{ backgroundColor: `${color}20`, color }}>
+                  <span className="stars-mag tnum" style={{ color }} aria-label={`Magnitude ${s.magnitude ?? 'unknown'}`}>
                     {s.magnitude ?? '—'}
-                  </div>
-                  <div className="stars-card-info">
-                    <h3 className="stars-card-loc">{s.location ?? 'Unknown location'}</h3>
-                    <div className="stars-card-meta">
-                      <span className="flex-center" style={{ gap: '4px' }}>
-                        <Clock size={14} /> {s.datetime ?? 'Unknown'}
-                      </span>
-                      <span className="flex-center" style={{ gap: '4px' }}>
-                        <Activity size={14} /> {s.depth ?? '—'} km depth
-                      </span>
-                      <span className="flex-center" style={{ gap: '4px' }}>
-                        <MapPin size={14} /> {s.latitude}, {s.longitude}
-                      </span>
-                    </div>
-                  </div>
+                  </span>
+                  <span className="stars-row-body">
+                    <span className="stars-row-loc">{s.location ?? 'Unknown location'}</span>
+                    <span className="stars-row-meta">
+                      <span className="stars-meta-item"><Clock size={13} aria-hidden="true" /> {s.datetime ?? 'Unknown'}</span>
+                      <span className="stars-meta-item tnum"><Activity size={13} aria-hidden="true" /> {s.depth ?? '—'} km deep</span>
+                      <span className="stars-meta-item tnum"><MapPin size={13} aria-hidden="true" /> {s.latitude}, {s.longitude}</span>
+                    </span>
+                  </span>
                 </Link>
                 <button
                   type="button"
                   className="stars-remove"
                   onClick={() => handleRemove(s)}
                   title="Unstar"
+                  aria-label={`Unstar ${s.location ?? 'earthquake'}`}
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={17} aria-hidden="true" />
                 </button>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
     </div>
   );

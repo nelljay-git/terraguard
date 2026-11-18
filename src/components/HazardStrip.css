@@ -1,0 +1,98 @@
+/* ══════════ Hazard ticker — one flat line, caps labels ══════════ */
+.hazard-strip {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--tg-panel);
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  min-width: 0;
+}
+.hazard-strip::-webkit-scrollbar { display: none; }
+
+.hazard-strip-label {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--tg-text-3);
+  border-right: 1px solid var(--tg-hairline-soft);
+  align-self: stretch;
+}
+
+.hazard-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 14px;
+  border: none;
+  border-right: 1px solid var(--tg-hairline-soft);
+  background: transparent;
+  color: var(--tg-text-2);
+  font: inherit;
+  font-size: 0.72rem;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.hazard-chip:hover { background: rgba(148, 163, 184, 0.06); color: var(--tg-text); }
+.hazard-chip:focus-visible { outline: 2px solid #3b82f6; outline-offset: -2px; }
+
+.hazard-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.hazard-chip-name {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--tg-text);
+}
+.hazard-chip-value { color: var(--tg-text-3); font-weight: 500; }
+
+/* Tsunami verdict states */
+.hazard-chip--ok { color: #4ade80; }
+.hazard-chip--ok .hazard-chip-name { color: #4ade80; }
+.hazard-chip--ok .hazard-chip-value { color: #34d399; opacity: 0.85; }
+
+.hazard-chip--warn { color: #93c5fd; background: rgba(59,130,246,0.06); }
+.hazard-chip--warn .hazard-chip-name { color: #93c5fd; }
+.hazard-chip--warn .hazard-chip-value { color: #7fb3fa; opacity: 0.9; }
+
+.hazard-chip--muted { color: var(--tg-text-3); }
+
+.hazard-divider { display: none; }
+
+.hazard-shimmer {
+  flex: 0 0 auto;
+  width: 92px;
+  height: 16px;
+  margin: 0 16px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(148,163,184,0.06) 0%, rgba(148,163,184,0.14) 50%, rgba(148,163,184,0.06) 100%);
+  background-size: 200% 100%;
+  animation: hazardShimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes hazardShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hazard-shimmer { animation: none; }
+}

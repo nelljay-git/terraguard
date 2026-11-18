@@ -147,3 +147,40 @@ export function extractShakeRows(text: string | undefined | null, maxRows = 5): 
   rows.sort((a, b) => romanToInt(b.intensity) - romanToInt(a.intensity));
   return rows.slice(0, maxRows);
 }
+
+// One representative area per intensity level — the one with the most
+// responses — strongest first. Used by the remembering video's SHAKE REPORT so
+// the panel spans the reported intensity range instead of listing five
+// single-response towns that all sit at the same level.
+export function extractShakeRowsByLevel(text: string | undefined | null, maxRows = 5): ShakeRow[] {
+  if (!text) return [];
+  const best = new Map<number, { area: string; n: number }>();
+  for (const seg of text.split(/[;\n]/)) {
+    const m = /intensity\s*([IVXLCDM]{1,4})\s*[-–—:.]?\s*(.+)/i.exec(seg.trim());
+    if (!m) continue;
+    const level = romanToInt(m[1].toUpperCase());
+    if (level < 1 || level > 10) continue;
+    const areas = m[2]
+      .replace(/\s+and\s+\d+\s+more\s*$/i, '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const raw of areas) {
+      if (/reported intensity|did you feel|felt report|\bdyfi\b/i.test(raw)) continue;
+      const rm = /\((\d+)\s+responses?\)/i.exec(raw);
+      const responses = rm ? parseInt(rm[1], 10) : 0;
+      const area = raw
+        .replace(/\s*\(\d+\s+responses?\)/i, '')
+        .replace(/\s+/g, ' ')
+        .slice(0, 40)
+        .trim();
+      if (!area) continue;
+      const cur = best.get(level);
+      if (!cur || responses > cur.n) best.set(level, { area, n: responses });
+    }
+  }
+  return [...best.keys()]
+    .sort((a, b) => b - a)
+    .slice(0, maxRows)
+    .map((level) => ({ area: best.get(level)!.area, intensity: ROMAN_1_TO_10[level] }));
+}

@@ -1,4 +1,4 @@
-import { ArrowLeft, Clock, GitCommit } from 'lucide-react';
+import { ArrowLeft, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import './History.css';
 
@@ -11,8 +11,8 @@ const VERSION_HISTORY = [
       'Added comments and replies with notification deep-links to the exact comment',
       'Added light/dark/system theme preference saved to your account',
       'Improved notifications with one-tap navigation to your posts and earthquakes',
-      'Fixed bugs and improved overall performance'
-    ]
+      'Fixed bugs and improved overall performance',
+    ],
   },
   {
     version: '1.6',
@@ -20,8 +20,8 @@ const VERSION_HISTORY = [
     changes: [
       'Added earthquake alert zones with push notifications',
       'Added aftershock tracker on earthquake details page',
-      'PWA installation support for a native app experience'
-    ]
+      'PWA installation support for a native app experience',
+    ],
   },
   {
     version: '1.5',
@@ -30,8 +30,8 @@ const VERSION_HISTORY = [
       'Added PWA installation support for Android & iOS native app experience',
       'Added first modal pop up for developer updates',
       'Integrated official PHIVOLCS trench WMS layers on interactive maps',
-      'Added a dedicated Version History page'
-    ]
+      'Added a dedicated Version History page',
+    ],
   },
   {
     version: '1.4',
@@ -39,16 +39,16 @@ const VERSION_HISTORY = [
     changes: [
       'Added historical earthquake events to Archives with anti-reset',
       'Improved loading states and fixed syncing problems for phone users',
-      'Added Philippine trenches visualization to the interactive maps'
-    ]
+      'Added Philippine trenches visualization to the interactive maps',
+    ],
   },
   {
     version: '1.3',
     date: 'June 13, 2026',
     changes: [
       'Enhanced Details page with more comprehensive PHIVOLCS event records',
-      'Fixed and improved Intensity scale displays'
-    ]
+      'Fixed and improved Intensity scale displays',
+    ],
   },
   {
     version: '1.2',
@@ -58,8 +58,8 @@ const VERSION_HISTORY = [
       'Redesigned Stats page for better data visualization',
       'Added easy zoom controls to maps for desktop users',
       'Added glassmorphism blur effect on navigation bar',
-      'Fixed map point modal data rendering'
-    ]
+      'Fixed map point modal data rendering',
+    ],
   },
   {
     version: '1.1',
@@ -67,8 +67,8 @@ const VERSION_HISTORY = [
     changes: [
       'Redesigned UI across multiple pages for better responsiveness',
       'Fixed dynamic seismograph animation on details page',
-      'Added background images to the Details page'
-    ]
+      'Added background images to the Details page',
+    ],
   },
   {
     version: '1.0',
@@ -77,47 +77,52 @@ const VERSION_HISTORY = [
       'Initial release of TerraGuard',
       'Real-time earthquake monitoring via PHIVOLCS API with caching',
       'Interactive Leaflet map integration',
-      'Added About Us page'
-    ]
-  }
+      'Added About Us page',
+    ],
+  },
 ];
 
 export function History() {
   return (
-    <div className="history-container container">
-      <div className="history-card glass">
-        <div className="history-header">
-          <Link to="/about" className="back-link flex-center">
-            <ArrowLeft size={18} />
-            <span>Back to About</span>
-          </Link>
-          <div className="history-title-wrapper flex-center">
-            <Clock size={28} className="history-icon" />
-            <h1 className="history-title">Update History</h1>
-          </div>
+    <div className="history-page container">
+      <header className="history-header">
+        <Link to="/about" className="history-back">
+          <ArrowLeft size={17} aria-hidden="true" />
+          <span>About TerraGuard</span>
+        </Link>
+        <div className="history-masthead">
+          <span className="history-kicker">Changelog</span>
+          <h1 className="history-title">
+            <Clock size={24} aria-hidden="true" />
+            Update History
+          </h1>
+          <p className="history-subtitle">
+            Every release, in order. Newest at the top — {VERSION_HISTORY.length} releases and
+            counting.
+          </p>
         </div>
+      </header>
 
-        <div className="history-timeline">
-          {VERSION_HISTORY.map((update, idx) => (
-            <div key={idx} className="timeline-item">
-              <div className="timeline-marker">
-                <GitCommit size={20} />
-              </div>
-              <div className="timeline-content glass-card">
-                <div className="timeline-header flex-between">
-                  <span className="version-badge">v{update.version}</span>
-                  <span className="version-date">{update.date}</span>
-                </div>
-                <ul className="version-changes">
-                  {update.changes.map((change, cIdx) => (
-                    <li key={cIdx}>{change}</li>
-                  ))}
-                </ul>
-              </div>
+      <ol className="history-timeline">
+        {VERSION_HISTORY.map((update) => (
+          <li key={update.version} className="timeline-item">
+            <div className="timeline-rail" aria-hidden="true">
+              <span className="timeline-dot" />
             </div>
-          ))}
-        </div>
-      </div>
+            <article className="timeline-content">
+              <header className="timeline-header">
+                <span className="version-badge tnum">v{update.version}</span>
+                <time className="version-date">{update.date}</time>
+              </header>
+              <ul className="version-changes">
+                {update.changes.map((change) => (
+                  <li key={change}>{change}</li>
+                ))}
+              </ul>
+            </article>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

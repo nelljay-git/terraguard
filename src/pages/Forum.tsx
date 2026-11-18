@@ -5,15 +5,18 @@ import {
   Bookmark,
   BookmarkCheck,
   Loader2,
+  ListOrdered,
   Lock,
   MessageSquare,
-  MessagesSquare,
   PencilLine,
   Pin,
   PinOff,
   Plus,
+  Radio,
   Search,
+  ShieldCheck,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import type { ForumFilter, ForumPost as ForumPostType, ForumReaction } from '../lib/forum';
@@ -177,124 +180,112 @@ export function Forum() {
 
   return (
     <div className="forum-page container">
-      <div className="forum-header glass">
-        <div className="forum-header-left">
-          <h1 className="forum-header-title">
-            <MessagesSquare size={28} className="text-accent" style={{ color: '#3b82f6' }} />
-            Community Forum
-          </h1>
-          <p className="forum-header-subtitle">
-            Discuss earthquakes, safety tips, and seismic activity with the TerraGuard community.
-            The administrator publishes announcements and pinned guides.
+      {/* ── Masthead: editorial header, no container card ── */}
+      <header className="forum-mast">
+        <div className="forum-mast-left">
+          <span className="forum-eyebrow">TerraGuard · Community</span>
+          <h1 className="forum-title">Community Forum</h1>
+          <p className="forum-sub">
+            Official, admin-published updates on the events TerraGuard tracks — bulletins,
+            data notes, and changes to the app. Newest first; nothing here is speculation.
           </p>
         </div>
         {admin && (
-          <Link to="/forum/new" className="forum-new-post-btn">
-            <Plus size={17} />
-            New Post
-          </Link>
+          <div className="forum-mast-right">
+            <Link to="/forum/new" className="forum-new-post-btn">
+              <Plus size={16} aria-hidden="true" />
+              Publish post
+            </Link>
+          </div>
         )}
-      </div>
+      </header>
 
-      <div className="forum-toolbar glass">
-        <div className="forum-search">
-          <Search size={16} />
-          <input
-            type="text"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search posts..."
-          />
-        </div>
-        <div className="forum-filters">
+      {/* ── Toolbar: underline tabs + search ── */}
+      <div className="forum-toolbar">
+        <div className="forum-filters" role="tablist" aria-label="Filter discussions">
           {FILTERS.map(({ key, label }) => (
             <button
               key={key}
               type="button"
+              role="tab"
+              aria-selected={filter === key}
               className={`forum-filter-chip ${filter === key ? 'active' : ''}`}
               onClick={() => setFilter(key)}
             >
-              {key === 'pinned' && <Pin size={13} />}
+              {key === 'pinned' && <Pin size={13} aria-hidden="true" />}
               {label}
             </button>
           ))}
         </div>
+        <div className="forum-search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search discussions"
+            aria-label="Search discussions"
+          />
+          {searchInput && (
+            <button
+              type="button"
+              className="forum-search-clear"
+              onClick={() => setSearchInput('')}
+              aria-label="Clear search"
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </div>
 
-      {error && <div className="forum-error-banner">{error}</div>}
+      {error && <div className="forum-error-banner" role="alert">{error}</div>}
 
-      {loading ? (
-        <div className="forum-loading glass">
-          <div className="spinner-ring"></div>
-          <p>Loading posts...</p>
-        </div>
-      ) : posts.length === 0 ? (
-        <div className="forum-empty glass">
-          <MessageSquare size={48} style={{ opacity: 0.2 }} />
-          <h3>{search ? 'No posts found' : 'No forum posts yet'}</h3>
-          <p>
-            {search
-              ? `No posts matched "${search}". Try a different search term.`
-              : 'The administrator has not published any posts yet. Check back soon.'}
-          </p>
-        </div>
-      ) : (
-        <div className="forum-posts">
-          {posts.map((post) => (
-            <article key={post.id} className={`forum-post-card glass${post.pinned ? ' pinned' : ''}`}>
-              <div className="forum-post-topline">
-                {post.pinned && (
-                  <span className="forum-pin-badge">
-                    <Pin size={11} /> Pinned
-                  </span>
-                )}
-                {post.closed && (
-                  <span className="forum-closed-tag">
-                    <Lock size={11} /> Closed
-                  </span>
-                )}
-                {post.author_id === user?.id && (
-                  <span className="forum-admin-badge">
-                    <BadgeCheck size={11} /> Admin
-                  </span>
-                )}
-              </div>
-
-              <Link to={`/forum/${post.id}`} style={{ textDecoration: 'none' }}>
-                <h2 className="forum-post-title">{post.title}</h2>
-                {post.image_url && (
-                  <button
-                    type="button"
-                    className="forum-thumb-btn"
-                    aria-label="View full image"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setLightboxSrc(post.image_url ?? null);
-                    }}
-                  >
-                    <img
-                      src={post.image_url}
-                      alt={post.title}
-                      loading="lazy"
-                      className="forum-post-thumb"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
-                    />
-                  </button>
-                )}
-                <p className="forum-post-excerpt">{truncateContent(post.content)}</p>
-              </Link>
-
-              <div className="forum-post-meta">
-                <span className="forum-author-row">
-                  <span className={`forum-avatar${post.avatar_url ? ' has-photo' : ''}`}>
-                    <span>{post.author?.[0]?.toUpperCase() ?? 'U'}</span>
+      {/* ── Body: feed + rail ── */}
+      <div className="forum-grid">
+        <main className="forum-feed" aria-label="Discussions">
+          {loading ? (
+            <div className="forum-skeleton" aria-busy="true" aria-label="Loading discussions">
+              {[0, 1, 2, 3].map((i) => (
+                <div className="forum-skeleton-row" key={i}>
+                  <div className="forum-skeleton-avatar" />
+                  <div className="forum-skeleton-body">
+                    <div className="forum-skeleton-line w-30" />
+                    <div className="forum-skeleton-line w-70" />
+                    <div className="forum-skeleton-line w-90" />
+                    <div className="forum-skeleton-line w-55" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : posts.length === 0 ? (
+            <div className="forum-empty">
+              <MessageSquare size={44} strokeWidth={1.25} style={{ opacity: 0.25 }} aria-hidden="true" />
+              <h2 className="forum-empty-title">{search ? 'No discussions match' : 'No discussions yet'}</h2>
+              <p className="forum-empty-copy">
+                {search
+                  ? `Nothing matches “${search}”. Try a shorter keyword or check the Pinned tab.`
+                  : 'The administrator has not published anything yet. New bulletins will appear here first.'}
+              </p>
+              {search && (
+                <button type="button" className="forum-empty-action" onClick={() => setSearchInput('')}>
+                  Clear search
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              {posts.map((post) => (
+                <article
+                  key={post.id}
+                  className={`forum-thread${post.pinned ? ' is-pinned' : ''}${post.closed ? ' is-closed' : ''}`}
+                >
+                  <span className={`forum-avatar${post.avatar_url ? ' has-photo' : ''}`} aria-hidden="true">
+                    <span>{post.author?.[0]?.toUpperCase() ?? 'T'}</span>
                     {post.avatar_url && (
                       <img
                         src={post.avatar_url}
-                        alt={post.author ?? 'User'}
+                        alt=""
                         loading="lazy"
                         className="forum-avatar-img"
                         onError={(e) => {
@@ -303,91 +294,168 @@ export function Forum() {
                       />
                     )}
                   </span>
-                  <span className="forum-author-name">
-                    {post.author ?? 'User'}
-                    {post.verified && (
-                      <span className="forum-verified" title="Verified user">
-                        <BadgeCheck size={13} color="#3b82f6" />
+
+                  <div className="forum-thread-body">
+                    <div className="forum-thread-topline">
+                      <span className="forum-thread-author">
+                        <span className="forum-thread-author-name">
+                          {post.author ?? 'TerraGuard'}
+                          {post.verified && (
+                            <BadgeCheck size={13} color="#3b82f6" aria-hidden="true" />
+                          )}
+                        </span>
                       </span>
-                    )}
-                  </span>
-                </span>
-                <span className="forum-post-time">
-                  {formatForumTime(post.created_at, now)}
-                  {post.edited_at && <span className="forum-edited-tag"> · edited</span>}
-                </span>
-                <span className="forum-comment-count">
-                  <MessageSquare size={13} /> {post.comment_count}
-                </span>
-              </div>
+                      <span className="forum-thread-time">
+                        {formatForumTime(post.created_at, now)}
+                        {post.edited_at && <span className="edited"> · edited</span>}
+                      </span>
+                      {post.pinned && (
+                        <span className="forum-tag forum-tag--pinned">
+                          <Pin size={10} aria-hidden="true" /> Pinned
+                        </span>
+                      )}
+                      {post.author_id === user?.id && (
+                        <span className="forum-tag forum-tag--admin">
+                          <BadgeCheck size={10} aria-hidden="true" /> Admin
+                        </span>
+                      )}
+                      {post.closed && (
+                        <span className="forum-tag forum-tag--closed">
+                          <Lock size={10} aria-hidden="true" /> Closed
+                        </span>
+                      )}
+                    </div>
 
-              <div className="forum-post-footer">
-                <ForumReactions
-                  likeCount={post.like_count}
-                  helpfulCount={post.helpful_count}
-                  interestingCount={post.interesting_count}
-                  myReaction={post.my_reaction}
-                  busy={busy[post.id] ?? null}
-                  onReact={(reaction) => handleReact(post, reaction)}
-                />
-
-                <div className="forum-secondary-actions">
-                  {admin && (
-                    <>
-                      <Link to={`/forum/${post.id}/edit`} className="forum-icon-btn" title="Edit post">
-                        <PencilLine size={14} />
-                      </Link>
+                    <h2 className="forum-thread-title">
+                      <Link to={`/forum/${post.id}`}>{post.title}</Link>
+                    </h2>
+                    <p className="forum-thread-excerpt">{truncateContent(post.content)}</p>
+                    {post.image_url && (
                       <button
                         type="button"
-                        className="forum-icon-btn"
-                        onClick={() => handlePin(post)}
-                        title={post.pinned ? 'Unpin post' : 'Pin post'}
+                        className="forum-thread-thumb-btn"
+                        aria-label="View attached image"
+                        onClick={() => setLightboxSrc(post.image_url ?? null)}
                       >
-                        {post.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+                        <img
+                          src={post.image_url}
+                          alt=""
+                          loading="lazy"
+                          className="forum-thread-thumb"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
                       </button>
-                      <button
-                        type="button"
-                        className="forum-icon-btn danger"
-                        onClick={() => handleDelete(post)}
-                        title="Delete post"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    className={`forum-icon-btn${post.bookmarked ? ' bookmarked' : ''}`}
-                    onClick={() => handleBookmark(post)}
-                    disabled={bookmarkBusy[post.id]}
-                    title={post.bookmarked ? 'Remove bookmark' : 'Save post'}
-                  >
-                    {bookmarkBusy[post.id] ? (
-                      <Loader2 size={15} className="spin" />
-                    ) : post.bookmarked ? (
-                      <BookmarkCheck size={15} />
-                    ) : (
-                      <Bookmark size={15} />
                     )}
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
 
-          {hasMore && (
-            <button
-              type="button"
-              className="forum-load-more"
-              onClick={loadMore}
-              disabled={loadingMore}
-            >
-              {loadingMore ? <Loader2 size={16} className="spin" /> : <MessageSquare size={16} />}
-              Load more posts
-            </button>
+                    <div className="forum-thread-actions">
+                      <ForumReactions
+                        likeCount={post.like_count}
+                        helpfulCount={post.helpful_count}
+                        interestingCount={post.interesting_count}
+                        myReaction={post.my_reaction}
+                        busy={busy[post.id] ?? null}
+                        onReact={(reaction) => handleReact(post, reaction)}
+                      />
+                      <div className="forum-thread-right">
+                        <Link to={`/forum/${post.id}#comments`} className="forum-comment-link" aria-label={`${post.comment_count} comments`}>
+                          <MessageSquare size={14} aria-hidden="true" />
+                          {post.comment_count}
+                        </Link>
+                        <span className="forum-actions-divider" aria-hidden="true" />
+                        <button
+                          type="button"
+                          className={`forum-icon-btn${post.bookmarked ? ' bookmarked' : ''}`}
+                          onClick={() => handleBookmark(post)}
+                          disabled={bookmarkBusy[post.id]}
+                          title={post.bookmarked ? 'Remove bookmark' : 'Save post'}
+                          aria-pressed={post.bookmarked}
+                          aria-label={post.bookmarked ? 'Remove bookmark' : 'Save post'}
+                        >
+                          {bookmarkBusy[post.id] ? (
+                            <Loader2 size={15} className="spin" aria-hidden="true" />
+                          ) : post.bookmarked ? (
+                            <BookmarkCheck size={15} aria-hidden="true" />
+                          ) : (
+                            <Bookmark size={15} aria-hidden="true" />
+                          )}
+                        </button>
+                        {admin && (
+                          <div className="forum-admin-actions" aria-label="Admin actions">
+                            <Link to={`/forum/${post.id}/edit`} className="forum-icon-btn" title="Edit post" aria-label="Edit post">
+                              <PencilLine size={15} aria-hidden="true" />
+                            </Link>
+                            <button
+                              type="button"
+                              className="forum-icon-btn"
+                              onClick={() => handlePin(post)}
+                              title={post.pinned ? 'Unpin post' : 'Pin post'}
+                              aria-label={post.pinned ? 'Unpin post' : 'Pin post'}
+                            >
+                              {post.pinned ? <PinOff size={15} aria-hidden="true" /> : <Pin size={15} aria-hidden="true" />}
+                            </button>
+                            <button
+                              type="button"
+                              className="forum-icon-btn danger"
+                              onClick={() => handleDelete(post)}
+                              title="Delete post"
+                              aria-label="Delete post"
+                            >
+                              <Trash2 size={15} aria-hidden="true" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              ))}
+
+              {hasMore && (
+                <button
+                  type="button"
+                  className="forum-load-more"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <MessageSquare size={16} aria-hidden="true" />}
+                  {loadingMore ? 'Loading…' : 'Load more discussions'}
+                </button>
+              )}
+            </>
           )}
-        </div>
-      )}
+        </main>
+
+        {/* ── Rail: why this exists, honest and static ── */}
+        <aside className="forum-rail" aria-label="About this forum">
+          <div className="forum-rail-block">
+            <h2 className="forum-rail-title"><Radio size={13} aria-hidden="true" />Why this exists</h2>
+            <p className="forum-rail-copy">
+              Official bulletins, data notes, and changes to TerraGuard — published by the administrator, backed by the same sources the map and alerts use.
+            </p>
+          </div>
+
+          <div className="forum-rail-block">
+            <h2 className="forum-rail-title"><ListOrdered size={13} aria-hidden="true" />How it works</h2>
+            <ol className="forum-rail-list">
+              <li className="forum-rail-item"><span className="forum-rail-num">01</span><span>Read the <strong>pinned</strong> guide first — it covers the event-detail redesign and how to read revised bulletins.</span></li>
+              <li className="forum-rail-item"><span className="forum-rail-num">02</span><span>Newest first by default. Search narrows the loaded page as you type; the Pinned tab is the reference shelf.</span></li>
+              <li className="forum-rail-item"><span className="forum-rail-num">03</span><span>Reactions tell the admin what matters — a recurring “Helpful” on a post becomes a guide, not a one-off.</span></li>
+            </ol>
+            <p className="forum-rail-foot"><strong>Reading tip:</strong> posts marked <em>edited</em> were corrected after publication — the change is always described in the body.</p>
+          </div>
+
+          <div className="forum-rail-block">
+            <h2 className="forum-rail-title"><ShieldCheck size={13} aria-hidden="true" />House rules</h2>
+            <ul className="forum-rail-list">
+              <li className="forum-rail-item"><span className="forum-rail-num">01</span><span>Every post links its source or shows its bulletin number. No unattributed numbers, ever.</span></li>
+              <li className="forum-rail-item"><span className="forum-rail-num">02</span><span>Admin-published only. There is deliberately no member posting yet — quality over volume.</span></li>
+              <li className="forum-rail-item"><span className="forum-rail-num">03</span><span>Spot an error? Reply with the correction and it will be fixed for everyone.</span></li>
+            </ul>
+          </div>
+        </aside>
+      </div>
 
       {lightboxSrc && (
         <ImageLightbox

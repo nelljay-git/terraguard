@@ -408,7 +408,7 @@ export function AiStudio() {
   if (loading) {
     return (
       <div className="ai-container container">
-        <div className="ai-card glass"><p className="text-muted">Loading…</p></div>
+        <div className="ai-card"><p className="text-muted">Loading…</p></div>
       </div>
     );
   }
@@ -416,7 +416,7 @@ export function AiStudio() {
   if (!user) {
     return (
       <div className="ai-container container">
-        <div className="ai-card glass ai-gate">
+        <div className="ai-card ai-gate">
           <div className="ai-badge"><ShieldAlert size={26} /></div>
           <h1 className="ai-title">TerraGuard AI</h1>
           <p className="text-muted">This is a private news desk. Sign in to continue.</p>
@@ -429,7 +429,7 @@ export function AiStudio() {
   if (!allowed) {
     return (
       <div className="ai-container container">
-        <div className="ai-card glass ai-gate">
+        <div className="ai-card ai-gate">
           <div className="ai-badge"><ShieldAlert size={26} /></div>
           <h1 className="ai-title">Restricted</h1>
           <p className="text-muted">This page is private.</p>
@@ -440,7 +440,7 @@ export function AiStudio() {
 
   return (
     <div className="ai-container container">
-      <div className="ai-card glass">
+      <div className="ai-card">
         <div className="ai-head">
           <div className="ai-badge"><Newspaper size={22} /></div>
           <div>

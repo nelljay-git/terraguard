@@ -170,3 +170,25 @@ export function volcanoDetailUrl(url: string): string {
   const qs = encodeURIComponent(url);
   return usePhpApi ? phpApi(`api/volcano.php?detail=1&url=${qs}`) : apiUrl(`/api/volcano?detail=1&url=${qs}`);
 }
+
+// ---------------------------------------------------------------------------
+// PHIVOLCS-TSUNAMI bulletins — always via the PHP failover hosts.
+// ---------------------------------------------------------------------------
+// tsunami.phivolcs.dost.gov.ph blocks datacenter IPs, so a serverless proxy
+// (Vercel/Cloudflare) is a dead end; the shared PHP hosts are the only
+// reliable scraping path (this is why worker-webhook/src/terraguard.js uses
+// the same two hosts). Unlike phivolcsListUrl() these intentionally ignore
+// the VITE_USE_PHP_PHIVOLCS_API switch, because there is no serverless
+// /api/tsunami equivalent to fall back to. nativeHttpGetWithPhpFailover()
+// expands each URL into primary+backup candidates automatically.
+export function tsunamiEventsUrl(): string {
+  return `${PHP_API_PRIMARY}/api/tsunami.php?page=events`;
+}
+
+export function tsunamiArchiveUrl(year: number): string {
+  return `${PHP_API_PRIMARY}/api/tsunami.php?page=archive&year=${year}`;
+}
+
+export function tsunamiDetailUrl(url: string): string {
+  return `${PHP_API_PRIMARY}/api/tsunami.php?detail=1&url=${encodeURIComponent(url)}`;
+}

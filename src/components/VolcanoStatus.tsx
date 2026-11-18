@@ -36,7 +36,7 @@ export function VolcanoStatus() {
 
   if (loading) {
     return (
-      <div className="volcano-card glass">
+      <div className="volcano-card">
         <div className="volcano-head">
           <Mountain size={18} />
           <h3>Volcano Status</h3>
@@ -49,7 +49,7 @@ export function VolcanoStatus() {
 
   if (error || !data) {
     return (
-      <div className="volcano-card glass">
+      <div className="volcano-card">
         <div className="volcano-head">
           <Mountain size={18} />
           <h3>Volcano Status</h3>
@@ -61,7 +61,7 @@ export function VolcanoStatus() {
   }
 
   return (
-    <div className="volcano-card glass">
+    <div className="volcano-card">
       <div className="volcano-head">
         <div className="volcano-head-left">
           <Mountain size={18} />

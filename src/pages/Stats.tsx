@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback, startTransition } from 'reac
 import { parse, isValid, startOfDay, startOfMonth, subDays, format } from 'date-fns';
 import { fetchEarthquakeData, getCachedData, normalizeEarthquakes, type NormalizedEarthquake } from '../api/phivolcs';
 import { getPreferredApi } from '../lib/apiPreference';
-import { getSeverityLabel } from '../lib/utils';
+import { getSeverityLabel, getSeverityColor } from '../lib/utils';
 import { InteractiveMap } from '../components/InteractiveMap';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
@@ -10,7 +10,7 @@ import {
   ScatterChart, Scatter, ZAxis,
   AreaChart, Area
 } from 'recharts';
-import { Radio, RefreshCw, Activity, BarChart3, PieChart as PieIcon, Crosshair, Clock } from 'lucide-react';
+import { RefreshCw, Clock, Waves } from 'lucide-react';
 import './Stats.css';
 
 // Severity colors (raw hex, not CSS vars, for recharts)
@@ -26,9 +26,9 @@ const SEVERITY_COLORS: Record<string, string> = {
 const SEVERITY_ORDER = ['Micro', 'Minor', 'Light', 'Moderate', 'Strong', 'Major'];
 const TIME_RANGES = [
   { key: 'day', label: 'This Day' },
-  { key: '3d', label: 'Last 3 Days' },
+  { key: '3d', label: '3 Days' },
   { key: '7d', label: '7 Days' },
-  { key: 'month', label: 'This Month' },
+  { key: 'month', label: 'Month' },
 ] as const;
 
 type TimeRangeKey = typeof TIME_RANGES[number]['key'];
@@ -80,6 +80,13 @@ function downsample<T>(arr: T[], max: number): T[] {
 
 const MAX_SCATTER_POINTS = 250;
 const MAX_TIMELINE_POINTS = 250;
+
+const CHART_TOOLTIP = {
+  backgroundColor: 'rgba(11, 18, 32, 0.97)',
+  border: '1px solid rgba(148, 163, 184, 0.25)',
+  borderRadius: '8px',
+  boxShadow: 'none',
+};
 
 export function Stats() {
   const initialCache = getCachedData();
@@ -192,7 +199,7 @@ export function Stats() {
   }, [earthquakes, timeRange]);
 
   const timeRangeLabel = useMemo(() => {
-    return TIME_RANGES.find(option => option.key === timeRange)?.label ?? 'One Month';
+    return TIME_RANGES.find(option => option.key === timeRange)?.label ?? 'Month';
   }, [timeRange]);
 
   const timeRangeSubtitle = useMemo(() => {
@@ -277,340 +284,318 @@ export function Stats() {
     };
   }, [filteredEarthquakes]);
 
+  const pref = getPreferredApi();
+  const sourceName = pref === 'usgs' ? 'USGS' : pref === 'emsc' ? 'EMSC' : 'PHIVOLCS';
+  const peakColor = statsData.maxMag > 0 ? getSeverityColor(statsData.maxMag) : undefined;
+
   if (loading) {
     return (
-      <div className="container flex-center" style={{ height: '50vh' }}>
-        <div className="loader">Loading Statistics...</div>
+      <div className="stats-page container" aria-busy="true" aria-label="Loading statistics">
+        <div className="stats-skeleton stats-skeleton--mast" />
+        <div className="stats-skeleton stats-skeleton--kpis" />
+        <div className="stats-skeleton stats-skeleton--map" />
+        <div className="stats-skeleton stats-skeleton--chart" />
+        <div className="stats-skeleton-row">
+          <div className="stats-skeleton stats-skeleton--chart" />
+          <div className="stats-skeleton stats-skeleton--chart" />
+        </div>
       </div>
     );
   }
 
+  const isEmpty = filteredEarthquakes.length === 0;
+
+  const kpiCells: Array<{ label: string; value: string; cap: string; color?: string }> = [
+    { label: 'Events', value: String(filteredEarthquakes.length), cap: timeRange === 'day' ? 'Recorded today' : `Across ${timeRangeSubtitle.toLowerCase()}` },
+    { label: 'Peak', value: statsData.maxMag > 0 ? statsData.maxMag.toFixed(1) : '—', cap: 'Strongest magnitude', color: peakColor },
+    { label: 'Average', value: statsData.avgMag > 0 ? statsData.avgMag.toFixed(1) : '—', cap: 'Mean magnitude' },
+    { label: 'Max depth', value: statsData.maxDepth > 0 ? `${statsData.maxDepth.toFixed(0)} km` : '—', cap: 'Deepest event' },
+    { label: 'Significant', value: String(statsData.significantCount), cap: 'M ≥ 4.5', color: statsData.significantCount > 0 ? '#f97316' : undefined },
+  ];
+
   return (
-    <div className="stats-container container">
-      {/* ── Header ── */}
-      <div className="stats-header glass">
-        <div className="stats-header-left">
-          <h1 className="stats-title">
-            <BarChart3 size={28} />
-            Seismic Analytics
-          </h1>
-          <p className="text-muted" style={{ lineHeight: 1.6, maxWidth: '640px' }}>
-            Explore how often earthquakes occur, where they concentrate, and how strong or deep they tend to be — across today, the last few days, or this month.
+    <div className="stats-page container">
+      {/* ── Masthead ── */}
+      <header className="stats-mast">
+        <div className="stats-mast-left">
+          <span className="stats-eyebrow">TerraGuard · Analytics</span>
+          <h1 className="stats-title">Statistics</h1>
+          <p className="stats-sub">
+            How often events occur, where they cluster, and how strong or deep they run — computed from {sourceName}, {timeRangeSubtitle}.
           </p>
         </div>
-        <div className="stats-header-right">
-          <div className="time-range-group" role="group" aria-label="Statistics time range">
+        <div className="stats-mast-right">
+          <div className="stats-range" role="tablist" aria-label="Statistics window">
             {TIME_RANGES.map(option => (
               <button
                 key={option.key}
                 type="button"
-                className={`time-range-btn ${timeRange === option.key ? 'active' : ''}`}
+                role="tab"
+                aria-selected={timeRange === option.key}
+                className={`stats-range-btn${timeRange === option.key ? ' is-active' : ''}`}
                 onClick={() => startTransition(() => setTimeRange(option.key))}
               >
                 {option.label}
               </button>
             ))}
           </div>
-          <div className={`sync-status ${syncing ? 'syncing' : 'live'}`}>
-            <Radio size={16} className="pulse-icon" />
-            <span>{syncing ? 'Syncing...' : 'LIVE'}</span>
-          </div>
-          <div className="last-sync text-muted">
-            <Clock size={14} />
-            {lastSync ? `Synced ${lastSync.toLocaleTimeString()}` : 'Waiting...'}
-          </div>
-          <button className="refresh-btn glass-card" onClick={loadData} disabled={syncing}>
-            <RefreshCw size={16} className={syncing ? 'spin' : ''} />
-          </button>
-        </div>
-      </div>
-
-      {/* ── Quick Stats ── */}
-      <div className="quick-stats-row" style={{ display: 'none' }}>
-        <div className="quick-stat glass-card">
-          <span className="qs-value">{filteredEarthquakes.length}</span>
-          <span className="qs-label">Total Events {timeRange === 'day' ? 'Today' : timeRangeLabel}</span>
-          {timeRange === 'day' && <span className="qs-sub-label">{timeRangeSubtitle}</span>}
-        </div>
-        <div className="quick-stat glass-card">
-          <span className="qs-value" style={{ color: '#ef4444' }}>
-            {statsData.maxMag > 0 ? statsData.maxMag.toFixed(1) : '—'}
-          </span>
-          <span className="qs-label">Peak Mag</span>
-        </div>
-        <div className="quick-stat glass-card">
-          <span className="qs-value" style={{ color: '#3b82f6' }}>
-            {statsData.avgMag > 0 ? statsData.avgMag.toFixed(1) : '—'}
-          </span>
-          <span className="qs-label">Avg Mag</span>
-        </div>
-        <div className="quick-stat glass-card">
-          <span className="qs-value" style={{ color: '#8b5cf6' }}>
-            {statsData.maxDepth > 0 ? statsData.maxDepth.toFixed(0) : '—'}
-          </span>
-          <span className="qs-label">Max Depth (km)</span>
-        </div>
-        <div className="quick-stat glass-card">
-          <span className="qs-value" style={{ color: '#f97316' }}>
-            {statsData.significantCount}
-          </span>
-          <span className="qs-label">Significant (≥4.5)</span>
-        </div>
-      </div>
-
-      <div className="stats-map-shell glass-card">
-        <InteractiveMap
-          earthquakes={filteredEarthquakes}
-          showAllEvents={true}
-          compactMarkers={true}
-          enableLegendFilter={true}
-          pulseMarkers={false}
-        />
-      </div>
-
-      <div className="stats-summary">
-        <div className="stat-item">
-          <span className="stat-label">Events</span>
-          <span className="stat-value">{filteredEarthquakes.length}</span>
-          <span className="stat-secondary">Total Recorded</span>
-
-        </div>
-
-        <div className="stat-item">
-          <span className="stat-label">Range</span>
-          <span className="stat-value">
-            {timeRange === 'day' ? 'Today' : timeRangeLabel}
-
-          </span>
-          {timeRange === 'day' && <span className="stat-secondary">{timeRangeSubtitle}</span>}
-        </div>
-
-        <div className="stat-item">
-          <span className="stat-label">High Mag</span>
-          <span className="stat-value" style={{ color: '#ef4444' }}>
-            {statsData.maxMag > 0 ? statsData.maxMag.toFixed(1) : '—'} MG
-          </span>
-          <span className="stat-secondary">Strongest event</span>
-        </div>
-
-        <div className="stat-item">
-          <span className="stat-label">Avg Mag</span>
-          <span className="stat-value" style={{ color: '#f59e0b' }}>
-            {statsData.avgMag > 0 ? statsData.avgMag.toFixed(1) : '—'} MG
-          </span>
-          <span className="stat-secondary">Mean magnitude</span>
-        </div>
-
-        <div className="stat-item">
-          <span className="stat-label">Max Depth</span>
-          <span className="stat-value" style={{ color: '#8b5cf6' }}>
-            {statsData.maxDepth > 0 ? `${statsData.maxDepth.toFixed(0)} km` : '—'}
-          </span>
-
-          <span className="stat-secondary">Deepest event</span>
-        </div>
-
-        <div className="stat-item">
-          <span className="stat-label">Significant</span>
-          <span className="stat-value" style={{ color: '#10b981' }}>
-            {statsData.significantCount}
-          </span>
-          <span className="stat-secondary">M ≥ 4.5 events</span>
-        </div>
-
-
-      </div>
-
-      {/* ── Charts Grid ── */}
-      <div className="charts-grid">
-
-        {/* Magnitude Over Time */}
-        <div className="chart-panel glass-card full-width chart-panel--timeline">
-          <div className="chart-title">
-            <Activity size={18} />
-            Magnitude Timeline
-          </div>
-          <div className="chart-body chart-body--timeline" style={{ height: 280 }}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-              <AreaChart data={statsData.magTimeline} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gradMag" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={11} minTickGap={50} />
-                <YAxis stroke="var(--text-muted)" fontSize={11} domain={[0, 'auto']} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
-                  wrapperStyle={{ pointerEvents: 'none', zIndex: 10 }}
-                  itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
-                  labelStyle={{ color: '#94a3b8' }}
-                  labelFormatter={(label, payload) => {
-                    if (payload && payload.length > 0 && payload[0].payload.date) {
-                      return `${payload[0].payload.date} - ${label}`;
-                    }
-                    return label;
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="magnitude"
-                  stroke="#f97316"
-                  strokeWidth={2}
-                  fill="url(#gradMag)"
-                  isAnimationActive={false}
-                  dot={statsData.magTimeline.length <= 200 ? { r: 3, fill: '#f97316' } : false}
-                  activeDot={{ r: 6 }}
-                  onMouseMove={(point: any) => {
-                    const payload = point?.payload;
-                    if (payload?.date || payload?.time) {
-                      setSelectedTimelinePoint(payload);
-                    }
-                  }}
-                  onMouseLeave={() => setSelectedTimelinePoint(null)}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="timeline-detail">
-            {selectedTimelinePoint ? (
-              <>
-                <div className="timeline-detail-date">
-                  {selectedTimelinePoint.date} {selectedTimelinePoint.time ? `- ${selectedTimelinePoint.time}` : ''}
-                </div>
-                <div className="timeline-detail-mag">
-                  Magnitude: {selectedTimelinePoint.magnitude.toFixed(1)}
-                </div>
-              </>
-            ) : (
-              <div className="timeline-detail-empty">Hover a point to see its date and magnitude.</div>
-            )}
+          <div className="stats-sync">
+            <span className={`stats-live ${syncing ? 'syncing' : 'live'}`}>
+              <span className="stats-live-dot" aria-hidden="true" />
+              {syncing ? 'Syncing' : 'Live'}
+            </span>
+            <span className="stats-sync-time tnum">
+              <Clock size={12} aria-hidden="true" />
+              {lastSync ? lastSync.toLocaleTimeString() : '--:--:--'}
+            </span>
+            <button className="stats-refresh" onClick={loadData} disabled={syncing} aria-label="Refresh statistics" title="Refresh statistics">
+              <RefreshCw size={15} className={syncing ? 'spin' : ''} aria-hidden="true" />
+            </button>
           </div>
         </div>
+      </header>
 
-        {/* Magnitude Distribution Donut */}
-        <div className="chart-panel glass-card">
-          <div className="chart-title">
-            <PieIcon size={18} />
-            Magnitude Distribution
-          </div>
-          <div className="chart-body" style={{ height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-              <PieChart>
-                <Pie
-                  data={statsData.magDistribution}
-                  cx="50%" cy="50%"
-                  innerRadius={65} outerRadius={100}
-                  paddingAngle={4}
-                  dataKey="value"
-                  stroke="none"
-                >
-                  {statsData.magDistribution.map((entry) => (
-                    <Cell key={entry.name} fill={SEVERITY_COLORS[entry.name] || '#64748b'} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  wrapperStyle={{ pointerEvents: 'none' }}
-                  contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
-                  itemStyle={{ color: '#f8fafc' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="donut-legend">
-            {statsData.magDistribution.map(d => (
-              <div key={d.name} className="legend-item">
-                <span className="legend-dot" style={{ backgroundColor: SEVERITY_COLORS[d.name] }}></span>
-                <span className="legend-label">{d.name}</span>
-                <span className="legend-value">{d.value}</span>
+      {isEmpty ? (
+        <div className="stats-empty" role="status">
+          <Waves size={30} strokeWidth={1.5} className="stats-empty-icon" aria-hidden="true" />
+          <p className="stats-empty-title">No events recorded in this window</p>
+          <p className="stats-empty-sub">Try a wider range — or switch the preferred data source in Settings.</p>
+        </div>
+      ) : (
+        <>
+          {/* ── KPI strip ── */}
+          <div className="stats-kpis" role="region" aria-label="Key figures for the selected window">
+            {kpiCells.map((cell, i) => (
+              <div className="stats-kpi" key={cell.label}>
+                <span className="stats-kpi-label">{cell.label}</span>
+                <span className="stats-kpi-value tnum" style={cell.color ? { color: cell.color } : undefined}>{cell.value}</span>
+                <span className="stats-kpi-cap">{cell.cap}</span>
+                {i > 0 && <span className="stats-kpi-divider" aria-hidden="true" />}
               </div>
             ))}
           </div>
-        </div>
 
-        {/* Top Active Regions */}
-        <div className="chart-panel glass-card" id="top-active-regions">
-          <div className="chart-title">
-            <BarChart3 size={18} />
-            Top Active Regions
-          </div>
-          <div className="chart-body" style={{ height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-              <BarChart data={statsData.topRegions} layout="vertical" margin={{ top: 5, right: 20, left: 5, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
-                <XAxis type="number" stroke="var(--text-muted)" fontSize={11} />
-                <YAxis dataKey="region" type="category" width={120} stroke="var(--text-muted)" fontSize={11} tick={{ fill: 'var(--text-secondary)' }} />
-                <Tooltip
-                  wrapperStyle={{ pointerEvents: 'none' }}
-                  contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
-                  itemStyle={{ color: '#f8fafc' }}
-                  labelStyle={{ color: '#94a3b8' }}
-                />
-                <Bar dataKey="count" fill="#3b82f6" radius={[0, 8, 8, 0]} barSize={20}>
-                  {statsData.topRegions.map((_, i) => (
-                    <Cell key={i} fill={i === 0 ? '#ef4444' : i === 1 ? '#f97316' : '#3b82f6'} fillOpacity={1 - i * 0.08} />
+          {/* ── Geographic distribution ── */}
+          <section className="stats-map" aria-label="Geographic distribution of events">
+            <div className="tg-panel-head">
+              <div>
+                <h2 className="tg-panel-title">Geographic footprint</h2>
+                <p className="tg-panel-sub">Where the ground moved in this window</p>
+              </div>
+              <span className="tg-panel-note tnum">{filteredEarthquakes.length} events · {timeRangeSubtitle}</span>
+            </div>
+            <div className="stats-map-frame">
+              <InteractiveMap
+                earthquakes={filteredEarthquakes}
+                showAllEvents={true}
+                compactMarkers={true}
+                enableLegendFilter={true}
+                pulseMarkers={false}
+              />
+            </div>
+          </section>
+
+          {/* ── Magnitude timeline ── */}
+          <section className="stats-panel stats-timeline" aria-label="Magnitude over time">
+            <div className="tg-panel-head">
+              <div>
+                <h2 className="tg-panel-title">Magnitude over time</h2>
+                <p className="tg-panel-sub">Each event plotted through the window, oldest on the left</p>
+              </div>
+              <span className="tg-panel-note">Hover for exact values</span>
+            </div>
+            <div className="stats-chart stats-chart--timeline">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                <AreaChart data={statsData.magTimeline} margin={{ top: 10, right: 6, left: -18, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="tgGradMag" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f97316" stopOpacity={0.22} />
+                      <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="2 5" stroke="rgba(148,163,184,0.08)" vertical={false} />
+                  <XAxis dataKey="time" stroke="var(--tg-text-3)" fontSize={10} minTickGap={50} tickLine={false} axisLine={false} tickMargin={8} />
+                  <YAxis stroke="var(--tg-text-3)" fontSize={10} domain={[0, 'auto']} tickLine={false} axisLine={false} width={34} />
+                  <Tooltip
+                    contentStyle={CHART_TOOLTIP}
+                    wrapperStyle={{ pointerEvents: 'none', zIndex: 10 }}
+                    itemStyle={{ color: '#f8fafc' }}
+                    labelStyle={{ color: '#94a3b8' }}
+                    labelFormatter={(label, payload) => {
+                      if (payload && payload.length > 0 && payload[0].payload.date) {
+                        return `${payload[0].payload.date} - ${label}`;
+                      }
+                      return label;
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="magnitude"
+                    stroke="#f97316"
+                    strokeWidth={1.75}
+                    fill="url(#tgGradMag)"
+                    isAnimationActive={false}
+                    dot={statsData.magTimeline.length <= 200 ? { r: 3, fill: '#f97316', strokeWidth: 0 } : false}
+                    activeDot={{ r: 4 }}
+                    onMouseMove={(point: any) => {
+                      const payload = point?.payload;
+                      if (payload?.date || payload?.time) {
+                        setSelectedTimelinePoint(payload);
+                      }
+                    }}
+                    onMouseLeave={() => setSelectedTimelinePoint(null)}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="stats-timeline-foot" aria-live="polite">
+              {selectedTimelinePoint ? (
+                <>
+                  <span className="stats-timeline-date tnum">{selectedTimelinePoint.date} — {selectedTimelinePoint.time}</span>
+                  <span className="stats-timeline-mag tnum">Magnitude {selectedTimelinePoint.magnitude.toFixed(1)}</span>
+                </>
+              ) : (
+                <span className="stats-timeline-hint">Sweep the curve — exact magnitude and timestamp for any event appear here.</span>
+              )}
+            </div>
+          </section>
+
+          {/* ── Distribution + depth ── */}
+          <div className="stats-split">
+            <section className="stats-panel" aria-label="Magnitude distribution">
+              <div className="tg-panel-head">
+                <div>
+                  <h2 className="tg-panel-title">Magnitude distribution</h2>
+                  <p className="tg-panel-sub">How events spread across severity classes</p>
+                </div>
+              </div>
+              <div className="stats-panel-body stats-panel-body--split">
+                <div className="stats-chart stats-chart--donut">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                    <PieChart>
+                      <Pie
+                        data={statsData.magDistribution}
+                        cx="50%" cy="50%"
+                        innerRadius={62} outerRadius={92}
+                        paddingAngle={2}
+                        dataKey="value"
+                        stroke="none"
+                      >
+                        {statsData.magDistribution.map((entry) => (
+                          <Cell key={entry.name} fill={SEVERITY_COLORS[entry.name] || '#64748b'} fillOpacity={0.88} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        wrapperStyle={{ pointerEvents: 'none' }}
+                        contentStyle={CHART_TOOLTIP}
+                        itemStyle={{ color: '#f8fafc' }}
+                        labelStyle={{ color: '#94a3b8' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <ul className="stats-donut-legend">
+                  {statsData.magDistribution.map(d => (
+                    <li key={d.name} className="stats-legend-item">
+                      <span className="stats-legend-dot" style={{ backgroundColor: SEVERITY_COLORS[d.name] }} aria-hidden="true" />
+                      <span className="stats-legend-label">{d.name}</span>
+                      <span className="stats-legend-value tnum">{d.value}</span>
+                    </li>
                   ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+                </ul>
+              </div>
+            </section>
 
-        {/* Depth vs Magnitude Scatter */}
-        <div className="chart-panel glass-card">
-          <div className="chart-title">
-            <Crosshair size={18} />
-            Depth vs Magnitude Profile
+            <section className="stats-panel" aria-label="Depth versus magnitude">
+              <div className="tg-panel-head">
+                <div>
+                  <h2 className="tg-panel-title">Depth vs magnitude</h2>
+                  <p className="tg-panel-sub">Two readings of the same set — how deep each event ran</p>
+                </div>
+              </div>
+              <div className="stats-panel-body">
+                <div className="stats-chart stats-chart--scatter">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                    <ScatterChart margin={{ top: 10, right: 8, left: -12, bottom: 12 }}>
+                      <CartesianGrid strokeDasharray="2 5" stroke="rgba(148,163,184,0.08)" />
+                      <XAxis dataKey="magnitude" type="number" name="Magnitude" stroke="var(--tg-text-3)" fontSize={10} tickLine={false} axisLine={false} tickMargin={8}
+                        label={{ value: 'Magnitude', position: 'insideBottom', offset: -8, fill: 'var(--tg-text-3)', fontSize: 10 }} />
+                      <YAxis dataKey="depth" type="number" name="Depth (km)" stroke="var(--tg-text-3)" fontSize={10} reversed tickLine={false} axisLine={false} width={32}
+                        label={{ value: 'Depth (km)', angle: -90, position: 'insideLeft', offset: 24, fill: 'var(--tg-text-3)', fontSize: 10 }} />
+                      <ZAxis range={[40, 200]} />
+                      <Tooltip
+                        cursor={{ strokeDasharray: '3 4', stroke: 'rgba(148,163,184,0.4)' }}
+                        wrapperStyle={{ pointerEvents: 'none' }}
+                        contentStyle={CHART_TOOLTIP}
+                        itemStyle={{ color: '#f8fafc' }}
+                        labelStyle={{ color: '#94a3b8' }}
+                      />
+                      <Scatter data={statsData.depthMagPoints} fill="#8b9cf9" fillOpacity={0.62} stroke="#8b9cf9" strokeOpacity={0.9} strokeWidth={0.5} isAnimationActive={false} />
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </section>
           </div>
-          <div className="chart-body" style={{ height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-              <ScatterChart margin={{ top: 10, right: 10, left: -10, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="magnitude" type="number" name="Magnitude" stroke="var(--text-muted)" fontSize={11} label={{ value: 'Magnitude', position: 'insideBottom', offset: -5, fill: 'var(--text-muted)', fontSize: 11 }} />
-                <YAxis dataKey="depth" type="number" name="Depth (km)" stroke="var(--text-muted)" fontSize={11} reversed label={{ value: 'Depth (km)', angle: -90, position: 'insideLeft', offset: 20, fill: 'var(--text-muted)', fontSize: 11 }} />
-                <ZAxis range={[40, 200]} />
-                <Tooltip
-                  cursor={{ strokeDasharray: '3 3' }}
-                  wrapperStyle={{ pointerEvents: 'none' }}
-                  contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
-                  itemStyle={{ color: '#f8fafc' }}
-                />
-                <Scatter data={statsData.depthMagPoints} fill="#8b5cf6" fillOpacity={0.7} isAnimationActive={false} />
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
 
-        {/* Events per Day */}
-        <div className="chart-panel glass-card">
-          <div className="chart-title">
-            <Clock size={18} />
-            Events Per Day
+          {/* ── Regions + daily frequency ── */}
+          <div className="stats-split">
+            <section className="stats-panel" aria-label="Most active regions" id="top-active-regions">
+              <div className="tg-panel-head">
+                <div>
+                  <h2 className="tg-panel-title">Most active regions</h2>
+                  <p className="tg-panel-sub">Where the ground moved the most — top eight</p>
+                </div>
+              </div>
+              <div className="stats-panel-body">
+                <div className="stats-chart stats-chart--regions">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                    <BarChart data={statsData.topRegions} layout="vertical" margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="2 5" stroke="rgba(148,163,184,0.08)" horizontal={false} />
+                      <XAxis type="number" stroke="var(--tg-text-3)" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis dataKey="region" type="category" width={132} stroke="var(--tg-text-3)" fontSize={10} tickLine={false} axisLine={false} tick={{ fill: 'var(--tg-text-2)' }} />
+                      <Tooltip
+                        wrapperStyle={{ pointerEvents: 'none' }}
+                        contentStyle={CHART_TOOLTIP}
+                        itemStyle={{ color: '#f8fafc' }}
+                        labelStyle={{ color: '#94a3b8' }}
+                      />
+                      <Bar dataKey="count" fill="#5b8def" fillOpacity={0.85} radius={[0, 2, 2, 0]} barSize={17} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </section>
+
+            <section className="stats-panel" aria-label="Events per day">
+              <div className="tg-panel-head">
+                <div>
+                  <h2 className="tg-panel-title">Events per day</h2>
+                  <p className="tg-panel-sub">Daily frequency through the window</p>
+                </div>
+              </div>
+              <div className="stats-panel-body">
+                <div className="stats-chart stats-chart--days">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                    <BarChart data={statsData.timelineData} margin={{ top: 10, right: 6, left: -14, bottom: 34 }}>
+                      <CartesianGrid strokeDasharray="2 5" stroke="rgba(148,163,184,0.08)" vertical={false} />
+                      <XAxis dataKey="day" stroke="var(--tg-text-3)" fontSize={9} angle={-28} textAnchor="end" interval={0} tickLine={false} axisLine={false} tickMargin={6} />
+                      <YAxis stroke="var(--tg-text-3)" fontSize={10} allowDecimals={false} tickLine={false} axisLine={false} width={30} />
+                      <Tooltip
+                        wrapperStyle={{ pointerEvents: 'none' }}
+                        contentStyle={CHART_TOOLTIP}
+                        itemStyle={{ color: '#f8fafc' }}
+                        labelStyle={{ color: '#94a3b8' }}
+                      />
+                      <Bar dataKey="count" fill="#5b8def" fillOpacity={0.85} radius={[2, 2, 0, 0]} barSize={26} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </section>
           </div>
-          <div className="chart-body" style={{ height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-              <BarChart data={statsData.timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="day" stroke="var(--text-muted)" fontSize={10} angle={-30} textAnchor="end" interval={0} />
-                <YAxis stroke="var(--text-muted)" fontSize={11} allowDecimals={false} />
-                <Tooltip
-                  wrapperStyle={{ pointerEvents: 'none' }}
-                  contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
-                  itemStyle={{ color: '#f8fafc' }}
-                  labelStyle={{ color: '#94a3b8' }}
-                />
-                <Bar dataKey="count" fill="#10b981" radius={[8, 8, 0, 0]} barSize={36}>
-                  {statsData.timelineData.map((_, i) => (
-                    <Cell key={i} fill={i === statsData.timelineData.length - 1 ? '#10b981' : '#10b98180'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-    </div >
+        </>
+      )}
+    </div>
   );
 }

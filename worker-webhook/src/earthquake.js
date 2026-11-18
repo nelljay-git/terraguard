@@ -312,6 +312,36 @@ async function dispatchVideoRender(env, payload) {
     catch (e) {
         console.error("[video] dispatch failed", e instanceof Error ? e.message : String(e));
     }
+    // Optional remembering-earthquake render (separate workflow). Reuses the
+    // same payload; gated by REMEMBERING_ENABLED (default on) and
+    // REMEMBERING_MIN_MAG (default 5.0).
+    try {
+        const enabled = !["false", "0", "no", "off", "disabled"].includes(String(env.REMEMBERING_ENABLED ?? "true").trim().toLowerCase());
+        if (!enabled) return;
+        const rMin = parseFloat(env.REMEMBERING_MIN_MAG ?? "5.0");
+        const mag = parseFloat(payload.magnitude);
+        if (!isNaN(rMin) && (isNaN(mag) || mag < rMin)) return;
+        const ctrl2 = new AbortController();
+        const t2 = setTimeout(() => ctrl2.abort(), 8000);
+        const r2 = await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
+            method: "POST",
+            signal: ctrl2.signal,
+            headers: {
+                Accept: "application/vnd.github+json",
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+                "User-Agent": "TerraGuard-Worker/1.0",
+            },
+            body: JSON.stringify({ event_type: "remembering-video", client_payload: payload }),
+        });
+        clearTimeout(t2);
+        if (r2.status === 204)
+            console.log(`[remembering] dispatch sent for ${payload.source} M${payload.magnitude}`);
+        else
+            console.error(`[remembering] dispatch HTTP ${r2.status}`);
+    } catch (e) {
+        console.error("[remembering] dispatch failed", e instanceof Error ? e.message : String(e));
+    }
 }
 
 // Same physical quake already posted to Facebook (any FB source)?

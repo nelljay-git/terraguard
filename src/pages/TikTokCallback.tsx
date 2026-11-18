@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Check, Copy, AlertTriangle } from 'lucide-react';
+import { Check, Copy, AlertTriangle, KeyRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import './TikTokCallback.css';
 
 // OAuth landing page for the TikTok Login Kit flow (personal automation).
 // TikTok redirects here with ?code=... after approval; the page shows the
@@ -29,43 +30,42 @@ export function TikTokCallback() {
   };
 
   return (
-    <div className="glass" style={{ maxWidth: '640px', margin: '48px auto', padding: '28px' }}>
-      <h2>TikTok authorization</h2>
-      {!user ? (
-        <p className="text-muted">
-          Sign in first (<Link to="/auth">login page</Link>), then restart the TikTok approve step.
-        </p>
-      ) : !isOwner ? (
-        <p className="text-muted">This page is for the site owner only.</p>
-      ) : error ? (
-        <p style={{ color: '#ef4444' }}>
-          <AlertTriangle size={16} style={{ verticalAlign: '-3px' }} /> TikTok refused: {error}
-          {errorDesc ? ` — ${errorDesc}` : ''}
-        </p>
-      ) : !code ? (
-        <p className="text-muted">No authorization code in this URL. Start from the TikTok approve link.</p>
-      ) : (
-        <>
-          <p className="text-muted">
-            Approved ✓ — exchange this <strong>one-time code within 5 minutes</strong>:
+    <div className="ttkb container">
+      <section className="ttkb-panel" aria-labelledby="ttkb-title">
+        <div className="ttkb-head">
+          <KeyRound size={20} aria-hidden="true" />
+          <div>
+            <span className="ttkb-kicker">Owner tools · OAuth</span>
+            <h1 id="ttkb-title" className="ttkb-title">TikTok authorization</h1>
+          </div>
+        </div>
+
+        {!user ? (
+          <p className="ttkb-body">
+            Sign in first (<Link to="/auth" className="ttkb-link">login page</Link>), then restart the TikTok approve step.
           </p>
-          <p
-            style={{
-              overflowWrap: 'anywhere',
-              background: 'rgba(255,255,255,0.06)',
-              padding: '12px',
-              borderRadius: '8px',
-              fontFamily: 'monospace',
-            }}
-          >
-            {code}
+        ) : !isOwner ? (
+          <p className="ttkb-body">This page is for the site owner only.</p>
+        ) : error ? (
+          <p className="ttkb-error" role="alert">
+            <AlertTriangle size={17} aria-hidden="true" />
+            <span>TikTok refused: {error}{errorDesc ? ` — ${errorDesc}` : ''}</span>
           </p>
-          <button type="button" className="action-btn glass flex-center" onClick={copy}>
-            {copied ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
-            <span>{copied ? 'Copied!' : 'Copy code'}</span>
-          </button>
-        </>
-      )}
+        ) : !code ? (
+          <p className="ttkb-body">No authorization code in this URL. Start from the TikTok approve link.</p>
+        ) : (
+          <>
+            <p className="ttkb-body">
+              Approved. Exchange this <strong>one-time code within 5 minutes</strong>:
+            </p>
+            <code className="ttkb-code" tabIndex={0}>{code}</code>
+            <button type="button" className="ttkb-copy" onClick={copy}>
+              {copied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
+              <span>{copied ? 'Copied!' : 'Copy code'}</span>
+            </button>
+          </>
+        )}
+      </section>
     </div>
   );
 }

@@ -80,7 +80,7 @@ function ZoneForm({
   });
 
   return (
-    <div className="azf glass">
+    <div className="azf">
       <div className="azf-header">
         <h4>{initial ? 'Edit Zone' : 'New Alert Zone'}</h4>
         <button className="azf-close" onClick={onCancel} title="Cancel">
@@ -252,7 +252,7 @@ export function AlertZoneManager() {
       {!creating && !editingId && (
         <>
           {zones.length === 0 && (
-            <div className="azm-empty glass-card">
+            <div className="azm-empty">
               <AlertTriangle size={32} style={{ opacity: 0.3, marginBottom: 12 }} />
               <p>No alert zones configured.</p>
               <p className="azm-empty-sub">
@@ -265,7 +265,7 @@ export function AlertZoneManager() {
             {zones.map(zone => (
               <div
                 key={zone.id}
-                className={`azm-zone glass-card ${!zone.enabled ? 'azm-zone--disabled' : ''}`}
+                className={`azm-zone ${!zone.enabled ? 'azm-zone--disabled' : ''}`}
               >
                 <div className="azm-zone-top">
                   <div className="azm-zone-info">
@@ -286,7 +286,7 @@ export function AlertZoneManager() {
                       {zone.enabled ? (
                         <Power size={15} style={{ color: '#10b981' }} />
                       ) : (
-                        <PowerOff size={15} style={{ color: 'var(--text-muted)' }} />
+                        <PowerOff size={15} style={{ color: 'var(--tg-text-3)' }} />
                       )}
                     </button>
                     <button
@@ -310,7 +310,7 @@ export function AlertZoneManager() {
           </div>
 
           {!atLimit && (
-            <button className="azm-add-btn glass-card" onClick={() => setCreating(true)}>
+            <button className="azm-add-btn" onClick={() => setCreating(true)}>
               <Plus size={16} />
               Add Alert Zone
             </button>

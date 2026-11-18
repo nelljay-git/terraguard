@@ -5,20 +5,21 @@ import './Legal.css';
 export function PrivacyPolicy() {
   return (
     <div className="legal-container container">
-      <div className="legal-card glass">
+      <div>
         <div className="legal-header">
-          <Link to="/about" className="back-link flex-center">
-            <ArrowLeft size={18} />
-            <span>Back to About</span>
+          <Link to="/about" className="back-link">
+            <ArrowLeft size={17} aria-hidden="true" />
+            <span>About TerraGuard</span>
           </Link>
-          <div className="legal-title-wrapper flex-center">
-            <Shield size={28} className="legal-icon" />
+          <span className="legal-kicker">Legal</span>
+          <div className="legal-title-wrapper">
+            <Shield size={24} className="legal-icon" aria-hidden="true" />
             <h1 className="legal-title">Privacy Policy</h1>
           </div>
+          <p className="legal-last-updated">Last updated: August 6, 2026</p>
         </div>
 
         <div className="legal-content">
-          <p className="legal-last-updated">Last updated: August 6, 2026</p>
 
           <section className="legal-section">
             <h2>Overview</h2>

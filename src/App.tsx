@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { DevUpdateModal } from './components/DevUpdateModal';
 import { InstallPrompt } from './components/InstallPrompt';
+import { ScrollToTop } from './components/ScrollToTop';
 import { AuthProvider } from './context/AuthContext';
 import { Dashboard } from './pages/Dashboard';
 import { Archive } from './pages/Archive';
@@ -24,7 +25,9 @@ import { TikTokCallback } from './pages/TikTokCallback';
 import { Blog } from './pages/Blog';
 import { BlogPost } from './pages/BlogPost';
 import { VolcanoBulletin } from './pages/VolcanoBulletin';
+import { Tsunami } from './pages/Tsunami';
 import { AiStudio } from './pages/AiStudio';
+import RememberingDebug from './pages/RememberingDebug';
 import './App.css';
 
 // Keyed wrapper so navigating between two /details/:id URLs remounts the
@@ -47,6 +50,7 @@ function App() {
   return (
     <AuthProvider>
       <div className="app-container">
+        <ScrollToTop />
         <DevUpdateModal />
         <InstallPrompt />
         <Navbar />
@@ -72,10 +76,12 @@ function App() {
             <Route path="/blog" element={<Blog />} />
             <Route path="/blog/:slug" element={<BlogPost />} />
             <Route path="/bulletin/*" element={<VolcanoBulletin />} />
+            <Route path="/tsunami" element={<Tsunami />} />
             <Route path="/tiktok-callback" element={<TikTokCallback />} />
           {/* Unlisted admin page: no nav link. The page itself enforces the
               email allowlist, and /post-news re-checks the signed-in user. */}
           <Route path="/ai" element={<AiStudio />} />
+          <Route path="/remembering-debug" element={<RememberingDebug />} />
           </Routes>
         </main>
       </div>

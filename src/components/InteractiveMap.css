@@ -1,6 +1,9 @@
 .map-wrapper {
-  padding: 24px;
-  border-radius: 20px;
+  padding: 0;
+  border-radius: var(--tg-radius);
+  background: var(--tg-panel);
+  border: 1px solid var(--tg-hairline);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -10,100 +13,115 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 12px;
+  height: 46px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--tg-hairline);
 }
 
 .map-header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .map-title-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .map-icon {
-  color: var(--text-muted);
+  display: none;
 }
 
 .map-title {
-  font-size: 1.1rem;
-  color: var(--text-primary);
-  font-weight: 600;
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tg-text-2);
+  font-weight: 800;
 }
 
 .map-count-badge {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-color);
-  padding: 4px 10px;
-  border-radius: 6px;
-  letter-spacing: 0.5px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--tg-text-3);
+  background: none;
+  border: none;
+  padding: 0;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .map-fullscreen-btn,
 .map-fullscreen-close {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid var(--border-color);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--tg-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--tg-text-3);
   display: grid;
   place-items: center;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .map-fullscreen-btn:hover,
 .map-fullscreen-close:hover {
-  background: rgba(255, 255, 255, 0.09);
-  color: var(--text-primary);
+  background: rgba(148, 163, 184, 0.1);
+  border-color: var(--tg-hairline);
+  color: var(--tg-text);
 }
 
-/* ── Legend ── */
+/* ── Legend — plain typographic key, dots only ── */
 .map-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 14px;
+  align-items: center;
+  gap: 16px;
+  margin: 0;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--tg-hairline-soft);
 }
 
 .legend-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-color);
-  padding: 3px 8px;
-  border-radius: 5px;
+  gap: 6px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tg-text-3);
+  background: none;
+  border: none;
+  padding: 2px 0;
+  border-radius: 0;
 }
 
 .legend-chip--clickable {
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color 0.15s ease;
 }
 
 .legend-chip--clickable:hover {
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--tg-text);
 }
 
 .legend-chip--active {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: var(--text-primary);
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  background: none;
+  border: none;
+  color: var(--tg-text);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
 }
 
 .legend-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -114,7 +132,7 @@
   min-height: 350px;
   border-radius: 14px;
   overflow: hidden;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--tg-hairline);
 }
 
 .map-wrapper--fullscreen {
@@ -191,117 +209,181 @@
   font-weight: 700;
 }
 
-/* ── Earthquake Modal ── */
-.eq-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 2600;
-  background: rgba(2, 6, 23, 0.62);
-  display: grid;
-  place-items: center;
-  padding: 18px;
+/* ── Earthquake popup (Mission Deck) ── */
+
+/* Leaflet positions its tip/close button relative to these, so the wrapper
+   keeps position:absolute from Leaflet's own stylesheet — we only restyle. */
+.eq-popup-override {
+  filter: drop-shadow(0 18px 40px rgba(2, 6, 23, 0.5));
 }
 
-.eq-modal {
-  position: relative;
-  width: min(420px, 100%);
-  border-radius: 20px;
-  padding: 22px;
-  background: rgba(15, 23, 42, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+.eq-popup-override .leaflet-popup-content-wrapper {
+  background: var(--tg-panel-solid) !important;
+  color: var(--tg-text) !important;
+  border: 1px solid var(--tg-hairline) !important;
+  border-radius: var(--tg-radius) !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.eq-popup-override .leaflet-popup-content {
+  margin: 0 !important;
+  line-height: 1.5;
+  min-width: min(296px, 80vw);
+  width: min(296px, 80vw) !important;
+  box-shadow: none !important;
+}
+
+.eq-popup-override .leaflet-popup-tip {
+  background: var(--tg-panel-solid) !important;
+  border: 1px solid var(--tg-hairline) !important;
+  box-shadow: none !important;
+}
+
+.eq-popup-override .leaflet-popup-close-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  font: 700 20px/1 var(--font-family, system-ui, sans-serif);
+  color: var(--tg-text-3);
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: var(--tg-radius-sm);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.eq-popup-override .leaflet-popup-close-button:hover {
+  color: var(--tg-text);
+  background: var(--tg-panel-2);
+}
+
+.eq-popup-override .leaflet-popup-close-button:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
 }
 
 .eq-modal-popup {
-  width: 280px;
+  position: relative;
   display: flex;
   flex-direction: column;
 }
 
-.eq-modal-popup .eq-modal-head {
-  padding-right: 0;
-  margin-bottom: 12px;
-}
-
-.eq-modal-popup .eq-modal-value {
-  white-space: normal;
-}
-
-.eq-popup-override .leaflet-popup-content {
-  margin: 16px;
-}
-
-.eq-modal-close {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  border: 0;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-primary);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
+.eq-modal-accent {
+  display: block;
+  height: 3px;
+  width: 100%;
+  flex: 0 0 auto;
 }
 
 .eq-modal-head {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-right: 44px;
-  margin-bottom: 18px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 16px 12px;
+  border-bottom: 1px solid var(--tg-hairline);
 }
 
 .eq-modal-mag {
-  font-size: 2.2rem;
-  font-weight: 800;
+  font-size: 2rem;
+  font-weight: 700;
   line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .eq-modal-label {
-  font-size: 0.74rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--text-muted);
+  color: var(--tg-text-3);
+  white-space: nowrap;
+}
+
+.eq-modal-label-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
 }
 
 .eq-modal-body {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
 }
 
 .eq-modal-row {
   display: grid;
-  gap: 4px;
+  gap: 3px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--tg-hairline-soft);
+}
+
+.eq-modal-row:last-child {
+  border-bottom: none;
 }
 
 .eq-modal-key {
-  font-size: 0.68rem;
+  font-size: 0.58rem;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
+  letter-spacing: 0.16em;
+  color: var(--tg-text-3);
 }
 
 .eq-modal-value {
-  color: var(--text-primary);
+  color: var(--tg-text);
+  font-size: 0.82rem;
   font-weight: 500;
-  line-height: 1.4;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
 }
 
 .eq-modal-link {
-  margin-top: 18px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  color: #60a5fa;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px 16px 15px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius-sm);
+  background: var(--tg-panel-2);
+  color: var(--tg-text);
+  font-size: 0.78rem;
   font-weight: 700;
+  letter-spacing: 0.04em;
   text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .eq-modal-link:hover {
-  text-decoration: underline;
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.35);
+  text-decoration: none;
+}
+
+.eq-modal-link:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* ══════════ Reduced motion ══════════ */
+@media (prefers-reduced-motion: reduce) {
+  .eq-popup-override .leaflet-popup-close-button,
+  .eq-modal-link {
+    transition: none;
+  }
 }
 
 .map-fullscreen-overlay {
@@ -336,7 +418,7 @@
   min-height: 0;
   border-radius: 18px;
   overflow: hidden;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--tg-hairline);
 }
 
 /* Canvas Marker Tooltips */

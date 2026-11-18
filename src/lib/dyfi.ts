@@ -273,3 +273,74 @@ export async function fetchDyfiPoints(q: DyfiQuery, timeoutMs = 9000): Promise<D
     return [];
   }
 }
+export interface MmiContour {
+  color: string;
+  value: number;
+  coords: number[][][];
+}
+
+export async function fetchMmiContours(q: { usgsEventId?: string }, timeoutMs = 9000): Promise<MmiContour[]> {
+  const eventId = q.usgsEventId;
+  if (!eventId) return [];
+  try {
+    const detail = await fetchJson(`${USGS_QUERY}?format=geojson&eventid=${encodeURIComponent(eventId)}`, timeoutMs);
+    const shakemaps: any[] = detail?.properties?.products?.shakemap ?? [];
+    let url: string | null = null;
+    for (const sm of shakemaps) {
+      const contents = sm?.contents;
+      if (!contents || typeof contents !== 'object') continue;
+      const key = Object.keys(contents).find((k) => /cont_mmi.*\.json/i.test(k));
+      if (key && typeof contents[key]?.url === 'string') { url = contents[key].url; break; }
+    }
+    if (!url) return [];
+    const gj = await fetchJson(url, timeoutMs);
+    const features: any[] = gj?.features ?? [];
+    const out: MmiContour[] = [];
+    for (const f of features) {
+      const geom = f?.geometry;
+      if (!geom) continue;
+      const color = String(f?.properties?.color ?? '#ffffff');
+      const value = Number(f?.properties?.value ?? 0);
+      if (geom.type === 'MultiLineString' && Array.isArray(geom.coordinates)) {
+        out.push({ color, value, coords: geom.coordinates });
+      } else if (geom.type === 'LineString' && Array.isArray(geom.coordinates)) {
+        out.push({ color, value, coords: [geom.coordinates] });
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+export interface RuptureData {
+  coords: number[][][][];
+}
+
+export async function fetchRupture(q: { usgsEventId?: string }, timeoutMs = 9000): Promise<RuptureData | null> {
+  const eventId = q.usgsEventId;
+  if (!eventId) return null;
+  try {
+    const detail = await fetchJson(`${USGS_QUERY}?format=geojson&eventid=${encodeURIComponent(eventId)}`, timeoutMs);
+    const shakemaps: any[] = detail?.properties?.products?.shakemap ?? [];
+    let url: string | null = null;
+    for (const sm of shakemaps) {
+      const contents = sm?.contents;
+      if (!contents || typeof contents !== 'object') continue;
+      const key = Object.keys(contents).find((k) => /rupture.*\.json/i.test(k));
+      if (key && typeof contents[key]?.url === 'string') { url = contents[key].url; break; }
+    }
+    if (!url) return null;
+    const gj = await fetchJson(url, timeoutMs);
+    const feat = (gj?.features ?? [])[0];
+    const geom = feat?.geometry;
+    if (geom?.type === 'MultiPolygon' && Array.isArray(geom.coordinates)) {
+      return { coords: geom.coordinates };
+    }
+    if (geom?.type === 'Polygon' && Array.isArray(geom.coordinates)) {
+      return { coords: [geom.coordinates] };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

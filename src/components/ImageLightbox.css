@@ -19,7 +19,7 @@
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--tg-hairline);
   border-radius: 20px;
   box-shadow:
     0 25px 60px -12px rgba(0, 0, 0, 0.5),
@@ -34,7 +34,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 16px 18px;
-  border-bottom: 1px solid var(--glass-border);
+  border-bottom: 1px solid var(--tg-hairline);
 }
 
 .lightbox-modal-header-content {
@@ -61,7 +61,7 @@
 .lightbox-modal-title {
   font-size: 0.95rem;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--tg-text);
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
@@ -76,14 +76,14 @@
   height: 32px;
   border-radius: 8px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--tg-text-3);
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .lightbox-modal-close:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
+  color: var(--tg-text);
 }
 
 .lightbox-modal-image-wrap {
@@ -112,7 +112,7 @@
   align-items: center;
   gap: 8px;
   padding: 12px 18px;
-  border-top: 1px solid var(--glass-border);
+  border-top: 1px solid var(--tg-hairline);
   flex-wrap: wrap;
 }
 
@@ -123,22 +123,22 @@
   padding: 8px 14px;
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--tg-text-2);
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--tg-hairline);
   border-radius: 10px;
   transition: all 0.2s ease;
 }
 
 .lightbox-footer-btn:hover {
-  color: var(--text-primary);
+  color: var(--tg-text);
   background: rgba(255, 255, 255, 0.1);
 }
 
 .lightbox-footer-hint {
   margin-left: auto;
   font-size: 0.72rem;
-  color: var(--text-muted);
+  color: var(--tg-text-3);
 }
 
 @media (max-width: 480px) {

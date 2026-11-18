@@ -21,7 +21,7 @@
   position: absolute; top: 14px; right: 14px;
   width: 32px; height: 32px; border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.04);
-  color: var(--text-secondary); cursor: pointer; display: grid; place-items: center;
+  color: var(--tg-text-2); cursor: pointer; display: grid; place-items: center;
 }
 .volc-modal-close:hover { background: rgba(255,255,255,0.08); }
 .volc-modal-head { display: flex; flex-direction: column; gap: 8px; padding-right: 32px; }
@@ -29,7 +29,7 @@
 .volc-modal-title-row h3 { margin: 0; font-size: 1.05rem; font-weight: 800; }
 .volc-modal-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.75rem; }
 .volc-meta-item { display: inline-flex; align-items: center; gap: 4px; }
-.volc-modal-loading, .volc-modal-error { padding: 24px; text-align: center; color: var(--text-muted); border: 1px dashed rgba(255,255,255,0.08); border-radius: 14px; }
+.volc-modal-loading, .volc-modal-error { padding: 24px; text-align: center; color: var(--tg-text-3); border: 1px dashed rgba(255,255,255,0.08); border-radius: 14px; }
 .volc-modal-map {
   display: block;
   width: 100%;
@@ -134,7 +134,7 @@
 .volc-external-btn:hover { background: rgba(59,130,246,0.22); }
 .volc-close-btn {
   padding: 9px 14px; border-radius: 10px; font-size: 0.82rem;
-  background: rgba(255,255,255,0.04); color: var(--text-secondary); border: 1px solid rgba(255,255,255,0.08); cursor: pointer;
+  background: rgba(255,255,255,0.04); color: var(--tg-text-2); border: 1px solid rgba(255,255,255,0.08); cursor: pointer;
 }
 @keyframes volcFadeIn { from { opacity: 0; } to { opacity: 1; } }
 

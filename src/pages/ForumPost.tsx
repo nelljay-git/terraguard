@@ -372,7 +372,7 @@ export function ForumPost() {
   if (loading) {
     return (
       <div className="forum-page container">
-        <div className="forum-loading glass">
+        <div className="forum-loading">
           <div className="spinner-ring"></div>
           <p>Loading post...</p>
         </div>
@@ -383,7 +383,7 @@ export function ForumPost() {
   if (notFound || !post) {
     return (
       <div className="forum-page container">
-        <div className="forum-empty glass">
+        <div className="forum-empty">
           <MessageSquare size={48} style={{ opacity: 0.2 }} />
           <h3>Post not found</h3>
           <p>This forum post may have been removed by the administrator.</p>
@@ -402,16 +402,21 @@ export function ForumPost() {
         Back to Forum
       </Link>
 
-      <article className={`forum-post-full glass${post.pinned ? ' pinned' : ''}`}>
+      <article className={`forum-post-full${post.pinned ? ' pinned' : ''}`}>
         <div className="forum-post-topline">
           {post.pinned && (
-            <span className="forum-pin-badge">
-              <Pin size={11} /> Pinned
+            <span className="forum-tag forum-tag--pinned">
+              <Pin size={10} aria-hidden="true" /> Pinned
+            </span>
+          )}
+          {post.closed && (
+            <span className="forum-tag forum-tag--closed">
+              <Lock size={10} aria-hidden="true" /> Closed
             </span>
           )}
           {admin && (
-            <span className="forum-admin-badge">
-              <BadgeCheck size={11} /> Admin
+            <span className="forum-tag forum-tag--admin">
+              <BadgeCheck size={10} aria-hidden="true" /> Admin
             </span>
           )}
         </div>
@@ -536,7 +541,7 @@ export function ForumPost() {
         </div>
       </article>
 
-      <section className="forum-comments glass">
+      <section className="forum-comments">
         <div className="forum-comments-header">
           <h3 className="forum-comments-title">
             <MessageSquare size={18} />
@@ -627,7 +632,7 @@ export function ForumPost() {
               <div className="spinner-ring"></div>
             </div>
           ) : roots.length === 0 ? (
-            <p className="text-muted" style={{ textAlign: 'center', padding: '12px 0', fontSize: '0.9rem' }}>
+            <p style={{ textAlign: 'center', padding: '14px 0', fontSize: '0.88rem', color: 'var(--tg-text-3)' }}>
               No comments yet. Be the first to join the discussion.
             </p>
           ) : (

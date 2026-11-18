@@ -28,7 +28,7 @@
   padding: 8px;
   gap: 6px;
   border-radius: 100px;
-  background: var(--glass-bg);
+  background: var(--tg-panel);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
@@ -39,7 +39,7 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  color: var(--text-primary);
+  color: var(--tg-text);
   background: rgba(255, 255, 255, 0.05);
   transition: all 0.2s ease;
 }
@@ -65,7 +65,7 @@
 .image-modal-divider {
   width: 1px;
   height: 24px;
-  background: var(--glass-border);
+  background: var(--tg-hairline);
   margin: 0 4px;
 }
 

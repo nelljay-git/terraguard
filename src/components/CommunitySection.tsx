@@ -690,7 +690,7 @@ export function CommunitySection({ eqId, earthquake }: CommunitySectionProps) {
   };
 
   return (
-    <div className="community-section glass">
+    <div className="community-section">
       <div className="community-header">
         <h3 className="card-title flex-center" style={{ gap: '8px', justifyContent: 'flex-start' }}>
           <Users size={20} style={{ color }} />

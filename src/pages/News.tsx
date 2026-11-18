@@ -1,12 +1,11 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, type CSSProperties } from 'react';
 import { fetchNews, type NewsArticle } from '../api/news';
 import { getPreferredApi } from '../lib/apiPreference';
-import { Newspaper, RefreshCw, Clock, ExternalLink, ChevronRight, Zap, Filter, Flame } from 'lucide-react';
+import { RefreshCw, Clock, ExternalLink, Search, X, ArrowDown, ArrowUp, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import placeholderImg from '../assets/news_placeholder.png';
 import './News.css';
 
-const CATEGORIES = ['All News', 'Luzon', 'Visayas', 'Mindanao', 'Alerts & Volcanic'] as const;
+const CATEGORIES = ['All News', 'Luzon', 'Visayas', 'Mindanao', 'Alerts & Volcanic', 'Preparedness'] as const;
 type Category = typeof CATEGORIES[number];
 
 function formatTime(pubDate: string): string {
@@ -21,12 +20,13 @@ function formatTime(pubDate: string): string {
 
 function getArticleCategory(title: string): Category {
   const t = title.toLowerCase();
-  
+
   if (t.match(/volcano|taal|mayon|kanlaon|bulusan|pinatubo|tsunami|alert|warning|evacuation/)) return 'Alerts & Volcanic';
+  if (t.match(/prepared|emergency kit|drill|ready for|readiness|safety tips|civil defense/)) return 'Preparedness';
   if (t.match(/mindanao|davao|cotabato|zamboanga|agusan|surigao|misamis|bukidnon|camiguin|lanao|maguindanao|sulu|tawi-tawi|basilan|dinagat/)) return 'Mindanao';
   if (t.match(/visayas|panay|cebu|bohol|samar|leyte|negros|siquijor|guimaras|capiz|iloilo|antique|aklan/)) return 'Visayas';
   if (t.match(/luzon|manila|ncr|batanes|ilocos|cagayan|pampanga|bulacan|bataan|zambales|tarlac|nueva ecija|aurora|calabarzon|cavite|laguna|batangas|rizal|quezon|mimaropa|mindoro|marinduque|romblon|palawan|bicol|albay|camarines|catanduanes|masbate|sorsogon/)) return 'Luzon';
-  
+
   return 'All News'; // Fallback if no specific region matched
 }
 
@@ -34,9 +34,25 @@ export function News() {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<Category>('All News');
+  const [activeCategory, setActiveCategory] = useState<Category>(() => {
+    const saved = sessionStorage.getItem('news_category');
+    return (CATEGORIES as readonly string[]).includes(saved ?? '') ? (saved as Category) : 'All News';
+  });
+  const [query, setQuery] = useState(() => sessionStorage.getItem('news_query') ?? '');
+  const [sort, setSort] = useState<'desc' | 'asc'>(() => {
+    const saved = sessionStorage.getItem('news_sort');
+    return saved === 'asc' ? 'asc' : 'desc';
+  });
 
   const isGlobal = getPreferredApi() === 'usgs' || getPreferredApi() === 'emsc';
+  // Night-lights view of Earth (Discover Magazine cover art, stored locally).
+  const heroBg = '/assets/darker-earth-cover.jpg';
+
+  useEffect(() => {
+    sessionStorage.setItem('news_category', activeCategory);
+    sessionStorage.setItem('news_query', query);
+    sessionStorage.setItem('news_sort', sort);
+  }, [activeCategory, query, sort]);
 
   const loadNews = useCallback(async (forceRefresh = false) => {
     if (forceRefresh) {
@@ -53,6 +69,8 @@ export function News() {
       const res = await fetchNews();
       if (res.data && res.data.length > 0) {
         setArticles(res.data);
+      } else if (!forceRefresh) {
+        setArticles([]);
       }
     } catch (err) {
       console.error('News page error:', err);
@@ -66,180 +84,245 @@ export function News() {
     loadNews();
   }, [loadNews]);
 
-  // Filter articles based on active category
   const filteredArticles = useMemo(() => {
-    if (activeCategory === 'All News') return articles;
-    return articles.filter(article => {
-      // If filtering by a specific region, check if it matches that region OR if it's broadly categorized
-      const cat = getArticleCategory(article.title);
-      return cat === activeCategory;
-    });
-  }, [articles, activeCategory]);
+    let out = articles;
+    if (activeCategory !== 'All News') {
+      out = out.filter(article => getArticleCategory(article.title) === activeCategory);
+    }
+    const q = query.trim().toLowerCase();
+    if (q) {
+      out = out.filter(article =>
+        `${article.title} ${article.source}`.toLowerCase().includes(q)
+      );
+    }
+    if (sort === 'asc') {
+      out = [...out].reverse();
+    }
+    return out;
+  }, [articles, activeCategory, query, sort]);
 
-  // Separate featured from the rest (only when looking at 'All News')
-  const isAllNews = activeCategory === 'All News';
-  const showFeatured = isAllNews && filteredArticles.length >= 3 && !loading;
-  
+  const isFiltering = activeCategory !== 'All News' || query.trim() !== '';
+  const showFeatured = !isFiltering && filteredArticles.length >= 3 && !loading;
+
   const heroArticle = showFeatured ? filteredArticles[0] : null;
   const secondaryFeatured = showFeatured ? [filteredArticles[1], filteredArticles[2]] : [];
-  const gridArticles = showFeatured ? filteredArticles.slice(3) : filteredArticles;
+  const feedArticles = showFeatured ? filteredArticles.slice(3) : filteredArticles;
+
+  const scopeLabel = isGlobal ? 'Global wire' : 'Philippines wire';
+  const wireUpdatedAt = articles.length > 0 && articles[0]?.pubDate ? formatTime(articles[0].pubDate) : null;
 
   return (
-    <div className="news-page-container container">
-      
-      {/* ── Header ── */}
-      <div className="news-page-header glass">
-        <div className="news-page-header-left">
-          <div className="news-page-title-wrapper">
-            <h1 className="news-page-title">
-              <Newspaper size={28} className="text-accent" />
-              Earthquake News
-            </h1>
-            <div className="live-badge">
-              <span className="live-dot"></span> LIVE
-            </div>
-          </div>
-          <p className="news-page-subtitle">
+    <div className="news-page container">
+      {/* ── Masthead ── */}
+      <header className="news-mast">
+        <div className="news-mast-left">
+          <span className="news-eyebrow">TerraGuard · {scopeLabel}</span>
+          <h1 className="news-title">Earthquake News</h1>
+          <p className="news-sub">
             {isGlobal
-              ? 'A curated roundup of earthquake-related headlines from around the world — seismic activity reports, government updates, volcanic alerts, and the aftermath of major events — refreshed throughout the day.'
-              : 'A curated roundup of earthquake-related headlines for the Philippines — seismic activity reports, government updates, volcanic alerts, and the aftermath of major events — refreshed throughout the day.'}
+              ? 'Seismic activity, disaster response and geoscience headlines from around the world — from agencies, newsrooms and wires, refreshed throughout the day.'
+              : 'Seismic activity, government advisories, volcanic alerts and disaster response from across the Philippines — from agencies, newsrooms and wires, refreshed throughout the day.'}
           </p>
         </div>
-        <button
-          className="news-page-refresh-btn"
-          onClick={() => loadNews(true)}
-          disabled={refreshing}
-          title="Refresh news"
-        >
-          <RefreshCw size={16} className={refreshing ? 'spin' : ''} />
-          <span>Refresh</span>
-        </button>
-      </div>
+        <div className="news-mast-right">
+          <span className="news-synced">
+            <span className="news-synced-dot" aria-hidden="true" />
+            {wireUpdatedAt ? `Fresh as of ${wireUpdatedAt}` : 'Refreshing…'}
+          </span>
+          <button
+            className="news-refresh"
+            onClick={() => loadNews(true)}
+            disabled={refreshing}
+            aria-label="Refresh news"
+            title="Refresh news — clears the 10-minute cache"
+          >
+            <RefreshCw size={15} className={refreshing ? 'spin' : ''} aria-hidden="true" />
+            <span>Refresh</span>
+          </button>
+        </div>
+      </header>
 
-      {/* ── Category Filter ── */}
-      <div className="news-filter-container glass">
-        <Filter size={16} className="filter-icon" />
-        <div className="news-filter-scroll">
+      {/* ── Newsroom toolbar ── */}
+      <div className="news-toolbar" role="region" aria-label="Filter and search news">
+        <div className="news-cats" role="tablist" aria-label="News categories">
           {CATEGORIES.map(category => (
             <button
               key={category}
-              className={`news-filter-chip ${activeCategory === category ? 'active' : ''}`}
+              type="button"
+              role="tab"
+              aria-selected={activeCategory === category}
+              className={`news-cat${activeCategory === category ? ' is-active' : ''}`}
               onClick={() => setActiveCategory(category)}
             >
-              {category === 'Alerts & Volcanic' && <Flame size={14} style={{ marginRight: 6 }} />}
               {category}
             </button>
           ))}
         </div>
+        <div className="news-toolbar-right">
+          <label className="news-search" aria-label="Search headlines">
+            <Search size={15} className="news-search-icon" aria-hidden="true" />
+            <input
+              type="text"
+              placeholder="Search headlines, sources…"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              aria-label="Search headlines and sources"
+            />
+            {query && (
+              <button
+                type="button"
+                className="news-search-clear"
+                onClick={() => setQuery('')}
+                aria-label="Clear search"
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            )}
+          </label>
+          <div className="news-sort" role="group" aria-label="Sort order">
+            <button type="button" className={`news-sort-btn${sort === 'desc' ? ' is-active' : ''}`} aria-pressed={sort === 'desc'} onClick={() => setSort('desc')} title="Newest first">
+              <ArrowDown size={13} aria-hidden="true" /><span className="news-sort-label">Newest</span>
+            </button>
+            <button type="button" className={`news-sort-btn${sort === 'asc' ? ' is-active' : ''}`} aria-pressed={sort === 'asc'} onClick={() => setSort('asc')} title="Oldest first">
+              <ArrowUp size={13} aria-hidden="true" /><span className="news-sort-label">Oldest</span>
+            </button>
+          </div>
+          <span className="news-count tnum">{filteredArticles.length} {filteredArticles.length === 1 ? 'story' : 'stories'}</span>
+        </div>
       </div>
 
+      {/* ── Loading skeleton ── */}
       {loading && (
-        <div className="news-page-loading">
-          <div className="spinner-ring"></div>
-          <p>Fetching latest news...</p>
-        </div>
-      )}
-
-      {!loading && articles.length === 0 && (
-        <div className="news-page-empty glass">
-          <Newspaper size={48} style={{ opacity: 0.2, marginBottom: 16 }} />
-          <h3>No news available</h3>
-          <p>We couldn't fetch the latest earthquake news. Please try again later.</p>
-          <button className="btn-primary" onClick={() => loadNews(true)} style={{ marginTop: 16 }}>
-            Retry
-          </button>
-        </div>
-      )}
-
-      {/* ── Featured Section (Only shown on 'All News') ── */}
-      {showFeatured && heroArticle && (
-        <div className="news-featured-section">
-          <a href={heroArticle.link} target="_blank" rel="noopener noreferrer" className="news-hero-card glass">
-            <div className="news-hero-bg" style={{ backgroundImage: `url(${placeholderImg})` }}></div>
-            <div className="news-hero-content">
-              <div className="news-badge top-story">
-                <Zap size={14} /> Top Story
+        <div className="news-skeleton" aria-busy="true" aria-label="Loading news">
+          <div className="news-skeleton-feature">
+            <div className="news-sk news-sk-title" />
+            <div className="news-sk news-sk-sub" />
+            <div className="news-sk news-sk-meta" />
+          </div>
+          <div className="news-skeleton-feed">
+            {Array.from({ length: 6 }, (_, i) => (
+              <div className="news-skeleton-row" key={i}>
+                <div className="news-sk news-sk-index" />
+                <div className="news-sk news-sk-line news-sk-wide" />
+                <div className="news-sk news-sk-line news-sk-narrow" />
               </div>
-              <h2 className="news-hero-title">{heroArticle.title}</h2>
-              <div className="news-hero-meta">
-                <span className="news-source">
-                  <span className="source-dot"></span>
-                  {heroArticle.source || 'Verified Source'}
-                </span>
-                <span className="news-time">
-                  <Clock size={14} />
-                  {formatTime(heroArticle.pubDate)}
-                </span>
-              </div>
-            </div>
-          </a>
-
-          <div className="news-secondary-featured">
-            {secondaryFeatured.map((article, idx) => (
-              <a key={idx} href={article.link} target="_blank" rel="noopener noreferrer" className="news-secondary-card glass">
-                <div className="news-secondary-content">
-                  <h3 className="news-secondary-title">{article.title}</h3>
-                  <div className="news-secondary-meta">
-                    <span className="news-source">{article.source}</span>
-                    <span className="news-time">{formatTime(article.pubDate)}</span>
-                  </div>
-                </div>
-                <div className="news-secondary-arrow">
-                  <ChevronRight size={20} />
-                </div>
-              </a>
             ))}
           </div>
         </div>
       )}
 
-      {/* ── Grid Section ── */}
-      {!loading && filteredArticles.length > 0 && (
-        <div className="news-section-header">
-          <h3>{isAllNews ? 'Latest Updates' : `${activeCategory} News`}</h3>
-          <div className="news-section-line"></div>
-        </div>
-      )}
-
-      <div className="news-page-grid">
-        {!loading && gridArticles.map((article, i) => (
-          <a
-            key={i}
-            href={article.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="news-standard-card glass"
-          >
-            <div className="news-standard-body">
-              <div className="news-standard-title">{article.title}</div>
-              <div className="news-standard-footer">
-                <span className="news-source">
-                  <span className="source-dot"></span>
-                  {article.source || 'News Source'}
-                </span>
-                <span className="news-time">
-                  <Clock size={12} />
-                  {formatTime(article.pubDate)}
-                </span>
-                <ExternalLink size={14} className="news-link-icon" />
-              </div>
-            </div>
-            <div className="news-card-hover-border"></div>
-          </a>
-        ))}
-      </div>
-
-      {!loading && filteredArticles.length === 0 && articles.length > 0 && (
-        <div className="news-page-empty glass">
-          <Filter size={48} style={{ opacity: 0.2, marginBottom: 16 }} />
-          <h3>No articles found</h3>
-          <p>No recent news matched the "{activeCategory}" category.</p>
-          <button className="btn-secondary" onClick={() => setActiveCategory('All News')} style={{ marginTop: 16 }}>
-            Clear Filters
+      {/* ── Empty — no articles at all ── */}
+      {!loading && articles.length === 0 && (
+        <div className="news-empty" role="status">
+          <AlertTriangle size={28} strokeWidth={1.5} className="news-empty-icon" aria-hidden="true" />
+          <p className="news-empty-title">No earthquake coverage right now</p>
+          <p className="news-empty-sub">The wire is quiet — or the news source is unreachable. It refreshes automatically and on demand.</p>
+          <button className="news-empty-btn" onClick={() => loadNews(true)}>
+            <RefreshCw size={14} aria-hidden="true" /> Retry the wire
           </button>
         </div>
       )}
 
+      {/* ── Empty — filters match nothing ── */}
+      {!loading && articles.length > 0 && filteredArticles.length === 0 && (
+        <div className="news-empty" role="status">
+          <Search size={28} strokeWidth={1.5} className="news-empty-icon" aria-hidden="true" />
+          <p className="news-empty-title">No stories match the current filters</p>
+          <p className="news-empty-sub">
+            {query ? <>Nothing matches “<span className="news-empty-query">{query}</span>”. </> : null}
+            Loosen the search or switch the category.
+          </p>
+          <button className="news-empty-btn" onClick={() => { setQuery(''); setActiveCategory('All News'); }}>
+            <X size={14} aria-hidden="true" /> Clear filters
+          </button>
+        </div>
+      )}
+
+      {/* ── Featured front story + index desk ── */}
+      {showFeatured && heroArticle && (
+        <section className="news-feature" aria-label="Featured coverage">
+          <a
+            href={heroArticle.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="news-hero"
+            style={{ '--hero-bg': `url(${heroBg})` } as CSSProperties}
+            aria-label={`Top story — ${heroArticle.title}`}
+          >
+            <span className="news-hero-kicker">
+              <span className="news-hero-kicker-dot" aria-hidden="true" />
+              Top story · {heroArticle.source || 'Wire'}
+            </span>
+            <h2 className="news-hero-title">{heroArticle.title}</h2>
+            <span className="news-hero-foot">
+              <span className="news-hero-time tnum"><Clock size={13} aria-hidden="true" />{formatTime(heroArticle.pubDate)}</span>
+              <span className="news-hero-cta">Read at source<ExternalLink size={13} aria-hidden="true" /></span>
+            </span>
+          </a>
+          <div className="news-index-desk" aria-label="Also on the wire">
+            <span className="news-index-cap">Also on the wire</span>
+            {secondaryFeatured.map((article, idx) => (
+              <a
+                key={idx}
+                href={article.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="news-index-row"
+              >
+                <span className="news-index-num tnum">{String(idx + 1).padStart(2, '0')}</span>
+                <span className="news-index-body">
+                  <span className="news-index-title">{article.title}</span>
+                  <span className="news-index-meta"><span className="news-index-src">{article.source || 'Wire'}</span><span className="tnum">{formatTime(article.pubDate)}</span></span>
+                </span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Feed ── */}
+      {!loading && filteredArticles.length > 0 && (
+        <section className="news-feed-wrap" aria-label="Latest coverage">
+          <div className="news-feed-head">
+            <h2 className="news-feed-title">{isFiltering ? 'Matching coverage' : 'Latest coverage'}</h2>
+            <span className="news-feed-note">Wire order · {sort === 'desc' ? 'newest first' : 'oldest first'}</span>
+          </div>
+          <div className="news-feed" role="list">
+            {feedArticles.map((article, i) => (
+              <a
+                key={`${article.link}-${i}`}
+                href={article.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="news-row"
+                role="listitem"
+              >
+                <span className="news-row-index tnum">{String(i + 1 + (showFeatured ? 3 : 0)).padStart(2, '0')}</span>
+                <span className="news-row-body">
+                  <span className="news-row-title">{article.title}</span>
+                  <span className="news-row-meta">
+                    <span className="news-row-source">{article.source || 'Wire'}</span>
+                    <span className="news-row-sep" aria-hidden="true">·</span>
+                    <span className="tnum">{formatTime(article.pubDate)}</span>
+                  </span>
+                </span>
+                <ExternalLink size={14} className="news-row-arrow" aria-hidden="true" />
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Wire footer ── */}
+      <footer className="news-wire-foot">
+        <span>Headlines via Google News RSS · {isGlobal ? 'global earthquake coverage' : 'Philippines earthquake coverage'}</span>
+        <span aria-hidden="true">·</span>
+        <span>Source links open on the publisher's site</span>
+        <span aria-hidden="true">·</span>
+        <span>Cached ~10 minutes</span>
+        <span aria-hidden="true">·</span>
+        <span>Cover image: Discover Magazine</span>
+      </footer>
     </div>
   );
 }

@@ -1,0 +1,274 @@
+/* ══════════ TerraGuard — Volcano Bulletin (Mission Deck) ══════════ */
+
+.vb {
+  max-width: 1080px;
+  padding-bottom: 64px;
+}
+
+.vb-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 14px;
+  padding: 7px 12px 7px 6px;
+  border-radius: var(--tg-radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--tg-text-3);
+  transition: color 0.15s ease;
+}
+
+.vb-back:hover { color: var(--tg-text); }
+.vb-back:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+
+/* Masthead */
+.vb-masthead {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 22px;
+  margin-bottom: 16px;
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  background: var(--tg-panel);
+}
+
+.vb-masthead-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.vb-volcano-icon { color: #60a5fa; flex: 0 0 auto; }
+
+.vb-masthead-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.vb-kicker {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--tg-text-3);
+}
+
+.vb-title {
+  margin: 0;
+  font-size: 1.28rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: var(--tg-text);
+}
+
+.vb-alert {
+  flex: 0 0 auto;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0b1220;
+}
+
+.vb-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding-top: 10px;
+  border-top: 1px solid var(--tg-hairline-soft);
+}
+
+.vb-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.73rem;
+  color: var(--tg-text-2);
+  min-width: 0;
+}
+
+.vb-meta-url {
+  font-family: 'Oswald', monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 46ch;
+}
+
+/* Loading / error */
+.vb-loading {
+  padding: 48px 20px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tg-text-3);
+  border: 1px dashed var(--tg-hairline);
+  border-radius: var(--tg-radius);
+}
+
+.vb-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 20px;
+  border: 1px dashed var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  text-align: center;
+}
+
+.vb-error-text { margin: 0; font-size: 0.92rem; color: var(--tg-text-2); }
+.vb-error-url { margin: 0; font-size: 0.72rem; color: var(--tg-text-3); word-break: break-all; }
+
+/* Two-column body */
+.vb-grid {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.vb-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.vb-map {
+  margin: 0;
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  overflow: hidden;
+  background: var(--tg-panel);
+}
+
+.vb-map img {
+  display: block;
+  width: 100%;
+}
+
+.vb-map figcaption {
+  padding: 8px 12px;
+  font-size: 0.68rem;
+  color: var(--tg-text-3);
+  border-top: 1px solid var(--tg-hairline-soft);
+}
+
+.vb-panel {
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  background: var(--tg-panel);
+  padding: 16px 18px;
+}
+
+.vb-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--tg-text-3);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--tg-hairline-soft);
+}
+
+.vb-panel-title svg { color: #60a5fa; }
+.vb-panel-empty { margin: 0; font-size: 0.85rem; color: var(--tg-text-2); }
+
+.vb-params {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+
+.vb-params th {
+  text-align: left;
+  vertical-align: top;
+  width: 132px;
+  padding: 8px 10px 8px 0;
+  font-weight: 700;
+  color: var(--tg-text-2);
+  border-bottom: 1px solid var(--tg-hairline-soft);
+  line-height: 1.45;
+}
+
+.vb-params td {
+  padding: 8px 0;
+  color: var(--tg-text);
+  border-bottom: 1px solid var(--tg-hairline-soft);
+  line-height: 1.5;
+}
+
+.vb-params tr:last-child th,
+.vb-params tr:last-child td { border-bottom: none; }
+
+.vb-text-panel { min-width: 0; }
+
+.vb-text {
+  max-height: 520px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 0.84rem;
+  line-height: 1.65;
+  color: var(--tg-text-2);
+}
+
+.vb-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--tg-hairline-soft);
+}
+
+.vb-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 15px;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: var(--tg-radius-sm);
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.vb-cta:hover { background: rgba(59, 130, 246, 0.2); color: #bfdbfe; }
+.vb-cta:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+
+:root[data-theme='light'] .vb-cta { color: #1d4ed8; }
+:root[data-theme='light'] .vb-cta:hover { color: #1e40af; }
+
+@media (max-width: 900px) {
+  .vb-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  .vb-masthead { padding: 14px 16px; }
+  .vb-title { font-size: 1.1rem; }
+  .vb-text { max-height: 380px; font-size: 0.8rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vb-back,
+  .vb-cta { transition: none; }
+}

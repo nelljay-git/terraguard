@@ -1283,13 +1283,13 @@ export function DailyEarthReportModal({
 
   return (
     <div className="video-modal-backdrop" onClick={onClose}>
-      <div className="video-modal glass" onClick={(e)=>e.stopPropagation()} style={{maxWidth: 460}}>
+      <div className="video-modal" onClick={(e)=>e.stopPropagation()} style={{maxWidth: 460}}>
         <div className="video-modal-head">
           <span className="flex-center" style={{gap:'8px'}}>
             <Clapperboard size={18}/>
             Daily Earth Report — EMSC • UTC ({DAILY_DUR}s)
           </span>
-          <button type="button" className="action-btn glass flex-center" onClick={onClose} aria-label="Close"><X size={16}/></button>
+          <button type="button" className="action-btn flex-center" onClick={onClose} aria-label="Close"><X size={16}/></button>
         </div>
         {phase==='loading' && <p className="text-muted">Loading global map…</p>}
         {mapError && (phase==='preview'||phase==='done') && <p className="text-muted" style={{color:'#f59e0b'}}>No map tiles: {mapError}</p>}
@@ -1300,12 +1300,12 @@ export function DailyEarthReportModal({
             {events.length} EMSC events • UTC • wipe reveals west → east (lon ≤ scan)
           </p>
         )}
-        {phase==='preview' && <button type="button" className="action-btn glass flex-center" onClick={startRecording}><Clapperboard size={16}/><span>Record daily video</span></button>}
+        {phase==='preview' && <button type="button" className="action-btn flex-center" onClick={startRecording}><Clapperboard size={16}/><span>Record daily video</span></button>}
         {phase==='recording' && <p className="text-muted">Recording… keep this tab visible.</p>}
         {phase==='done' && videoUrl && (
           <div className="video-result">
             <video src={videoUrl} controls playsInline className="video-preview" />
-            <a className="action-btn glass flex-center" href={videoUrl} download={`terraguard-daily-${new Date().toISOString().slice(0,10)}.webm`}>
+            <a className="action-btn flex-center" href={videoUrl} download={`terraguard-daily-${new Date().toISOString().slice(0,10)}.webm`}>
               <Download size={16}/><span>Download .{ext}</span>
             </a>
           </div>

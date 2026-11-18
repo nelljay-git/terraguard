@@ -2,18 +2,20 @@ import { useEffect, useState, useCallback } from 'react';
 import { parse, isValid, isSameMonth } from 'date-fns';
 import { fetchEarthquakeData, getSignificantEarthquakes, getCachedData, normalizeEarthquakes, type NormalizedEarthquake } from '../api/phivolcs';
 import { getPreferredApi, PREFERRED_API_CHANGE_EVENT } from '../lib/apiPreference';
-import { SummaryCards } from '../components/SummaryCards';
+import { SummaryCards, filterLast24Hours } from '../components/SummaryCards';
 import { LatestEarthquake } from '../components/LatestEarthquake';
 import { InteractiveMap } from '../components/InteractiveMap';
 import { ActivityFeed } from '../components/ActivityFeed';
 import { NewsFeed } from '../components/NewsFeed';
-import { VolcanoStatus } from '../components/VolcanoStatus';
-import { Radio, RefreshCw, Shield, Clapperboard } from 'lucide-react';
-import { FunFactLoader } from '../components/FunFactLoader';
+import { MagnitudeChart } from '../components/MagnitudeChart';
+import { HazardStrip } from '../components/HazardStrip';
+import { LazySection } from '../components/LazySection';
+import { Radio, RefreshCw, Shield, Clapperboard, Crosshair, X } from 'lucide-react';
 import { checkAlerts } from '../lib/alertSystem';
 import { DailyEarthReportModal } from '../components/DailyEarthReport';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { getStoredUserCoords, storeUserCoords, clearUserCoords, requestUserCoords, type UserCoords } from '../lib/userLocation';
 import './Dashboard.css';
 
 export function Dashboard() {
@@ -105,6 +107,35 @@ export function Dashboard() {
     }
   };
   const [preferredApi, setPreferredApi] = useState(() => getPreferredApi());
+  const [userCoords, setUserCoords] = useState<UserCoords | null>(() => getStoredUserCoords());
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState('');
+
+  useEffect(() => {
+    if (!geoError) return;
+    const t = setTimeout(() => setGeoError(''), 6000);
+    return () => clearTimeout(t);
+  }, [geoError]);
+
+  const toggleDistances = async () => {
+    if (userCoords) {
+      clearUserCoords();
+      setUserCoords(null);
+      setGeoError('');
+      return;
+    }
+    setGeoLoading(true);
+    setGeoError('');
+    try {
+      const coords = await requestUserCoords();
+      storeUserCoords(coords);
+      setUserCoords(coords);
+    } catch (e) {
+      setGeoError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGeoLoading(false);
+    }
+  };
 
   useEffect(() => {
     const handler = () => setPreferredApi(getPreferredApi());
@@ -128,17 +159,21 @@ export function Dashboard() {
 
   if (loading) {
     return (
-      <FunFactLoader
-        title={`Connecting to ${sourceName}...`}
-        subtitle="Fetching real-time seismic data"
-        icon={<Shield size={28} className="spinner-icon" />}
-      />
+      <div className="dashboard-container container" aria-busy="true" aria-label="Loading dashboard">
+        <div className="dash-skeleton dash-skeleton--bar" />
+        <div className="dash-hero-row dash-hero-row--mission">
+          <div className="dash-skeleton dash-skeleton--card" />
+          <div className="dash-skeleton dash-skeleton--map" />
+        </div>
+        <div className="dash-skeleton dash-skeleton--strip" />
+        <div className="dash-skeleton dash-skeleton--tiles" />
+      </div>
     );
   }
 
   if (earthquakes.length === 0) return (
     <div className="container flex-center" style={{ height: '50vh', flexDirection: 'column', gap: '16px' }}>
-      <Shield size={48} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
+      <Shield size={48} style={{ color: 'var(--tg-text-3)', opacity: 0.5 }} />
       <h2>Connecting to {sourceName}...</h2>
       <p className="text-muted">The data source is temporarily unavailable. Retrying automatically.</p>
       <button
@@ -164,6 +199,20 @@ export function Dashboard() {
           <span className="dash-subtitle text-muted">{sourceName === 'USGS' ? 'Global earthquake monitoring — live data from USGS' : sourceName === 'EMSC' ? 'Global earthquake monitoring — live data from EMSC' : 'Philippine earthquake monitoring — live data from PHIVOLCS'}</span>
         </div>
         <div className="dash-status-right">
+          <button
+            type="button"
+            className={`dash-locations-btn${userCoords ? ' dash-locations-btn--active' : ''}${geoLoading ? ' dash-locations-btn--loading' : ''}`}
+            onClick={toggleDistances}
+            disabled={geoLoading}
+            title={geoError || (userCoords ? 'Distances on — click to hide them' : 'Show how far each quake is from you (stays on this device)')}
+            aria-pressed={!!userCoords}
+            aria-label="Toggle how far each earthquake is from my location"
+          >
+            <Crosshair size={15} aria-hidden="true" />
+            <span>{geoLoading ? 'Locating…' : userCoords ? 'Distances on' : 'Show my distances'}</span>
+            {userCoords && <X size={12} aria-hidden="true" />}
+          </button>
+          {geoError && <span className="dash-geo-error" role="alert">{geoError}</span>}
           <div className={`dash-live-indicator ${syncing ? 'syncing' : ''}`}>
             <Radio size={14} />
             <span>{syncing ? 'SYNCING' : 'LIVE'}</span>
@@ -205,23 +254,35 @@ export function Dashboard() {
 
 
 
-      {/* ── Hero: Latest + Map side by side ── */}
-      <div className="dash-hero-row">
-        <LatestEarthquake earthquake={latestEq} />
-        <InteractiveMap earthquakes={monthlyEarthquakes} latestEarthquake={latestEq} autoCenter={true} disableDragging={true} />
+      {/* ── Hero: map-first mission control ── */}
+      <div className="dash-hero-row dash-hero-row--mission">
+        <LatestEarthquake earthquake={latestEq} userCoords={userCoords} />
+        <InteractiveMap earthquakes={monthlyEarthquakes} latestEarthquake={latestEq} autoCenter={true} disableDragging={true} showAllEvents compactMarkers enableLegendFilter userCoords={userCoords} />
       </div>
 
-      {/* ── Summary Cards + Chart ── */}
-      <SummaryCards recent={earthquakes} significant={sigEarthquakes} />
+      {/* ── Hazard strip: volcano + tsunami in one line (PHIVOLCS feed only) ── */}
+      {prefDash === 'phivolcs' && <HazardStrip />}
 
-      {/* ── Volcano Status (PHIVOLCS-LAVA) — only for PHIVOLCS feed ── */}
-      {prefDash === 'phivolcs' && <VolcanoStatus />}
+      {/* ── Stat tiles ── */}
+      <SummaryCards recent={earthquakes} significant={sigEarthquakes} showChart={false} />
 
-      {/* ── Activity Feed (full-width below) ── */}
-      <ActivityFeed earthquakes={earthquakes.slice(0, 5)} />
+      {/* ── Below the fold: chart + recent activity, rendered lazily ── */}
+      <LazySection
+        className="dash-lower-grid"
+        placeholder={<div className="dash-skeleton dash-lower-skeleton" />}
+        ariaLabel="Magnitude trend and recent activity"
+      >
+        <MagnitudeChart data={filterLast24Hours(earthquakes)} />
+        <ActivityFeed earthquakes={earthquakes.slice(0, 5)} userCoords={userCoords} />
+      </LazySection>
 
-      {/* ── News Feed ── */}
-      <NewsFeed limit={4} />
+      {/* ── News Feed (lazy) ── */}
+      <LazySection
+        placeholder={<div className="dash-skeleton dash-lower-skeleton dash-lower-skeleton--news" />}
+        ariaLabel="Earthquake news"
+      >
+        <NewsFeed limit={4} />
+      </LazySection>
     </div>
   );
 }

@@ -19,8 +19,6 @@
   --text-muted: #64748b;
 
   --border-color: rgba(255, 255, 255, 0.1);
-  --glass-bg: rgba(30, 41, 59, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.05);
 
   --font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
@@ -34,8 +32,6 @@
   --text-muted: #94a3b8;
 
   --border-color: rgba(0, 0, 0, 0.1);
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(0, 0, 0, 0.05);
 }
 
 :root[data-theme='dark'] {
@@ -46,8 +42,6 @@
   --text-muted: #64748b;
 
   --border-color: rgba(255, 255, 255, 0.1);
-  --glass-bg: rgba(30, 41, 59, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.05);
 }
 
 /* System theme (no data-theme attribute set): follow the OS preference */
@@ -60,8 +54,6 @@
     --text-muted: #94a3b8;
 
     --border-color: rgba(0, 0, 0, 0.1);
-    --glass-bg: rgba(255, 255, 255, 0.7);
-    --glass-border: rgba(0, 0, 0, 0.05);
   }
 }
 
@@ -74,40 +66,16 @@
 body {
   font-family: var(--font-family);
   background-color: var(--bg-primary);
-  color: var(--text-primary);
+  color: var(--tg-text);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-}
-
-/* Glassmorphism Utilities */
-.glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-}
-
-.glass-card {
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.glass-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
 }
 
 /* Leaflet map overrides */
 .leaflet-container {
   background: var(--bg-secondary) !important;
   border-radius: 16px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--tg-hairline);
   z-index: 0;
   /* Keep behind navbar */
 }
@@ -115,9 +83,9 @@ body {
 .leaflet-popup-content-wrapper,
 .leaflet-popup-tip {
   background: var(--bg-secondary) !important;
-  color: var(--text-primary) !important;
+  color: var(--tg-text) !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid var(--border-color) !important;
+  border: 1px solid var(--tg-hairline) !important;
 }
 
 /* Map Marker Pulsing Animations */
@@ -159,13 +127,6 @@ body {
   justify-content: space-between;
 }
 
-.text-gradient {
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-image: linear-gradient(to right, #3b82f6, #8b5cf6);
-}
-
 /* Base UI Elements */
 h1,
 h2,
@@ -189,3 +150,51 @@ button {
   font-family: inherit;
   color: inherit;
 }
+/* ---------- TerraGuard Mission Deck tokens ---------- */
+@font-face { font-family: 'Inter'; src: url('/fonts/inter-400.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Oswald'; src: url('/fonts/oswald-700.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+
+:root {
+  --tg-panel: rgba(17, 25, 43, 0.62);
+  --tg-panel-2: rgba(17, 25, 43, 0.35);
+  /* Opaque surface for floating chrome (menus, drawers, popovers) so page
+     content never bleeds through. Page panels keep the translucent --tg-panel. */
+  --tg-panel-solid: #131c2e;
+  --tg-hairline: rgba(148, 163, 184, 0.16);
+  --tg-hairline-soft: rgba(148, 163, 184, 0.08);
+  --tg-text: #e2e8f0;
+  --tg-text-2: #94a3b8;
+  --tg-text-3: #64748b;
+  --tg-mono: 'Oswald', 'Inter', sans-serif;
+  --tg-radius: 10px;
+  --tg-radius-sm: 6px;
+  /* Full-width sticky navbar height + its safe-area inset + breathing room.
+     Used by every sticky sidebar/rail/TOC so they sit below the bar. */
+  --tg-sticky-top: calc(56px + env(safe-area-inset-top, 0px) + 16px);
+}
+
+:root[data-theme='light'] {
+  --tg-panel: rgba(255, 255, 255, 0.85);
+  --tg-panel-2: rgba(255, 255, 255, 0.55);
+  --tg-panel-solid: #ffffff;
+  --tg-hairline: rgba(15, 23, 42, 0.14);
+  --tg-hairline-soft: rgba(15, 23, 42, 0.08);
+  --tg-text: #0f172a;
+  --tg-text-2: #475569;
+  --tg-text-3: #94a3b8;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --tg-panel: rgba(255, 255, 255, 0.85);
+    --tg-panel-2: rgba(255, 255, 255, 0.55);
+    --tg-panel-solid: #ffffff;
+    --tg-hairline: rgba(15, 23, 42, 0.14);
+    --tg-hairline-soft: rgba(15, 23, 42, 0.08);
+    --tg-text: #0f172a;
+    --tg-text-2: #475569;
+    --tg-text-3: #94a3b8;
+  }
+}
+
+.tnum { font-variant-numeric: tabular-nums; }

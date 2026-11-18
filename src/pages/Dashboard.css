@@ -1,180 +1,290 @@
+/* ══════════ TerraGuard — Mission Deck ══════════
+   Flat, precision-built monitoring deck. Accent and severity colors are
+   used only for meaning; everything else is hairline, spacing and type. */
+
 .dashboard-container {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding-bottom: 60px;
+  gap: 14px;
+  padding-bottom: 48px;
+  overflow-x: clip;
 }
 
-/* ── Loading Screen ── */
-.loading-screen {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 60vh;
-  gap: 16px;
+/* ── Page-level motion: one quiet staggered rise on mount ── */
+.dashboard-container > * {
+  animation: tgRise 0.35s ease-out both;
+}
+.dashboard-container > *:nth-child(2) { animation-delay: 0.05s; }
+.dashboard-container > *:nth-child(3) { animation-delay: 0.1s; }
+.dashboard-container > *:nth-child(4) { animation-delay: 0.15s; }
+.dashboard-container > *:nth-child(5) { animation-delay: 0.2s; }
+.dashboard-container > *:nth-child(6) { animation-delay: 0.25s; }
+
+@keyframes tgRise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
 }
 
-.loading-spinner {
-  position: relative;
-  width: 80px;
-  height: 80px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-container > * { animation: none; }
 }
 
-.spinner-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.06);
-  border-top-color: #3b82f6;
-  animation: ring-spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
-}
-
-@keyframes ring-spin {
-  to { transform: rotate(360deg); }
-}
-
-.spinner-icon {
-  color: #3b82f6;
-  animation: pulse-opacity 2s ease-in-out infinite;
-}
-
-@keyframes pulse-opacity {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
-}
-
-.loading-text {
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.loading-sub {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-/* ── Status Bar ── */
+/* ── Command row: slim status bar, hairline underneath ── */
 .dash-status-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 12px 16px;
+  padding: 14px 2px 16px;
+  border-bottom: 1px solid var(--tg-hairline);
 }
 
 .dash-status-left {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: baseline;
+  gap: 14px;
+  min-width: 0;
 }
 
 .dash-page-title {
-  font-size: 1.75rem;
-  font-weight: 700;
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.022em;
+  color: var(--tg-text);
 }
 
 .dash-subtitle {
-  font-size: 0.85rem;
+  font-size: 0.78rem;
+  color: var(--tg-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dash-status-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
+/* LIVE readout — a dot and a word, nothing more */
 .dash-live-indicator {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.7rem;
+  gap: 7px;
+  font-size: 0.65rem;
   font-weight: 800;
-  letter-spacing: 2px;
-  color: #10b981;
-  padding: 6px 14px;
-  border-radius: 20px;
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #34d399;
 }
 
-.dash-live-indicator.syncing {
-  color: #f97316;
-  background: rgba(249, 115, 22, 0.1);
-  border-color: rgba(249, 115, 22, 0.2);
-}
+.dash-live-indicator svg { animation: tgBlink 1.6s ease-in-out infinite; }
 
-.dash-live-indicator svg {
-  animation: pulse-glow 1.5s ease-in-out infinite;
-}
+.dash-live-indicator.syncing { color: #fb923c; }
 
-@keyframes pulse-glow {
+@keyframes tgBlink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  50% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-live-indicator svg { animation: none; }
 }
 
 .dash-sync-time {
-  font-size: 0.8rem;
-  font-family: 'Inter', monospace;
+  font-size: 0.78rem;
+  color: var(--tg-text-3);
+  font-variant-numeric: tabular-nums;
+  padding-right: 2px;
+  border-right: 1px solid var(--tg-hairline-soft);
+  margin-right: 4px;
 }
 
+/* Ghost command buttons */
 .dash-refresh-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  border: 1px solid var(--border-color);
-  background: var(--glass-bg);
-  color: var(--text-secondary);
+  gap: 7px;
+  min-width: 36px;
+  height: 34px;
+  padding: 0 9px;
+  border-radius: var(--tg-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--tg-text-2);
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .dash-refresh-btn:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.08);
-  transform: scale(1.05);
+  color: var(--tg-text);
+  background: rgba(148, 163, 184, 0.08);
+  border-color: var(--tg-hairline);
 }
 
 .dash-refresh-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
-  transform: none;
 }
 
-.spin {
-  animation: spin-anim 1s linear infinite;
+.dash-refresh-btn:focus-visible,
+.dash-locations-btn:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
 }
 
-@keyframes spin-anim {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+.spin { animation: tgSpin 0.8s linear infinite; }
+@keyframes tgSpin { to { transform: rotate(360deg); } }
+
+/* Distances toggle — quiet ghost button, accent state when armed */
+.dash-locations-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 13px;
+  border-radius: var(--tg-radius-sm);
+  border: 1px solid var(--tg-hairline);
+  background: transparent;
+  color: var(--tg-text-2);
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
-/* ── Hero Row ── */
+.dash-locations-btn:hover {
+  color: var(--tg-text);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.dash-locations-btn--active {
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.dash-locations-btn--active:hover {
+  background: rgba(59, 130, 246, 0.14);
+  color: #bfdbfe;
+}
+
+.dash-locations-btn--loading,
+.dash-locations-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.dash-geo-error {
+  font-size: 0.72rem;
+  color: #fca5a5;
+  max-width: 260px;
+  line-height: 1.35;
+}
+
+/* ── Hero: latest event beside the map ── */
 .dash-hero-row {
   display: grid;
-  grid-template-columns: 1fr 1.5fr;
-  gap: 24px;
-  min-height: 480px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  gap: 14px;
+  min-height: 440px;
 }
 
-@media (max-width: 992px) {
-  .dash-hero-row {
-    grid-template-columns: 1fr;
-    min-height: auto;
+.dash-hero-row--mission {
+  grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+  min-height: 440px;
+  gap: 14px;
+}
+
+@media (min-width: 1400px) {
+  .dash-hero-row--mission { min-height: 460px; }
+}
+
+@media (max-width: 1200px) {
+  .dash-hero-row--mission {
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    min-height: 400px;
   }
 }
 
-/* ── Loader Fallback ── */
-.loader {
-  font-size: 1.25rem;
-  color: var(--text-secondary);
-  animation: pulse-opacity 2s infinite ease-in-out;
+@media (max-width: 992px) {
+  .dash-hero-row--mission {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: auto;
+  }
+  .dash-hero-row--mission .map-container-inner { min-height: 400px; }
+}
+
+.dash-hero-row > *,
+.dash-hero-row--mission > *,
+.dash-lower-grid > *,
+.dashboard-container > * {
+  min-width: 0;
+}
+
+/* ── Below the fold: chart + activity, side by side ── */
+.dash-lower-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+@media (max-width: 992px) {
+  .dash-lower-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── Skeletons: flat sweep, content-shaped ── */
+.dash-skeleton {
+  border-radius: var(--tg-radius);
+  background: linear-gradient(100deg,
+    rgba(148,163,184,0.05) 8%,
+    rgba(148,163,184,0.12) 30%,
+    rgba(148,163,184,0.05) 62%);
+  background-size: 220% 100%;
+  border: 1px solid var(--tg-hairline-soft);
+  animation: dashSweep 1.6s ease-in-out infinite;
+}
+
+@keyframes dashSweep {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-skeleton { animation: none; }
+}
+
+.dash-skeleton--bar { height: 52px; border-radius: var(--tg-radius-sm); }
+.dash-skeleton--card { min-height: 400px; height: 100%; }
+.dash-skeleton--map { min-height: 400px; height: 100%; }
+.dash-skeleton--strip { height: 40px; border-radius: var(--tg-radius-sm); }
+.dash-skeleton--tiles { height: 96px; }
+
+.dash-lower-skeleton { height: 300px; }
+.dash-lower-skeleton--news { height: 220px; }
+
+/* ── Small displays ── */
+@media (max-width: 640px) {
+  .dashboard-container { gap: 12px; }
+  .dash-status-left { gap: 0; flex-direction: column; align-items: flex-start; }
+  .dash-subtitle { display: none; }
+  .dash-status-right { gap: 6px; }
+  .dash-locations-btn span { display: none; }
+  .dash-locations-btn { width: 34px; padding: 0; justify-content: center; }
+  .dash-geo-error { max-width: 100%; }
+  .dash-sync-time { display: none; }
+}
+
+@media (max-width: 400px) {
+  .dash-status-bar { padding-top: 10px; }
 }

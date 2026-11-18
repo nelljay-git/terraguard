@@ -1,6 +1,5 @@
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
-import { motion } from 'framer-motion';
 import { X, User, Save, Clock, Sun, Moon, Monitor } from 'lucide-react';
 import { useAuth, type ThemePreference } from '../context/AuthContext';
 import './SettingsModal.css';
@@ -40,18 +39,52 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [apiError, setApiError] = useState<string | null>(null);
   const [apiSuccess, setApiSuccess] = useState<string | null>(null);
 
+  const modalRef = useRef<HTMLDivElement>(null);
+
   const lastChanged = profile?.username_changed_at ?? null;
   const cooldownUntil = lastChanged
     ? new Date(new Date(lastChanged).getTime() + USERNAME_COOLDOWN_MS)
     : null;
   const onCooldown = cooldownUntil !== null && now < cooldownUntil.getTime();
 
+  /* Escape to close, body scroll lock, simple focus trap, focus restore */
   useEffect(() => {
+    const modal = modalRef.current;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const firstFocusable = modal?.querySelector<HTMLElement>('input, button:not([disabled])');
+    firstFocusable?.focus();
+
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab' || !modal) return;
+      const focusables = Array.from(
+        modal.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
+
     document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.body.style.overflow = prevOverflow;
+      previouslyFocused?.focus?.();
+    };
   }, [onClose]);
 
   const handleSave = async () => {
@@ -140,31 +173,33 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     { value: 'system', label: 'System', icon: <Monitor size={15} /> },
   ];
 
+  const apiOptions: { value: 'phivolcs' | 'usgs' | 'emsc'; label: string; sub: string }[] = [
+    { value: 'phivolcs', label: 'PHIVOLCS', sub: 'Philippines' },
+    { value: 'usgs', label: 'USGS', sub: 'Global · M4.5+' },
+    { value: 'emsc', label: 'EMSC', sub: 'Global · M1.0+' },
+  ];
+
   return createPortal(
-    <motion.div
+    <div
       className="settings-modal-overlay"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.25 }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <motion.div
+      <div
+        ref={modalRef}
         className="settings-modal"
-        initial={{ opacity: 0, scale: 0.92, y: 30 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 350, mass: 0.8 }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-modal-title"
       >
         <div className="settings-modal-header">
           <div className="settings-modal-header-content">
-            <div className="settings-modal-icon">
-              <User size={22} />
+            <div className="settings-modal-icon" aria-hidden="true">
+              <User size={20} />
             </div>
             <div>
-              <h2 className="settings-modal-title">Settings</h2>
+              <h2 id="settings-modal-title" className="settings-modal-title">Settings</h2>
               <span className="settings-modal-subtitle">Manage your account</span>
             </div>
           </div>
@@ -199,8 +234,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </p>
 
           {onCooldown && cooldownUntil && (
-            <div className="settings-cooldown">
-              <Clock size={15} />
+            <div className="settings-cooldown" role="status">
+              <Clock size={15} aria-hidden="true" />
               <span>
                 Username was changed on {formatDate(String(lastChanged))}. You can change it again
                 after {formatDate(cooldownUntil.toISOString())} (once every 60 days).
@@ -208,8 +243,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {error && <div className="settings-error">{error}</div>}
-          {success && <div className="settings-success">{success}</div>}
+          {error && <div className="settings-error" role="alert">{error}</div>}
+          {success && <div className="settings-success" role="status">{success}</div>}
 
           {profile?.verified && (
             <div className="settings-avatar-section">
@@ -247,26 +282,28 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 Shown as your profile picture on comments. Verified users only. Leave empty to
                 remove.
               </p>
-              {avatarError && <div className="settings-error">{avatarError}</div>}
-              {avatarSuccess && <div className="settings-success">{avatarSuccess}</div>}
+              {avatarError && <div className="settings-error" role="alert">{avatarError}</div>}
+              {avatarSuccess && <div className="settings-success" role="status">{avatarSuccess}</div>}
               <button
                 className="settings-save-btn settings-avatar-save"
                 onClick={handleAvatarSave}
                 disabled={avatarSaving}
               >
-                <Save size={16} />
+                <Save size={16} aria-hidden="true" />
                 {avatarSaving ? 'Saving…' : 'Save Photo'}
               </button>
             </div>
           )}
 
           <div className="settings-theme-section">
-            <label className="settings-field-label">Theme</label>
-            <div className="settings-theme-options">
+            <span className="settings-field-label" id="settings-theme-label">Theme</span>
+            <div className="settings-theme-options" role="radiogroup" aria-labelledby="settings-theme-label">
               {themeOptions.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
+                  role="radio"
+                  aria-checked={theme === opt.value}
                   className={`settings-theme-btn${theme === opt.value ? ' active' : ''}`}
                   onClick={() => handleThemeSave(opt.value)}
                   disabled={themeSaving}
@@ -279,50 +316,40 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <p className="settings-hint">
               Choose how Terra Guard looks for you. This is saved to your account.
             </p>
-            {themeError && <div className="settings-error">{themeError}</div>}
-            {themeSuccess && <div className="settings-success">{themeSuccess}</div>}
+            {themeError && <div className="settings-error" role="alert">{themeError}</div>}
+            {themeSuccess && <div className="settings-success" role="status">{themeSuccess}</div>}
           </div>
 
           <div className="settings-api-section">
-            <label className="settings-field-label">Preferred API</label>
-            <div className="settings-api-options">
-              <button
-                type="button"
-                className={`settings-api-btn${preferredApi === 'phivolcs' ? ' active' : ''}`}
-                onClick={() => handleApiSave('phivolcs')}
-                disabled={apiSaving}
-              >
-                PHIVOLCS
-              </button>
-              <button
-                type="button"
-                className={`settings-api-btn${preferredApi === 'usgs' ? ' active' : ''}`}
-                onClick={() => handleApiSave('usgs')}
-                disabled={apiSaving}
-              >
-                USGS
-              </button>
-              <button
-                type="button"
-                className={`settings-api-btn${preferredApi === 'emsc' ? ' active' : ''}`}
-                onClick={() => handleApiSave('emsc')}
-                disabled={apiSaving}
-              >
-                EMSC
-              </button>
+            <span className="settings-field-label" id="settings-api-label">Preferred API</span>
+            <div className="settings-api-options" role="radiogroup" aria-labelledby="settings-api-label">
+              {apiOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={preferredApi === opt.value}
+                  className={`settings-api-btn${preferredApi === opt.value ? ' active' : ''}`}
+                  onClick={() => handleApiSave(opt.value)}
+                  disabled={apiSaving}
+                >
+                  <strong>{opt.label}</strong>
+                  <small>{opt.sub}</small>
+                </button>
+              ))}
             </div>
             <p className="settings-hint">
               Choose your preferred earthquake data source. This is saved to your account.
             </p>
-            {apiError && <div className="settings-error">{apiError}</div>}
-            {apiSuccess && <div className="settings-success">{apiSuccess}</div>}
+            {apiError && <div className="settings-error" role="alert">{apiError}</div>}
+            {apiSuccess && <div className="settings-success" role="status">{apiSuccess}</div>}
           </div>
         </div>
 
         <div className="settings-modal-footer">
           {confirming ? (
             <>
-              <div className="settings-confirm-note">
+              <div className="settings-confirm-note" role="status">
                 Change your username to <strong>&ldquo;{value.trim()}&rdquo;</strong>? This can only
                 be done once every 60 days.
               </div>
@@ -331,7 +358,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 onClick={handleConfirm}
                 disabled={saving || onCooldown}
               >
-                <Save size={16} />
+                <Save size={16} aria-hidden="true" />
                 {saving ? 'Saving…' : 'Yes, change my username'}
               </button>
               <button
@@ -348,13 +375,13 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               onClick={handleSave}
               disabled={onCooldown || saving || value.trim() === (profile?.username ?? '')}
             >
-              <Save size={16} />
+              <Save size={16} aria-hidden="true" />
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
           )}
         </div>
-      </motion.div>
-    </motion.div>,
+      </div>
+    </div>,
     document.body
   );
 }

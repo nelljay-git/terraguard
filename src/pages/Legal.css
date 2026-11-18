@@ -1,97 +1,140 @@
-.legal-container {
-  padding: 20px 0;
-  display: flex;
-  justify-content: center;
-}
+/* ══════════ TerraGuard — Legal (Mission Deck, editorial) ══════════ */
 
-.legal-card {
-  width: 100%;
-  max-width: 800px;
-  padding: 30px;
+.legal-container {
+  max-width: 860px;
+  padding-bottom: 64px;
 }
 
 .legal-header {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-bottom: 32px;
-  border-bottom: 1px solid var(--glass-border);
-  padding-bottom: 20px;
+  gap: 14px;
+  margin-bottom: 26px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 6px 10px 6px 4px;
+  border-radius: var(--tg-radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--tg-text-3);
+  transition: color 0.15s ease;
+  text-decoration: none;
+}
+
+.back-link:hover { color: var(--tg-text); }
+.back-link:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+
+.legal-kicker {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--tg-text-3);
 }
 
 .legal-title-wrapper {
-  justify-content: flex-start;
+  display: flex;
+  align-items: center;
   gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--tg-hairline);
 }
 
-.legal-icon {
-  color: var(--color-minor);
-}
+.legal-icon { color: #60a5fa; flex: 0 0 auto; }
 
 .legal-title {
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: var(--text-primary);
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--tg-text);
   margin: 0;
+}
+
+.legal-last-updated {
+  display: inline-flex;
+  width: fit-content;
+  margin: 12px 0 0;
+  padding: 5px 12px;
+  border: 1px solid var(--tg-hairline);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--tg-text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 .legal-content {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 0;
 }
 
-.legal-last-updated {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-style: italic;
-  margin-bottom: 8px;
+.legal-section {
+  padding: 20px 0 22px;
+  border-bottom: 1px solid var(--tg-hairline-soft);
 }
+
+.legal-section:last-child { border-bottom: none; }
 
 .legal-section h2 {
-  font-size: 1.15rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 12px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tg-text-3);
+  margin: 0 0 10px;
 }
 
 .legal-section p {
-  color: var(--text-secondary);
-  line-height: 1.6;
-  font-size: 0.95rem;
-  margin-bottom: 10px;
+  color: var(--tg-text-2);
+  line-height: 1.72;
+  font-size: 0.93rem;
+  margin: 0 0 10px;
+  max-width: 74ch;
 }
 
-.legal-section p:last-child {
-  margin-bottom: 0;
-}
+.legal-section p:last-child { margin-bottom: 0; }
+.legal-section strong { color: var(--tg-text); }
 
 .legal-list {
-  list-style: disc inside;
-  padding-left: 10px;
+  list-style: none;
+  padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 9px;
 }
 
 .legal-list li {
-  color: var(--text-secondary);
-  line-height: 1.6;
-  font-size: 0.95rem;
-  margin: 0;
+  color: var(--tg-text-2);
+  line-height: 1.68;
+  font-size: 0.92rem;
+  padding-left: 20px;
+  position: relative;
+  max-width: 74ch;
 }
 
+.legal-list li::before {
+  content: '—';
+  position: absolute;
+  left: 0;
+  color: var(--tg-text-3);
+}
+
+.legal-list li strong { color: var(--tg-text); }
+
 @media (max-width: 640px) {
-  .legal-card {
-    padding: 20px;
-  }
+  .legal-container { padding-bottom: 40px; }
+  .legal-title { font-size: 1.3rem; }
+  .legal-section { padding: 16px 0 18px; }
+}
 
-  .legal-title {
-    font-size: 1.5rem;
-  }
-
-  .legal-container {
-    padding: 20px 10px;
-  }
+@media (prefers-reduced-motion: reduce) {
+  .back-link { transition: none; }
 }

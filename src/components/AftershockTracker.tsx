@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { addDays } from 'date-fns';
 import { Link } from 'react-router-dom';
-import { Link as LinkIcon, MapPin, Clock, Activity } from 'lucide-react';
+import { Link as LinkIcon, MapPin, Clock } from 'lucide-react';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { fetchPhivolcsData } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
@@ -114,38 +114,22 @@ export function AftershockTracker({ currentEarthquake }: AftershockTrackerProps)
 
   if (loading) {
     return (
-      <div className="ast-card glass">
-        <h3 className="ast-title">
-          <Activity size={18} />
-          Aftershock Activity
-        </h3>
-        <div className="ast-loading">
-          <div className="pulse-loader" style={{ width: '20px', height: '20px', borderColor: '#3b82f6', borderWidth: '2px' }}></div>
-        </div>
+      <div className="ast-loading" aria-busy="true" aria-label="Checking for aftershocks">
+        <div className="pulse-loader" style={{ width: '20px', height: '20px', borderColor: '#3b82f6', borderWidth: '2px' }}></div>
       </div>
     );
   }
 
   if (aftershocks.length === 0) {
     return (
-      <div className="ast-card glass">
-        <h3 className="ast-title">
-          <Activity size={18} />
-          Aftershock Activity
-        </h3>
-        <p className="ast-empty">No aftershocks detected within {AFTERSHOCK_RADIUS_KM} km in the past {AFTERSHOCK_WINDOW_DAYS} days.</p>
-      </div>
+      <p className="ast-empty">No aftershocks detected within {AFTERSHOCK_RADIUS_KM} km of the epicenter since this event (PHIVOLCS records).</p>
     );
   }
 
   return (
-    <div className="ast-card glass">
-      <h3 className="ast-title">
-        <Activity size={18} />
-        Aftershock Activity
-      </h3>
+    <>
       <p className="ast-summary">
-        {aftershocks.length} aftershock{aftershocks.length !== 1 ? 's' : ''} detected within {AFTERSHOCK_RADIUS_KM} km
+        <span className="tnum">{aftershocks.length}</span> aftershock{aftershocks.length !== 1 ? 's' : ''} recorded within {AFTERSHOCK_RADIUS_KM} km since this event
       </p>
 
       <div className={`ast-list${aftershocks.length > 10 ? ' ast-list-scroll' : ''}`}>
@@ -162,7 +146,7 @@ export function AftershockTracker({ currentEarthquake }: AftershockTrackerProps)
               state={{ earthquake: eq }}
               className="ast-item"
             >
-              <div className="ast-item-mag" style={{ color, backgroundColor: `${color}15` }}>
+              <div className="ast-item-mag" style={{ color, backgroundColor: 'rgba(8, 12, 22, 0.85)' }}>
                 M{eq.magnitude}
               </div>
               <div className="ast-item-info">
@@ -178,6 +162,6 @@ export function AftershockTracker({ currentEarthquake }: AftershockTrackerProps)
           );
         })}
       </div>
-    </div>
+    </>
   );
 }

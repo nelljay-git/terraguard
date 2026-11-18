@@ -1,20 +1,28 @@
 import { useEffect, useRef } from 'react';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
-import { MapPin, Clock, Activity, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { getPreferredApi } from '../lib/apiPreference';
 import { earthquakeToEqId } from '../lib/supabase';
+import { distanceKm, formatDistance, type UserCoords } from '../lib/userLocation';
+import { buildWaveform } from '../lib/seismogram';
+import { StaticMapCover } from './StaticMapCover';
+
 import './LatestEarthquake.css';
 
-export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquake }) {
+export function LatestEarthquake({ earthquake, userCoords }: { earthquake: PhivolcsEarthquake; userCoords?: UserCoords | null }) {
   const mag = parseFloat(earthquake.magnitude);
   const color = getSeverityColor(mag);
   const label = getSeverityLabel(mag);
   const eqId = earthquakeToEqId(earthquake);
-  const prefLE = getPreferredApi();
-  const isUsgs = prefLE === 'usgs';
-  const isEmsc = prefLE === 'emsc';
+  const lat = parseFloat(earthquake.latitude);
+  const lng = parseFloat(earthquake.longitude);
+  const dist = userCoords ? distanceKm(userCoords, earthquake.latitude, earthquake.longitude) : null;
+
+  // Deterministic-but-realistic waveform: calm baseline → P-arrival → S-arrival → decaying coda.
+  // Seeded by the event identity so every earthquake draws its own stable trace.
+  const seedKey = `${earthquake.datetime}|${earthquake.latitude}|${earthquake.longitude}|${earthquake.magnitude}`;
+  const trace = buildWaveform(seedKey, mag);
 
   // Track the previous earthquake's unique key to detect updates
   const prevEqKeyRef = useRef<string | null>(null);
@@ -43,145 +51,78 @@ export function LatestEarthquake({ earthquake }: { earthquake: PhivolcsEarthquak
     }
   };
 
-  const generateSeismographPath = (magnitude: number) => {
-    const amp = Math.min(Math.max((magnitude - 2) * 12, 4), 45);
-    return `M 0 50 
-            Q 30 50, 60 ${50 - amp * 0.2} 
-            T 120 ${50 + amp * 0.4} 
-            T 180 ${50 - amp * 0.8} 
-            T 240 ${50 + amp} 
-            T 300 ${50 - amp * 0.9} 
-            T 360 ${50 + amp * 0.5} 
-            T 420 ${50 - amp * 0.2} 
-            T 480 50 L 600 50`;
-  };
-
   return (
-    <div className={`latest-eq-card glass${isEmsc ? ' latest-eq-card--emsc' : isUsgs ? ' latest-eq-card--usgs' : ''}`} style={{ borderLeft: `4px solid ${color}`, backgroundImage: `url(${isUsgs ? '/image-usgs.jpg' : isEmsc ? '/image-emsc.jpg' : '/image.png'})`, backgroundRepeat: 'repeat', backgroundSize: 'auto' }}>
-      {/* Decorative background glow */}
-      <div className="eq-glow" style={{ background: `radial-gradient(circle at 20% 30%, ${color}12 0%, transparent 60%)` }}></div>
+    <article className="latest-eq-card latest-eq-card--flat" aria-label="Latest earthquake">
+      <StaticMapCover lat={lat} lng={lng} />
+      <div className="eq-veil" aria-hidden="true" />
+      <span className="eq-accent" style={{ background: color }} aria-hidden="true" />
 
-      <div className="eq-card-inner">
-        {/* Top badge row */}
-        <div className="eq-badge-row">
-          <div className="eq-live-badge">
-            <span className="eq-live-dot" style={{ backgroundColor: color }}></span>
-            LATEST EVENT
-          </div>
-          <span className="eq-severity-tag" style={{ backgroundColor: `${color}18`, color, borderColor: `${color}40` }}>
-            {label}
-          </span>
-        </div>
+      <header className="eq-head">
+        <span className="eq-eyebrow">
+          <span className="eq-eyebrow-dot" style={{ background: color }} aria-hidden="true" />
+          Latest earthquake
+        </span>
+        <span className="eq-severity" style={{ color }}>{label}</span>
+      </header>
 
-        {/* Magnitude circle + location */}
-        <div className="eq-hero-section">
-          <div className="eq-mag-circle" style={{ borderColor: `${color}50`, background: `${color}0A` }}>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="17"
-              height="17"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={color}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="lucide lucide-activity"
-              aria-hidden="true"
-            >
-              <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />
-            </svg>
-            <span className="eq-mag-number" style={{ color }}>{earthquake.magnitude}</span>
-            <span className="eq-mag-unit">MAG</span>
-          </div>
-          <div className="eq-hero-info">
-            <h2 className="eq-location" style={{ color: '#f0f0f0ff' }}>{earthquake.location}</h2>
-            <div className="eq-meta-chips">
-              <span className="eq-chip">
-                <Clock size={13} />
-                {earthquake.datetime}
-              </span>
-              <span className="eq-chip">
-                <Activity size={13} />
-                {earthquake.depth} km deep
-              </span>
-              <span className="eq-chip">
-                <MapPin size={13} />
-                {earthquake.latitude}°N, {earthquake.longitude}°E
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Action buttons */}
-        <div className="eq-actions">
-          <Link to={`/details/${eqId}`} state={{ earthquake }} className="eq-action-btn eq-action-primary" style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30`, marginRight: "4px" }}>
-            View Details
-            <ArrowRight size={15} />
-          </Link>
-          <Link to="/archive" className="eq-action-btn eq-action-secondary">
-            See Archive
-            <ArrowRight size={15} />
-          </Link>
-        </div>
+      <div className="eq-magline">
+        <span className="eq-magnum tnum" style={{ color }}>{mag.toFixed(1)}</span>
+        <span className="eq-magside">
+          <span className="eq-unit">Magnitude</span>
+          <span className="eq-scale" style={{ color }}>{label}</span>
+        </span>
       </div>
 
-      {/* Dynamic Seismograph Animation */}
-      <div className="seismograph-container">
-        <svg
-          className="seismograph-container"
-          style={{
-            position: 'absolute',
-            top: '-230px',
-            left: 0,
-            width: '100%',
-            height: '200px',
-          }}
-        >
-          <defs>
-            <linearGradient id="fadeRight" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="white" stopOpacity="1" />
-              <stop offset="0%" stopColor="white" stopOpacity="1" />
-              <stop offset="90%" stopColor="white" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
+      <h2 className="eq-location">{earthquake.location}</h2>
 
-            <mask id="fadeMask">
-              <rect
-                x="0"
-                y="0"
-                width="600"
-                height="200"
-                fill="url(#fadeRight)"
-              />
+      <dl className="eq-meta">
+        <div className="eq-meta-item">
+          <dt>Time</dt>
+          <dd>{earthquake.datetime}</dd>
+        </div>
+        <div className="eq-meta-item">
+          <dt>Depth</dt>
+          <dd className="tnum">{earthquake.depth} km</dd>
+        </div>
+        <div className="eq-meta-item">
+          <dt>Epicenter</dt>
+          <dd className="tnum">{earthquake.latitude}°N, {earthquake.longitude}°E</dd>
+        </div>
+        {dist != null && (
+          <div className="eq-meta-item eq-meta-item--accent">
+            <dt>From you</dt>
+            <dd className="tnum">{formatDistance(dist)} away</dd>
+          </div>
+        )}
+      </dl>
+
+      <footer className="eq-foot">
+        <Link to={`/details/${eqId}`} state={{ earthquake }} className="eq-view">
+          View event <ArrowRight size={15} aria-hidden="true" />
+        </Link>
+        <Link to="/archive" className="eq-archive">Archive</Link>
+      </footer>
+
+      <div className="eq-trace-strip" aria-hidden="true">
+        <svg className="eq-trace-strip-svg" viewBox="0 0 600 100" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="eqTraceFade" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#fff" stopOpacity="0" />
+              <stop offset="6%" stopColor="#fff" stopOpacity="1" />
+              <stop offset="94%" stopColor="#fff" stopOpacity="1" />
+              <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+            </linearGradient>
+            <mask id="eqTraceMask">
+              <rect x="0" y="0" width="600" height="100" fill="url(#eqTraceFade)" />
             </mask>
           </defs>
-
-          <path
-            className="seismograph-line-static"
-            d="M 0 100 L 600 100"
-            stroke="rgba(255,255,255,0.08)"
-            strokeWidth="1"
-            fill="none"
-            mask="url(#fadeMask)"
-          />
-
-          <path
-            className="seismograph-line"
-            d={generateSeismographPath(mag)}
-            stroke={color}
-            strokeWidth="2"
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            vectorEffect="non-scaling-stroke"
-            mask="url(#fadeMask)"
-            style={{
-              animationDuration: `${Math.max(1, 4 - mag / 3)}s`,
-            }}
-          />
+          <g mask="url(#eqTraceMask)">
+            <path className="eq-trace-baseline" d="M0 50 L600 50" />
+            <path className="eq-trace-line" pathLength={1000} d={trace} style={{ stroke: color }} />
+            <path className="eq-trace-pulse" pathLength={1000} d={trace} style={{ stroke: color, color }} />
+          </g>
         </svg>
       </div>
-    </div>
+    </article>
   );
 }

@@ -60,8 +60,8 @@ export const DYFI_T = WAVE_T + 0.5; // DYFI caption joins mid-wave; dots wipe in
 // ROWS is odd so the grid is symmetric around the epicenter (an even row
 // count biases the epicenter off-center and breaks the dead-center shift).
 // Epicenter lands at canvas center.
-export const COLS = 5;
-export const ROWS = 7;
+export const COLS = 7;
+export const ROWS = 9;
 export const TILE = 256;
 
 function zoomForMag(magRaw: string): number {
@@ -179,7 +179,7 @@ function easeOutBack(t: number): number {
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 }
 
-function severityWord(magRaw: string): [string, string] {
+export function severityWord(magRaw: string): [string, string] {
   const m = parseFloat(magRaw);
   if (isNaN(m)) return ['Unknown', '#9ca3af'];
   if (m < 3) return ['Micro', '#22c55e'];
@@ -190,7 +190,7 @@ function severityWord(magRaw: string): [string, string] {
   return ['Major', '#a78bfa'];
 }
 
-function countryOf(location: string): string {
+export function countryOf(location: string): string {
   const loc = (location || '').trim();
   if (!loc) return '';
   const parts = loc.split(',').map((s) => s.trim()).filter(Boolean);
@@ -217,7 +217,7 @@ export function hasTsunamiThreat(label: string): boolean {
   return /warning|advisory|watch/i.test(s);
 }
 
-function threatColor(label: string): string {
+export function threatColor(label: string): string {
   if (!label) return '#9ca3af';
   const s = label.toLowerCase();
   if (/no|none/.test(s)) return '#22c55e';
@@ -226,7 +226,7 @@ function threatColor(label: string): string {
   return '#ffffff';
 }
 
-function shakeChipColor(intensity: string): string {
+export function shakeChipColor(intensity: string): string {
   switch (intensity.toUpperCase()) {
     case 'I':
     case 'II':
@@ -1177,7 +1177,7 @@ export function VideoReportModal({
         recRef.current?.stop();
         return;
       }
-      drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, dyfiRef.current, phase === 'preview' ? t % (DUR + 1) : t, quakeSource);
+      drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, dyfiRef.current, phase === 'preview' ? t % DUR : t, quakeSource);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -1301,13 +1301,13 @@ export function VideoReportModal({
 
   return (
     <div className="video-modal-backdrop" onClick={onClose}>
-      <div className="video-modal glass" onClick={(e) => e.stopPropagation()}>
+      <div className="video-modal" onClick={(e) => e.stopPropagation()}>
         <div className="video-modal-head">
           <span className="flex-center" style={{ gap: '8px' }}>
             <Clapperboard size={18} />
             Video Report (20s)
           </span>
-          <button type="button" className="action-btn glass flex-center" onClick={onClose} aria-label="Close">
+          <button type="button" className="action-btn flex-center" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
         </div>
@@ -1320,7 +1320,7 @@ export function VideoReportModal({
         {phase === 'unsupported' && <p className="text-muted">Video recording is not supported in this browser.</p>}
         <canvas ref={canvasRef} width={W} height={H} className="video-canvas" />
         {phase === 'preview' && (
-          <button type="button" className="action-btn glass flex-center" onClick={startRecording}>
+          <button type="button" className="action-btn flex-center" onClick={startRecording}>
             <Clapperboard size={16} />
             <span>Record video</span>
           </button>
@@ -1329,7 +1329,7 @@ export function VideoReportModal({
         {phase === 'done' && videoUrl && (
           <div className="video-result">
             <video src={videoUrl} controls playsInline className="video-preview" />
-            <a className="action-btn glass flex-center" href={videoUrl} download={`terraguard-report.${ext}`}>
+            <a className="action-btn flex-center" href={videoUrl} download={`terraguard-report.${ext}`}>
               <Download size={16} />
               <span>Download .{ext}</span>
             </a>

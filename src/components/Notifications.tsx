@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Bell, Loader2, Pin, Reply, ThumbsUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getNotifications, markNotificationsRead, formatForumTime, type Notification } from '../lib/forum';
-import '../pages/Forum.css';
+import './Navbar.css';
 
 export function Notifications() {
   const { user } = useAuth();
@@ -131,14 +131,14 @@ export function Notifications() {
                     className={`notif-item${n.read ? '' : ' unread'}`}
                     onClick={() => handleItemClick(n)}
                   >
-                    <span className={`forum-avatar${n.actor_avatar ? ' has-photo' : ''}`}>
+                    <span className={`notif-avatar${n.actor_avatar ? ' has-photo' : ''}`}>
                       <span>{n.actor_name?.[0]?.toUpperCase() ?? 'U'}</span>
                       {n.actor_avatar && (
                         <img
                           src={n.actor_avatar}
-                          alt={n.actor_name ?? 'User'}
+                          alt=""
                           loading="lazy"
-                          className="forum-avatar-img"
+                          className="notif-avatar-img"
                           onError={(e) => {
                             e.currentTarget.style.display = 'none';
                           }}

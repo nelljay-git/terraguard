@@ -27,15 +27,15 @@
   border-radius: 12px;
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--tg-text-2);
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--tg-hairline);
   transition: all 0.2s ease;
   cursor: pointer;
 }
 
 .community-btn:hover:not(:disabled) {
-  color: var(--text-primary);
+  color: var(--tg-text);
   background: rgba(255, 255, 255, 0.1);
   transform: translateY(-1px);
 }
@@ -70,7 +70,7 @@
   align-items: center;
   gap: 8px;
   font-size: 0.85rem;
-  color: var(--text-secondary);
+  color: var(--tg-text-2);
   padding: 10px 14px;
   border-radius: 10px;
   background: rgba(59, 130, 246, 0.08);
@@ -115,9 +115,9 @@
   min-height: 64px;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--tg-hairline);
   background: rgba(255, 255, 255, 0.04);
-  color: var(--text-primary);
+  color: var(--tg-text);
   font-family: inherit;
   font-size: 0.9rem;
   line-height: 1.5;
@@ -131,7 +131,7 @@
 }
 
 .community-composer textarea::placeholder {
-  color: var(--text-muted);
+  color: var(--tg-text-3);
 }
 
 .community-composer textarea:disabled {
@@ -149,7 +149,7 @@
   font-size: 0.88rem;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: #2563eb;
   transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
 
@@ -255,7 +255,7 @@
   font-size: 0.95rem;
   font-weight: 800;
   color: #fff;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  background: #3b82f6;
 }
 
 .comment-avatar-img {
@@ -325,7 +325,7 @@
   gap: 5px;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--tg-text-3);
   padding: 3px 9px;
   border-radius: 8px;
   border: 1px solid transparent;
@@ -357,7 +357,7 @@
   gap: 5px;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--tg-text-3);
   padding: 3px 9px;
   border-radius: 8px;
   border: 1px solid transparent;
@@ -419,7 +419,7 @@
   align-items: center;
   gap: 4px;
   font-size: 0.72rem;
-  color: var(--text-muted);
+  color: var(--tg-text-3);
   margin-bottom: 4px;
 }
 
@@ -444,7 +444,7 @@
   padding: 10px 12px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.03);
-  border: 1px dashed var(--border-color);
+  border: 1px dashed var(--tg-hairline);
 }
 
 .reply-composer textarea {
@@ -466,7 +466,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
+  color: var(--tg-text-3);
   transition: all 0.2s ease;
   margin-left: auto;
 }
@@ -526,4 +526,11 @@
   border: 1px solid rgba(167, 139, 250, 0.3);
   border-radius: 999px;
   padding: 1px 8px;
+}
+
+/* Mission Deck flat panel chrome (replaces glass) */
+.community-section {
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  background: var(--tg-panel);
 }

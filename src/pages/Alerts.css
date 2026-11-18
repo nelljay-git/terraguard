@@ -1,72 +1,106 @@
-/* ── Alerts Page ── */
+/* ══════════ TerraGuard — Alerts (Mission Deck) ══════════ */
+
 .alerts-container {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding-bottom: 60px;
+  gap: 20px;
+  padding-bottom: 64px;
 }
 
+/* Page masthead */
 .alerts-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 24px 28px;
-  gap: 16px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px 4px 22px;
+  border-bottom: 1px solid var(--tg-hairline);
 }
 
-.alerts-header-left {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.alerts-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--tg-text-3);
+}
+
+.alerts-kicker::before {
+  content: '';
+  width: 24px;
+  height: 2px;
+  background: #3b82f6;
 }
 
 .alerts-title {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 1.75rem;
-  font-weight: 700;
+  gap: 12px;
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--tg-text);
 }
 
-.text-accent {
-  color: #3b82f6;
-}
+.alerts-title svg { color: #60a5fa; flex: 0 0 auto; }
 
 .alerts-subtitle {
-  font-size: 0.85rem;
-  color: var(--text-muted);
+  margin: 0;
+  max-width: 74ch;
+  font-size: 0.92rem;
+  line-height: 1.68;
+  color: var(--tg-text-2);
 }
 
+.alerts-subtitle strong { color: var(--tg-text); font-weight: 600; }
+
+/* Two columns: settings left, zones right */
 .alerts-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
 }
 
-@media (max-width: 900px) {
-  .alerts-grid {
-    grid-template-columns: 1fr;
-  }
+@media (max-width: 980px) {
+  .alerts-grid { grid-template-columns: 1fr; }
 }
 
 .alerts-section {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 
+/* Honest limitations strip */
 .alerts-info {
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  padding: 20px 24px;
+  padding: 18px 22px;
+  border: 1px solid var(--tg-hairline);
+  border-left: 3px solid #3b82f6;
+  border-radius: var(--tg-radius-sm);
+  background: var(--tg-panel);
+}
+
+.alerts-info > svg {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  color: #60a5fa;
 }
 
 .alerts-info-content h4 {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 8px;
+  margin: 0 0 8px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--tg-text-3);
 }
 
 .alerts-how-list {
@@ -75,24 +109,21 @@
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
 }
 
 .alerts-how-list li {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  padding-left: 16px;
+  font-size: 0.82rem;
+  color: var(--tg-text-2);
+  padding-left: 18px;
   position: relative;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .alerts-how-list li::before {
-  content: '';
+  content: '—';
   position: absolute;
   left: 0;
-  top: 8px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #3b82f6;
+  top: 0;
+  color: var(--tg-text-3);
 }

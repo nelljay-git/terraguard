@@ -1,6 +1,95 @@
 import { defineConfig } from 'vite'
+import type { ViteDevServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// Dev-only middleware: serve HTML responses with an explicit UTF-8 charset.
+// Vite serves text/html without a charset parameter in this setup; the
+// <meta charset="utf-8"> in index.html is the spec's fallback, but an explicit
+// Content-Type parameter is stricter and survives proxies that strip meta.
+function strictCharsetDev() {
+  return {
+    name: 'strict-charset',
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use((_req, res, next) => {
+        const forceHtmlCharset = (value: unknown) =>
+          typeof value === 'string' && /text\/html/i.test(value) && !/charset/i.test(value)
+            ? `${value}; charset=utf-8`
+            : value;
+
+        const origSetHeader = res.setHeader.bind(res);
+        res.setHeader = ((name: string, value: any) => {
+          if (/^content-type$/i.test(name)) {
+            return origSetHeader(name, forceHtmlCharset(value) as any);
+          }
+          return origSetHeader(name, value);
+        }) as any;
+
+        const origWriteHead = res.writeHead.bind(res);
+        res.writeHead = ((...args: any[]) => {
+          const headers = args[1];
+          if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
+            for (const key of Object.keys(headers)) {
+              if (key.toLowerCase() === 'content-type') {
+                (headers as any)[key] = forceHtmlCharset(headers[key]);
+              }
+            }
+          }
+          return (origWriteHead as any)(...args);
+        }) as any;
+
+        next();
+      });
+    },
+  };
+}
+
+// Dev-only middleware that mirrors functions/api/tile.ts so map tiles load
+// (and are CORS-clean for canvas captureStream) during `npm run dev`.
+function tileDevProxy() {
+  return {
+    name: 'tile-dev-proxy',
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use('/api/tile', async (req, res) => {
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+          res.end();
+          return;
+        }
+        const url = new URL(req.url || '', 'http://localhost');
+        const src = url.searchParams.get('src') || '';
+        if (!/^https:\/\/server\.arcgisonline\.com\/ArcGIS\/rest\/services\/World_Imagery\/MapServer\/tile\/\d+\/\d+\/\d+$/.test(src)) {
+          res.statusCode = 403;
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.end('Forbidden host');
+          return;
+        }
+        try {
+          const r = await fetch(src, { headers: { 'User-Agent': 'TerraGuard-TileProxy/1.0' } });
+          if (!r.ok) {
+            res.statusCode = 502;
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end('Upstream error');
+            return;
+          }
+          const buf = Buffer.from(await r.arrayBuffer());
+          res.statusCode = 200;
+          res.setHeader('Content-Type', r.headers.get('content-type') || 'image/jpeg');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          res.end(buf);
+        } catch {
+          res.statusCode = 502;
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.end('Fetch failed');
+        }
+      });
+    },
+  };
+}
 
 // https://vite.dev/config/
 
@@ -20,6 +109,8 @@ export default defineConfig({
     'import.meta.env.VITE_PHP_API_BASE_BACKUP': JSON.stringify(process.env.VITE_PHP_API_BASE_BACKUP || ''),
   },
   plugins: [
+    tileDevProxy(),
+    strictCharsetDev(),
     react(),
     VitePWA({
       // Disable the service worker entirely for native builds — it must not

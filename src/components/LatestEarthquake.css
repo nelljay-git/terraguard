@@ -1,217 +1,299 @@
+/* ══════════ Latest Earthquake — flat editorial panel ══════════ */
 .latest-eq-card {
   position: relative;
-  padding: 28px;
-  border-radius: 20px;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  background-repeat: repeat;
-  background-size: auto;
+  background: var(--tg-panel);
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  overflow: hidden;
+  padding: 20px 22px 0;
 }
 
-.latest-eq-card--emsc {
-  background-image: url('/image-esmc.jpg') !important;
+/* eq-accent renders above the trace strip */
+.eq-accent {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  z-index: 3;
 }
 
-.latest-eq-card--usgs {
-  background-image: url('/image-usgs.jpg') !important;
-}
-
-.eq-glow {
+.eq-veil {
   position: absolute;
   inset: 0;
-  pointer-events: none;
   z-index: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(8, 12, 22, 0.94) 0%,
+    rgba(8, 12, 22, 0.86) 32%,
+    rgba(8, 12, 22, 0.66) 62%,
+    rgba(8, 12, 22, 0.32) 100%
+  );
+  pointer-events: none;
 }
 
-.eq-card-inner {
+.latest-eq-card > :not(.eq-veil):not(.eq-trace-strip):not(.eq-accent):not(.static-map-cover) {
   position: relative;
   z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  height: 100%;
 }
 
-/* ── Badge Row ── */
-.eq-badge-row {
+:root[data-theme='light'] .eq-veil {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.82) 40%,
+    rgba(255, 255, 255, 0.5) 75%,
+    rgba(255, 255, 255, 0.2) 100%
+  );
+}
+
+:root[data-theme='light'] .eq-trace-strip { background: rgba(15, 23, 42, 0.05); }
+
+.eq-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--tg-hairline-soft);
 }
 
-.eq-live-badge {
-  display: flex;
+.eq-eyebrow {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 2px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.eq-live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  animation: dot-pulse 2s ease-in-out infinite;
-}
-
-@keyframes dot-pulse {
-
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 0.4;
-    transform: scale(0.8);
-  }
-}
-
-.eq-severity-tag {
-  font-size: 0.7rem;
+  font-size: 0.62rem;
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  padding: 4px 12px;
-  border-radius: 6px;
-  border: 1px solid;
+  color: var(--tg-text-3);
 }
 
-/* ── Hero Section ── */
-.eq-hero-section {
+.eq-eyebrow-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: tgPulseDot 2s ease-in-out infinite;
+}
+
+@keyframes tgPulseDot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eq-eyebrow-dot { animation: none !important; }
+}
+
+.eq-severity {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.eq-magline {
   display: flex;
-  align-items: center;
-  gap: 24px;
-  flex: 1;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 18px 0 2px;
 }
 
-.eq-mag-circle {
-  width: 140px;
-  height: 140px;
+.eq-magnum {
+  font-family: var(--tg-mono);
+  font-weight: 700;
+  font-size: clamp(3.4rem, 6.6vw, 5.4rem);
+  line-height: 0.9;
+  letter-spacing: 0.01em;
+}
+
+.eq-magside {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  gap: 0;
-
-  background: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(11px);
-  -webkit-backdrop-filter: blur(11px);
+  gap: 2px;
+  padding-bottom: 6px;
 }
 
-.eq-mag-number {
-  font-size: 3.2rem;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: -2px;
-}
-
-.eq-mag-unit {
-  font-size: 0.65rem;
+.eq-unit {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--text-muted);
-  letter-spacing: 1px;
-  margin-top: 2px;
+  color: var(--tg-text-3);
 }
 
-.eq-hero-info {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
+.eq-scale {
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .eq-location {
-  font-size: 1.2rem;
-  font-weight: 700;
-  line-height: 1.3;
-  color: var(--text-primary);
+  margin: 6px 0 14px;
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1.28;
+  letter-spacing: -0.015em;
+  color: var(--tg-text);
+  text-wrap: balance;
 }
 
-.eq-meta-chips {
+/* Meta as a tight 2-col spec grid, not chips */
+.eq-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  margin: 0 -22px;
+  border-top: 1px solid var(--tg-hairline-soft);
+}
+
+.eq-meta-item {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 22px;
+  min-width: 0;
 }
 
-.eq-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-color);
-  padding: 4px 10px;
-  border-radius: 6px;
+.eq-meta-item:nth-child(even) {
+  border-left: 1px solid var(--tg-hairline-soft);
+}
+
+.eq-meta-item dt {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tg-text-3);
+}
+
+.eq-meta-item dd {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--tg-text);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ── Actions ── */
-.eq-actions {
-  display: block;
-  justify-content: space-between;
-  margin-top: auto;
+.eq-meta-item--accent dt { color: #60a5fa; }
+.eq-meta-item--accent dd { color: #93c5fd; font-weight: 600; }
+
+.eq-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 0 16px;
 }
 
-
-.eq-action-btn {
+.eq-view {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  border-radius: 10px;
+  gap: 7px;
+  height: 38px;
+  padding: 0 18px;
+  border-radius: var(--tg-radius-sm);
+  background: var(--tg-text);
+  color: #0f172a;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.eq-view:hover { opacity: 0.88; transform: translateY(-1px); }
+
+.eq-archive {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius-sm);
+  color: var(--tg-text-2);
   font-size: 0.82rem;
   font-weight: 600;
-  text-decoration: none;
-  transition: all 0.2s ease;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.eq-action-primary:hover {
-  filter: brightness(1.2);
-  transform: translateY(-1px);
+.eq-archive:hover { background: rgba(148, 163, 184, 0.08); color: var(--tg-text); }
+
+@media (max-width: 640px) {
+  .latest-eq-card { padding: 16px 16px 0; }
+  .eq-meta { margin: 0 -16px; }
+  .eq-meta-item { padding: 10px 16px; }
+  .eq-magnum { font-size: clamp(3.3rem, 17vw, 4.6rem); }
+  .eq-location { font-size: 1.15rem; }
+  .eq-trace-strip { margin: 2px -16px 0; height: 56px; }
 }
 
-.eq-action-secondary {
-  color: var(--text-secondary);
-  border-color: var(--border-color);
-  background: rgba(255, 255, 255, 0.03);
+
+/* ══════════ Seismograph — instrument strip with hairline separator ══════════ */
+.eq-trace-strip {
+  position: relative;
+  z-index: 1;
+  height: 60px;
+  margin: 2px -22px 0;
+  border-top: 1px solid var(--tg-hairline-soft);
+  background: rgba(2, 6, 23, 0.32);
+  overflow: hidden;
+  pointer-events: none;
 }
 
-.eq-action-secondary:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-primary);
-  transform: translateY(-1px);
+.eq-trace-strip-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
-/* ── Responsive ── */
-@media (max-width: 600px) {
-  .eq-hero-section {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+.eq-trace-baseline {
+  stroke: var(--tg-hairline);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+  opacity: 0.7;
+}
 
-  .eq-mag-circle {
-    width: 80px;
-    height: 80px;
-  }
+.eq-trace-line {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-opacity: 0.52;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 0;
+  animation: seismoDraw 1.1s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both;
+}
 
-  .eq-mag-number {
-    font-size: 3.2rem;
-  }
+/* A short bright segment perpetually travels the trace — the "reading head" */
+.eq-trace-pulse {
+  fill: none;
+  stroke-width: 2.1;
+  stroke-opacity: 1;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 100 900;
+  stroke-dashoffset: 0;
+  animation: seismoSweep 4.4s linear infinite;
+  filter: drop-shadow(0 0 5px currentColor);
+}
 
-  .eq-actions {
-    flex-direction: column;
-  }
+@keyframes seismoDraw {
+  from { stroke-dashoffset: 1000; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes seismoSweep {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -1000; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eq-trace-line { animation: none; stroke-dasharray: none; }
+  .eq-trace-pulse { display: none; animation: none; }
 }

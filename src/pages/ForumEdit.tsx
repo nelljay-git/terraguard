@@ -62,7 +62,7 @@ export function ForumEdit() {
   if (authLoading) {
     return (
       <div className="forum-page container">
-        <div className="forum-loading glass">
+        <div className="forum-loading">
           <div className="spinner-ring"></div>
         </div>
       </div>
@@ -72,7 +72,7 @@ export function ForumEdit() {
   if (!user || !admin) {
     return (
       <div className="forum-page container">
-        <div className="forum-auth-required glass">
+        <div className="forum-auth-required">
           <ShieldAlert size={44} color="#ef4444" />
           <h2>Administrator access required</h2>
           <p>
@@ -141,7 +141,7 @@ export function ForumEdit() {
         {id ? 'Back to Post' : 'Back to Forum'}
       </Link>
 
-      <form className="forum-form glass" onSubmit={handleSubmit}>
+      <form className="forum-form" onSubmit={handleSubmit}>
         <h1 className="forum-form-title">{id ? 'Edit Post' : 'New Forum Post'}</h1>
 
         <label>

@@ -1,111 +1,83 @@
+/* ══════════ Recent Activity — dense machine list ══════════ */
 .activity-feed {
-  padding: 24px;
-  border-radius: 20px;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  background: var(--tg-panel);
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  overflow: hidden;
 }
 
 .feed-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.feed-title-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.feed-icon {
-  color: var(--text-muted);
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--tg-hairline);
 }
 
 .feed-title {
-  font-size: 1.1rem;
-  color: var(--text-primary);
-  font-weight: 600;
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tg-text-2);
 }
 
 .feed-view-all {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #3b82f6;
-  text-decoration: none;
-  transition: opacity 0.2s;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--tg-text-3);
+  transition: color 0.15s ease;
 }
 
-.feed-view-all:hover {
-  opacity: 0.8;
-}
+.feed-view-all:hover { color: var(--tg-text); }
 
-/* ── List ── */
 .feed-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 700px;
+  max-height: 640px;
   overflow-y: auto;
-  padding-right: 4px;
 }
 
-.feed-list::-webkit-scrollbar {
-  width: 4px;
-}
+.feed-list::-webkit-scrollbar { width: 6px; }
+.feed-list::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.2); border-radius: 3px; }
 
-.feed-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.feed-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-}
-
-/* ── Feed Item ── */
 .feed-item {
-  position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-color);
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--tg-hairline-soft);
   text-decoration: none;
-  transition: all 0.2s ease;
-  overflow: hidden;
+  color: inherit;
+  transition: background 0.15s ease;
 }
+
+.feed-item:last-child { border-bottom: none; }
 
 .feed-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  transform: translateX(4px);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(148, 163, 184, 0.06);
 }
 
-.feed-accent {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  border-radius: 12px 0 0 12px;
+.feed-item:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
 }
 
-.feed-mag-badge {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
+.feed-mag {
+  flex: 0 0 46px;
   font-size: 1.05rem;
-  flex-shrink: 0;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
 .feed-body {
@@ -113,13 +85,14 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
 }
 
 .feed-loc {
+  display: block;
+  font-size: 0.8rem;
   font-weight: 600;
-  font-size: 0.88rem;
-  color: var(--text-primary);
+  color: var(--tg-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -129,33 +102,25 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  align-items: center;
-}
-
-.feed-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
   font-size: 0.68rem;
-  color: var(--text-muted);
+  color: var(--tg-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.feed-severity-tag {
-  font-size: 0.62rem;
-  font-weight: 700;
+.feed-distance { color: #7fb3fa; }
+
+.feed-severity {
+  flex: 0 0 auto;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 2px 6px;
-  border-radius: 4px;
+  opacity: 0.9;
 }
 
-.feed-arrow {
-  color: var(--text-muted);
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.feed-item:hover .feed-arrow {
-  opacity: 1;
+@media (max-width: 640px) {
+  .feed-mag { flex-basis: 40px; font-size: 0.95rem; }
+  .feed-severity { display: none; }
+  .feed-item { padding: 10px 14px; gap: 10px; }
 }

@@ -1,0 +1,35 @@
+/* ══════════ Static map cover — Dark Gray canvas crop of the epicenter region ══════════ */
+.static-map-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: #050a12;
+}
+
+/* Local Earth plate paints first; real tiles swap in above it. */
+.static-map-cover__fallback {
+  position: absolute;
+  inset: 0;
+  background-position: center 40%;
+  background-size: cover;
+  opacity: 1;
+}
+
+.static-map-tile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  max-width: none;
+  pointer-events: none;
+  /* Deep-darken the canvas behind the content (~30% off). */
+  filter: brightness(0.57) saturate(0.85);
+}
+
+:root[data-theme='light'] .static-map-tile {
+  filter: brightness(1.05) saturate(0.45) grayscale(0.35);
+}
+
+:root[data-theme='light'] .static-map-cover {
+  opacity: 0.55;
+}

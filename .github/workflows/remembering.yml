@@ -1,0 +1,114 @@
+name: remembering-earthquake
+
+on:
+  repository_dispatch:
+    types: [remembering-video]
+  workflow_dispatch:
+    inputs:
+      lat:
+        description: 'Epicenter latitude'
+        required: true
+        default: '6.45'
+      lng:
+        description: 'Epicenter longitude'
+        required: true
+        default: '126.12'
+      mag:
+        description: 'Magnitude'
+        required: true
+        default: '5.2'
+      place:
+        description: 'Location name'
+        required: false
+        default: 'MINDANAO, PHILIPPINES'
+      datetime:
+        description: 'Event datetime string'
+        required: false
+        default: '14 September 2026 - 05:22 PM'
+      depth:
+        description: 'Depth km'
+        required: false
+        default: '10'
+      description:
+        description: 'Facebook video description'
+        required: false
+        default: ''
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Ensure FFmpeg
+        run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+      - name: Bundle renderer
+        run: npx esbuild scripts/remembering-video-entry.ts --bundle --platform=node --format=esm --external:react --external:lucide-react --external:canvas --loader:.css=empty --outfile=dist-video/remembering-entry.mjs
+      - name: Render + encode + upload
+        env:
+          DISPATCH_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+          MANUAL_LAT: ${{ inputs.lat }}
+          MANUAL_LNG: ${{ inputs.lng }}
+          MANUAL_MAG: ${{ inputs.mag }}
+          MANUAL_PLACE: ${{ inputs.place }}
+          MANUAL_DATETIME: ${{ inputs.datetime }}
+          MANUAL_DEPTH: ${{ inputs.depth }}
+          MANUAL_DESCRIPTION: ${{ inputs.description }}
+          OUT_DIR: video-out
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_UPLOAD_TOKEN: ${{ secrets.FB_UPLOAD_TOKEN }}
+          FB_USER_ACCESS_TOKEN: ${{ secrets.FB_USER_ACCESS_TOKEN }}
+          FB_APP_SECRET: ${{ secrets.FB_APP_SECRET }}
+        run: |
+          if [ "$DISPATCH_PAYLOAD" = "null" ] || [ -z "$DISPATCH_PAYLOAD" ]; then
+            QUAKE_JSON=$(node -e "console.log(JSON.stringify({latitude:process.env.MANUAL_LAT,longitude:process.env.MANUAL_LNG,magnitude:process.env.MANUAL_MAG,place:process.env.MANUAL_PLACE,datetime:process.env.MANUAL_DATETIME,depth:process.env.MANUAL_DEPTH,description:process.env.MANUAL_DESCRIPTION}))")
+            export QUAKE_JSON
+          else
+            export QUAKE_JSON="$DISPATCH_PAYLOAD"
+          fi
+          mkdir -p video-out
+          node dist-video/remembering-entry.mjs
+          if [ "$DISPATCH_PAYLOAD" = "null" ] || [ -z "$DISPATCH_PAYLOAD" ]; then
+            echo "$QUAKE_JSON" > video-out/quake.json
+          else
+            echo "$DISPATCH_PAYLOAD" > video-out/quake.json
+          fi
+      - name: Reformat for TikTok (9:16)
+        if: always()
+        run: if [ -f video-out/out.mp4 ]; then ffmpeg -y -i video-out/out.mp4 -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" -c:a copy video-out/tiktok.mp4; else echo "tiktok reformat skipped (no out.mp4)"; fi
+      - name: TikTok upload
+        if: always()
+        env:
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          TIKTOK_MODE: ${{ vars.TIKTOK_MODE || 'draft' }}
+          GH_SECRETS_PAT: ${{ secrets.GH_SECRETS_PAT }}
+          GH_REPO: ${{ github.repository }}
+          MP4: video-out/tiktok.mp4
+          QUAKE_FILE: video-out/quake.json
+        run: node scripts/tiktok-upload.mjs
+      - name: Telegram send
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          QUAKE_FILE: video-out/quake.json
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then echo "Telegram skipped"; exit 0; fi
+          if [ ! -f "video-out/out.mp4" ]; then echo "no mp4"; exit 0; fi
+          CAPTION=$(node --input-type=module -e "import fs from 'fs'; const q=JSON.parse(fs.readFileSync(process.env.QUAKE_FILE,'utf8')); console.log('TerraGuard remembering video');" 2>/dev/null || echo "TerraGuard remembering video")
+          CAPTION=$(echo "$CAPTION" | cut -c1-1000)
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo" -F chat_id="${TELEGRAM_CHAT_ID}" -F video="@video-out/out.mp4" -F caption="$CAPTION" | head -c 500; echo ""
+      - name: Keep MP4 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remembering-earthquake
+          path: video-out/out.mp4
+          retention-days: 7

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap, WMSTileLayer } from 'react-leaflet';
 import type { PhivolcsEarthquake } from '../api/phivolcs';
 import { getSeverityColor, getSeverityLabel } from '../lib/utils';
+import { distanceKm, formatDistance, type UserCoords } from '../lib/userLocation';
 import { Expand, MapPin, X, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import L from 'leaflet';
@@ -25,6 +26,7 @@ type InteractiveMapProps = {
   enableLegendFilter?: boolean;
   disableDragging?: boolean;
   pulseMarkers?: boolean;
+  userCoords?: UserCoords | null;
 };
 
 function createMagnitudeIcon(magnitude: string, color: string, compact = false, pulse = true) {
@@ -136,7 +138,7 @@ function ClusterManager({ earthquakes, activeFilter, compactMarkers, onSelect }:
   return null;
 }
 
-function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = false, compactMarkers = false, autoCenter = false, enableLegendFilter = false, disableDragging = false, pulseMarkers = true }: InteractiveMapProps) {
+function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = false, compactMarkers = false, autoCenter = false, enableLegendFilter = false, disableDragging = false, pulseMarkers = true, userCoords = null }: InteractiveMapProps) {
   const mapRef = useRef<L.Map | null>(null);
   const fullscreenMapRef = useRef<L.Map | null>(null);
   const [selectedEarthquake, setSelectedEarthquake] = useState<PhivolcsEarthquake | null>(null);
@@ -202,14 +204,17 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
         position={popupPosition}
         eventHandlers={popupEventHandlers}
         className="eq-popup-override"
-        autoPan={false}
       >
         <div className="eq-modal-popup">
+          <span className="eq-modal-accent" style={{ background: getSeverityHexColor(parseFloat(selectedEarthquake.magnitude)) }} aria-hidden="true" />
           <div className="eq-modal-head">
-            <div className="eq-modal-mag" style={{ color: getSeverityColor(parseFloat(selectedEarthquake.magnitude)) }}>
+            <div className="eq-modal-mag tnum" style={{ color: getSeverityHexColor(parseFloat(selectedEarthquake.magnitude)) }}>
               M {selectedEarthquake.magnitude}
             </div>
-            <div className="eq-modal-label">{getSeverityLabel(parseFloat(selectedEarthquake.magnitude))} Severity</div>
+            <span className="eq-modal-label">
+              <span className="eq-modal-label-dot" style={{ background: getSeverityHexColor(parseFloat(selectedEarthquake.magnitude)) }} aria-hidden="true" />
+              {getSeverityLabel(parseFloat(selectedEarthquake.magnitude))} Severity
+            </span>
           </div>
           <div className="eq-modal-body">
             <div className="eq-modal-row">
@@ -228,6 +233,15 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
               <span className="eq-modal-key">Coordinates</span>
               <span className="eq-modal-value">{selectedEarthquake.latitude}, {selectedEarthquake.longitude}</span>
             </div>
+            {userCoords && (() => {
+              const d = distanceKm(userCoords, selectedEarthquake.latitude, selectedEarthquake.longitude);
+              return d != null ? (
+                <div className="eq-modal-row">
+                  <span className="eq-modal-key">From You</span>
+                  <span className="eq-modal-value" style={{ color: '#93c5fd', fontWeight: 700 }}>{formatDistance(d)} away</span>
+                </div>
+              ) : null;
+            })()}
           </div>
           <Link
             to={`/details/${earthquakeToEqId(selectedEarthquake)}`}
@@ -242,7 +256,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
   };
 
   return (
-    <div className={`map-wrapper glass ${isFullscreen ? 'map-wrapper--fullscreen' : ''}`}>
+    <div className={`map-wrapper${isFullscreen ? ' map-wrapper--fullscreen' : ''}`}>
       <div className="map-header">
         <div className="map-title-row">
           <MapPin size={18} className="map-icon" />
@@ -313,7 +327,9 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
           {latestEarthquake && hasLatestCoords && (
             <Marker
               position={[latestLat, latestLng]}
-              icon={createMagnitudeIcon(latestEarthquake.magnitude, latestColor, compactMarkers, pulseMarkers)}
+              // The single "latest event" marker stays full-size and pulsing even
+              // when the dense all-events layer uses compact markers.
+              icon={createMagnitudeIcon(latestEarthquake.magnitude, latestColor, false, pulseMarkers)}
               eventHandlers={{
                 click: () => setSelectedEarthquake(latestEarthquake),
               }}
@@ -365,7 +381,7 @@ function InteractiveMapBase({ earthquakes, latestEarthquake, showAllEvents = fal
                 center={center}
                 zoom={hasLatestCoords ? 8 : 5}
                 scrollWheelZoom={true}
-                dragging={!disableDragging}
+                dragging={true}
                 preferCanvas={true}
                 style={{ height: '100%', width: '100%', zIndex: 0 }}
               >

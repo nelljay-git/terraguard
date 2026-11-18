@@ -192,9 +192,9 @@ export function InstallPrompt() {
               transition={{ delay: 0.25 }}
             >
               <Share size={13} />
-              Tap the <strong style={{ color: 'var(--text-secondary)', margin: '0 3px' }}>Share</strong>
+              Tap the <strong style={{ color: 'var(--tg-text-2)', margin: '0 3px' }}>Share</strong>
               icon in Safari, then
-              <strong style={{ color: 'var(--text-secondary)', margin: '0 3px' }}>"Add to Home Screen"</strong>
+              <strong style={{ color: 'var(--tg-text-2)', margin: '0 3px' }}>"Add to Home Screen"</strong>
             </motion.div>
           )}
         </motion.div>

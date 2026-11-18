@@ -47,7 +47,7 @@ export function NotificationSettings() {
       </h3>
 
       {/* Permission status */}
-      <div className="ns-perm glass-card">
+      <div className="ns-perm">
         <div className="ns-perm-info">
           <Shield size={16} className={permission === 'granted' ? 'ns-perm-icon--granted' : permission === 'denied' ? 'ns-perm-icon--denied' : ''} />
           <div>
@@ -65,12 +65,12 @@ export function NotificationSettings() {
       </div>
 
       {/* Master toggle */}
-      <div className="ns-toggle-row glass-card">
+      <div className="ns-toggle-row">
         <div className="ns-toggle-info">
           {settings.notificationsEnabled ? (
             <Bell size={18} style={{ color: '#10b981' }} />
           ) : (
-            <BellOff size={18} style={{ color: 'var(--text-muted)' }} />
+            <BellOff size={18} style={{ color: 'var(--tg-text-3)' }} />
           )}
           <div>
             <span className="ns-toggle-label">Earthquake Notifications</span>
@@ -89,7 +89,7 @@ export function NotificationSettings() {
       </div>
 
       {/* Magnitude threshold */}
-      <div className="ns-setting glass-card">
+      <div className="ns-setting">
         <label className="ns-label">
           Default Magnitude Threshold: M{settings.defaultMagnitudeThreshold.toFixed(1)}
         </label>
@@ -111,7 +111,7 @@ export function NotificationSettings() {
       </div>
 
       {/* Quiet hours */}
-      <div className="ns-setting glass-card">
+      <div className="ns-setting">
         <div className="ns-label-row">
           <Clock size={14} />
           <label className="ns-label">Quiet Hours</label>
@@ -147,12 +147,12 @@ export function NotificationSettings() {
       </div>
 
       {/* Sound toggle */}
-      <div className="ns-toggle-row glass-card">
+      <div className="ns-toggle-row">
         <div className="ns-toggle-info">
           {settings.playSound ? (
             <Volume2 size={18} style={{ color: '#3b82f6' }} />
           ) : (
-            <VolumeX size={18} style={{ color: 'var(--text-muted)' }} />
+            <VolumeX size={18} style={{ color: 'var(--tg-text-3)' }} />
           )}
           <div>
             <span className="ns-toggle-label">Alert Sound</span>
@@ -170,7 +170,7 @@ export function NotificationSettings() {
       </div>
 
       {/* Info footer */}
-      <div className="ns-info glass-card">
+      <div className="ns-info">
         <ExternalLink size={14} />
         <p>
           Notifications fire when the app is open and polling. Ensure TerraGuard is open or installed as a PWA to receive alerts in real time.

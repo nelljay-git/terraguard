@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, type KeyboardEvent } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { fetchEarthquakeData, fetchArchiveData, fetchEarthquakeDetails, fetchBulletins, normalizeEarthquakes, normalizeEarthquake, type PhivolcsEarthquake, type NormalizedEarthquake, type EarthquakeDetails, type BulletinRef } from '../api/phivolcs';
 import { getPreferredApi } from '../lib/apiPreference';
@@ -7,13 +7,13 @@ import { getSeverityColor, getSeverityLabel, haversineKm, timeAgo } from '../lib
 import { PH_PROVINCES, PH_CITIES } from '../data/phLocations';
 import { MapContainer, TileLayer, Marker, WMSTileLayer } from 'react-leaflet';
 import L from 'leaflet';
-import { ArrowLeft, MapPin, Activity, Clock, ShieldAlert, Users, Info, Share2, Copy, Check, Zap, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Navigation, Menu, Download, Send, Loader2, Megaphone, Clapperboard, Upload, MoreHorizontal } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { ArrowLeft, ArrowRight, Info, Share2, Copy, Check, AlertTriangle, X, Map as MapIcon, Image as ImageIcon, ExternalLink, Waves, Menu, Download, Send, Loader2, Megaphone, Clapperboard, Upload, MoreHorizontal, Activity, Clock, MapPin, ChevronsRight } from 'lucide-react';
+import { buildWaveform } from '../lib/seismogram';
 import { ImageModal } from '../components/ImageModal';
+import { StaticMapCover } from '../components/StaticMapCover';
 import { VideoReportModal } from '../components/VideoReport';
 import { estimateAffectedRadiusKm, extractMaxIntensity, extractShakeRows } from '../lib/videoMeta';
 import { useAuth } from '../context/AuthContext';
-import { FunFactLoader } from '../components/FunFactLoader';
 import { ActiveFaultsLayer } from '../components/ActiveFaultsLayer';
 import { UsgsMapLayers } from '../components/UsgsMapLayers';
 import { AftershockTracker } from '../components/AftershockTracker';
@@ -385,14 +385,12 @@ export function Details() {
   const sourceLabel = dataSource === 'usgs' ? 'USGS' : dataSource === 'emsc' ? 'EMSC' : 'PHIVOLCS';
   const reportingAgency = dataSource === 'usgs' ? 'USGS' : dataSource === 'emsc' ? 'EMSC-CSEM' : 'PHIVOLCS-DOST';
   const isUsgs = dataSource === 'usgs';
-  const isEmsc = dataSource === 'emsc';
   const [originExpanded, setOriginExpanded] = useState(false);
   const { user } = useAuth();
   const isWebhookAuthorized = user?.email?.toLowerCase() === 'gianganwneljae@gmail.com';
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [fbPostStatus, setFbPostStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [videoPostStatus, setVideoPostStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
-  const [videoPostError, setVideoPostError] = useState('');
   const [showVideoReport, setShowVideoReport] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
@@ -775,6 +773,30 @@ export function Details() {
       return () => mq.removeEventListener('change', onChange);
     }, []);
 
+    // Progressive disclosure — secondary findings live behind tabs so the map
+    // and the assessment stay the screen's focus.
+    const SECONDARY_TABS = ['shaking', 'places', 'aftershocks', 'safety'] as const;
+    type SecondaryTab = typeof SECONDARY_TABS[number];
+    const [activeTab, setActiveTab] = useState<SecondaryTab>('shaking');
+    const onTabKeyDown = (e: KeyboardEvent<HTMLButtonElement>, current: SecondaryTab) => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      e.preventDefault();
+      const idx = SECONDARY_TABS.indexOf(current);
+      const dir = e.key === 'ArrowRight' ? 1 : -1;
+      const next = SECONDARY_TABS[(idx + dir + SECONDARY_TABS.length) % SECONDARY_TABS.length];
+      setActiveTab(next);
+      document.getElementById(`tab-${next}`)?.focus();
+    };
+
+    // Flag the felt-reports list as scrollable so CSS can fade its bottom edge.
+    useEffect(() => {
+      const raf = requestAnimationFrame(() => {
+        const el = document.querySelector('.intensities-list');
+        if (el) el.classList.toggle('is-scrollable', el.scrollHeight > el.clientHeight + 4);
+      });
+      return () => cancelAnimationFrame(raf);
+    }, [details, activeTab]);
+
    // Rank provinces and major cities by distance from the epicenter.
    const nearestProvinces = useMemo(() => {
     const eLat = parseFloat(earthquake?.latitude ?? '');
@@ -787,30 +809,26 @@ export function Details() {
    }, [earthquake]);
 
    if (loading) {
-     return (
-       <div className="container flex-center" style={{ height: '50vh' }}>
-         <FunFactLoader
-           title="Loading Details..."
-           subtitle="Fetching event data from PHIVOLCS"
-           icon={<Activity size={28} className="spinner-icon" />}
-         />
-       </div>
-     );
+      return (
+        <div className="details-page container" aria-busy="true" aria-label="Loading event details">
+          <div className="details-skeleton details-skeleton--bar" />
+          <div className="details-skeleton details-skeleton--event" />
+          <div className="details-skeleton details-skeleton--map" />
+          <div className="details-skeleton details-skeleton--facts" />
+          <div className="details-skeleton details-skeleton--row" />
+        </div>
+      );
    }
 
    if (error || !earthquake) {
-     return (
-       <div className="container flex-center" style={{ height: '50vh', flexDirection: 'column', gap: '16px' }}>
-         <div className="error-icon-wrapper">
-           <AlertTriangle size={48} color="var(--color-strong)" />
-         </div>
-         <h2>Earthquake Details Unavailable</h2>
-         <p className="text-muted" style={{ textAlign: 'center', maxWidth: '400px' }}>
-           This event may be historical or currently unavailable in the recent PHIVOLCS feed.
-         </p>
-         <Link to="/archive" className="back-btn glass">Back to Archive</Link>
-       </div>
-     );
+      return (
+        <div className="details-empty container" role="alert">
+          <AlertTriangle size={34} strokeWidth={1.5} className="details-empty-icon" />
+          <h1 className="details-empty-title">Event details unavailable</h1>
+          <p className="details-empty-sub">This event may be historical or currently unavailable in the recent feed. Check the archive — the data refreshes continuously.</p>
+          <Link to="/archive" className="details-empty-btn">Back to archive <ArrowRight size={14} aria-hidden="true" /></Link>
+        </div>
+      );
    }
 
    const mag = parseFloat(earthquake.magnitude);
@@ -818,10 +836,15 @@ export function Details() {
    const severityLabel = getSeverityLabel(mag);
    const lat = parseFloat(earthquake.latitude);
    const lng = parseFloat(earthquake.longitude);
-   const isSevere = mag >= 6.0;
    const bulletin = extractBulletin(activeLink);
    const occurredAgo = timeAgo(parseDateTime(earthquake.datetime), now);
    const tsunamiInfo = classifyTsunami(details?.tsunami || '');
+
+   // Stable per-event illustrative trace (same seed the dashboard card uses).
+   const trace = buildWaveform(
+     `${earthquake.datetime}|${earthquake.latitude}|${earthquake.longitude}|${earthquake.magnitude}`,
+     mag,
+   );
 
   const loadBulletinDetails = async (url: string) => {
     setDetailsLoading(true);
@@ -856,20 +879,6 @@ export function Details() {
     } else {
       return `${(tntTons / 1000000).toLocaleString(undefined, { maximumFractionDigits: 1 })} Megatons of TNT`;
     }
-  };
-
-  // Generate responsive seismograph wavy path based on severity
-  const generateSeismographPath = (magnitude: number) => {
-    const amp = Math.min(Math.max((magnitude - 2) * 12, 4), 45); // Amplitude scaled with magnitude
-    return `M 0 50 
-            Q 30 50, 60 ${50 - amp * 0.2} 
-            T 120 ${50 + amp * 0.4} 
-            T 180 ${50 - amp * 0.8} 
-            T 240 ${50 + amp} 
-            T 300 ${50 - amp * 0.9} 
-            T 360 ${50 + amp * 0.5} 
-            T 420 ${50 - amp * 0.2} 
-            T 480 50 L 600 50`;
   };
 
   const handleCopy = async () => {
@@ -1113,7 +1122,6 @@ export function Details() {
     if (!earthquake || !isWebhookAuthorized || detailsLoading) return;
     if (videoPostStatus === 'sending') return;
     setVideoPostStatus('sending');
-    setVideoPostError('');
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
@@ -1151,32 +1159,41 @@ export function Details() {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('Video trigger failed:', e);
       showBanner('error', msg.slice(0,140));
-      setVideoPostError(msg);
       setVideoPostStatus('error');
       setTimeout(() => {
         setVideoPostStatus('idle');
-        setVideoPostError('');
-      }, 8000);
+        }, 8000);
     }
   };
 
   const renderIntensities = (text: string) => {
     if (!text) return null;
     const lines = text.split(/Intensity\s+/i).filter(line => line.trim().length > 0);
-    
+    // Drop PHIVOLCS bulletin metadata that precedes the felt-report table
+    // (bulletin file name like "2026_1117_0200_M43D017_B2F" and the bulletin time "11.20a").
+    const isMetadataRow = (line: string) =>
+      /^\s*(\d{1,2}\.\d{2,4}a?|\d{4}_\d{4}_\d{4}_[A-Z0-9_]+)?(\s+\d{4}_\d{4}_\d{4}_[A-Z0-9_]+)?\s*$/i.test(line.trim());
+
     if (lines.length === 0 || !text.toLowerCase().includes('intensity')) {
       return (
         <div className="scrollable-content">
-          <p className="text-muted" style={{ whiteSpace: 'pre-line', fontSize: '0.9rem', lineHeight: '1.5', margin: 0 }}>
-            {text.replace(/Intensity /g, '\nIntensity ').trim()}
-          </p>
+          <p className="intensities-raw">{text.replace(/Intensity /g, '\nIntensity ').trim()}</p>
+        </div>
+      );
+    }
+
+    const rows = lines.filter(line => !isMetadataRow(line));
+    if (rows.length === 0) {
+      return (
+        <div className="intensities-empty">
+          <p>Bulletin lists no place-specific felt intensities for this event.</p>
         </div>
       );
     }
 
     return (
       <div className="intensities-list scrollable-content">
-        {lines.map((line, idx) => {
+        {rows.map((line, idx) => {
           const parts = line.split(/\s*-\s*/);
           if (parts.length >= 2) {
             const level = parts[0].trim();
@@ -1213,140 +1230,65 @@ export function Details() {
           </div>
         </div>
       )}
-      <motion.div 
-        className="details-container container"
-        initial={{ x: 0 }}
-        animate={isSevere ? { 
-          x: [0, -10, 10, -10, 10, -5, 5, 0],
-          y: [0, 5, -5, 5, -5, 0, 0, 0]
-        } : {}}
-        transition={{ duration: 0.6, ease: "easeInOut" }}
-      >
-      <div className="details-nav flex-between">
-        <Link to="/archive" className="back-link flex-center">
-          <ArrowLeft size={18} />
-          <span>Back to Archive</span>
+      <div className="details-page container">
+      {/* ── Command bar ── */}
+      <div className="details-toolbar">
+        <Link to="/archive" className="details-back">
+          <ArrowLeft size={16} aria-hidden="true" />
+          <span>Back to archive</span>
         </Link>
-        <div className="action-buttons flex-center">
+        <div className="details-toolbar-right">
           <button
-            className="action-btn glass flex-center"
-            onClick={() => window.open(activeLink || earthquake?.link, '_blank', 'noopener')}
-            title={activeLink || earthquake?.link}
+            className="details-iconbtn"
+            onClick={handleCopy}
+            title={copied ? 'Copied' : 'Copy link'}
+            aria-label={copied ? 'Link copied' : 'Copy link'}
           >
-            <ExternalLink size={16} />
-            <span>Open to {reportingAgency === 'USGS' ? 'USGS' : reportingAgency === 'EMSC-CSEM' ? 'EMSC' : 'PHIVOLCS'}</span>
+            {copied ? <Check size={16} className="details-ok" aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
           </button>
-          <button className="action-btn glass flex-center" onClick={handleCopy} title="Copy Link">
-            {copied ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
-            <span>{copied ? 'Copied!' : 'Copy Link'}</span>
-          </button>
-          {!isMobile && isWebhookAuthorized && (
-            <button className="action-btn glass flex-center" onClick={handleCopyDescription} title="Copy FB description">
-              {copiedDesc ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
-              <span>{copiedDesc ? 'Copied!' : 'Copy description'}</span>
-            </button>
-          )}
           {typeof navigator.share === 'function' && (
-            <button
-              className="action-btn glass flex-center"
-              onClick={handleShare}
-              title="Share Event"
-            >
-              <Share2 size={16} />
-              <span>Share</span>
+            <button className="details-iconbtn" onClick={handleShare} title="Share event" aria-label="Share event">
+              <Share2 size={16} aria-hidden="true" />
             </button>
           )}
-          {!isMobile && isUsgs && isWebhookAuthorized && (
-            <button
-              className="action-btn glass flex-center"
-              onClick={() => setShowVideoReport(true)}
-              disabled={detailsLoading}
-              title={detailsLoading ? 'Loading intensities…' : 'Generate video report'}
-            >
-              <Clapperboard size={16} />
-              <span>Video Report</span>
-            </button>
-          )}
-          {!isMobile && isWebhookAuthorized && (
-            <button
-              className="action-btn glass flex-center"
-              onClick={handlePostVideo}
-              disabled={videoPostStatus === 'sending' || detailsLoading}
-              title={detailsLoading ? 'Loading intensities…' : 'Render + post video via GitHub Actions'}
-              style={{
-                background: videoPostStatus === 'success' ? 'rgba(16,185,129,0.15)' : videoPostStatus === 'error' ? 'rgba(239,68,68,0.15)' : undefined,
-                borderColor: videoPostStatus === 'success' ? 'rgba(16,185,129,0.4)' : videoPostStatus === 'error' ? 'rgba(239,68,68,0.4)' : undefined,
-              }}
-            >
-              {videoPostStatus === 'sending' ? <Loader2 size={16} className="spinner-icon" /> : videoPostStatus === 'success' ? <Check size={16} color="#10b981" /> : videoPostStatus === 'error' ? <AlertTriangle size={16} color="#ef4444" /> : <Upload size={16} />}
-              <span>{videoPostStatus === 'sending' ? 'Starting…' : videoPostStatus === 'success' ? 'Render started!' : videoPostStatus === 'error' ? 'Failed' : 'Post Video'}</span>
-            </button>
-          )}
-          {isWebhookAuthorized && videoPostStatus === 'error' && videoPostError && (
-            <span className="text-muted" style={{ fontSize: '0.8rem', color: '#ef4444', maxWidth: '100%', overflowWrap: 'anywhere' }}>
-              {videoPostError}
-            </span>
-          )}
-          {!isMobile && isWebhookAuthorized && (
-            <button
-              className="action-btn glass flex-center"
-              onClick={handleSendToWebhook}
-              disabled={webhookStatus === 'sending'}
-              title="Send to Discord Webhook"
-              style={{
-                background: webhookStatus === 'success' ? 'rgba(16,185,129,0.15)' : webhookStatus === 'error' ? 'rgba(239,68,68,0.15)' : undefined,
-                borderColor: webhookStatus === 'success' ? 'rgba(16,185,129,0.4)' : webhookStatus === 'error' ? 'rgba(239,68,68,0.4)' : undefined,
-              }}
-            >
-              {webhookStatus === 'sending' ? <Loader2 size={16} className="spinner-icon" /> : webhookStatus === 'success' ? <Check size={16} color="#10b981" /> : webhookStatus === 'error' ? <AlertTriangle size={16} color="#ef4444" /> : <Send size={16} />}
-              <span>{webhookStatus === 'sending' ? 'Sending...' : webhookStatus === 'success' ? 'Sent!' : webhookStatus === 'error' ? 'Failed' : 'Send to Webhooks'}</span>
-            </button>
-          )}
-          {!isMobile && isWebhookAuthorized && (
-            <button
-              className="action-btn glass flex-center"
-              onClick={handlePostToFacebook}
-              disabled={fbPostStatus === 'sending'}
-              title="Post to Facebook Page"
-              style={{
-                background: fbPostStatus === 'success' ? 'rgba(16,185,129,0.15)' : fbPostStatus === 'error' ? 'rgba(239,68,68,0.15)' : undefined,
-                borderColor: fbPostStatus === 'success' ? 'rgba(16,185,129,0.4)' : fbPostStatus === 'error' ? 'rgba(239,68,68,0.4)' : undefined,
-              }}
-            >
-              {fbPostStatus === 'sending' ? <Loader2 size={16} className="spinner-icon" /> : fbPostStatus === 'success' ? <Check size={16} color="#10b981" /> : fbPostStatus === 'error' ? <AlertTriangle size={16} color="#ef4444" /> : <Megaphone size={16} />}
-              <span>{fbPostStatus === 'sending' ? 'Posting...' : fbPostStatus === 'success' ? 'Posted!' : fbPostStatus === 'error' ? 'Failed' : 'Post to Facebook'}</span>
-            </button>
-          )}
-          {isMobile && isWebhookAuthorized && (
+          <button
+            className="details-iconbtn"
+            onClick={() => window.open(activeLink || earthquake?.link, '_blank', 'noopener')}
+            title="Open official record"
+            aria-label="Open official record"
+          >
+            <ExternalLink size={16} aria-hidden="true" />
+          </button>
+          {isWebhookAuthorized && (
             <div className="more-menu-wrap" ref={moreMenuRef}>
               <button
-                className="action-btn glass flex-center"
+                className="details-iconbtn"
                 onClick={() => setMoreMenuOpen((o) => !o)}
                 title="More actions"
+                aria-label="More actions"
                 aria-expanded={moreMenuOpen}
                 aria-haspopup="menu"
               >
-                <MoreHorizontal size={16} />
-                <span>More</span>
+                <MoreHorizontal size={16} aria-hidden="true" />
               </button>
               {moreMenuOpen && (
-                <div className="more-dropdown glass" role="menu">
+                <div className="more-dropdown" role="menu">
                   {isUsgs && (
                     <button className="more-item" role="menuitem" disabled={detailsLoading} onClick={() => { setMoreMenuOpen(false); setShowVideoReport(true); }}>
-                      <Clapperboard size={14} /> Video Report{detailsLoading ? '…' : ''}
+                      <Clapperboard size={14} aria-hidden="true" /> Video report{detailsLoading ? '…' : ''}
                     </button>
                   )}
                   <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handleCopyDescription(); }}>
-                    {copiedDesc ? <Check size={14} color="#10b981" /> : <Copy size={14} />} Copy description
+                    {copiedDesc ? <Check size={14} className="details-ok" aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />} Copy description
                   </button>
                   <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handlePostVideo(); }} disabled={videoPostStatus === 'sending' || detailsLoading}>
-                    {videoPostStatus === 'sending' ? <Loader2 size={14} className="spinner-icon" /> : <Upload size={14} />} Post Video{detailsLoading ? '…' : ''}
+                    {videoPostStatus === 'sending' ? <Loader2 size={14} className="spinner-icon" aria-hidden="true" /> : <Upload size={14} aria-hidden="true" />} Post video{detailsLoading ? '…' : ''}
                   </button>
                   <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handleSendToWebhook(); }} disabled={webhookStatus === 'sending'}>
-                    <Send size={14} /> Send to Webhooks
+                    <Send size={14} aria-hidden="true" /> Send to webhook
                   </button>
                   <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handlePostToFacebook(); }} disabled={fbPostStatus === 'sending'}>
-                    <Megaphone size={14} /> Post to Facebook
+                    <Megaphone size={14} aria-hidden="true" /> Post to Facebook
                   </button>
                 </div>
               )}
@@ -1355,104 +1297,74 @@ export function Details() {
         </div>
       </div>
 
-      {/* Hero Header Card */}
-      <div
-        className={`details-hero glass${isEmsc ? ' details-hero--emsc' : isUsgs ? ' details-hero--usgs' : ''}`}
-        style={{
-          '--severity-color': color,
-          backgroundImage: isEmsc ? "url('/image-esmc.jpg')" : isUsgs ? "url('/image-usgs.jpg')" : "url('/image.png')",
-          backgroundRepeat: 'repeat',
-          backgroundSize: 'auto',
-          backgroundPosition: '0 0',
-          color: '#ffffffff'
+      {/* ── Event masthead ── */}
+      <header className="details-event">
+        <StaticMapCover lat={lat} lng={lng} />
+        <div className="details-event-veil" aria-hidden="true" />
+        <span className="details-event-accent" style={{ background: color }} aria-hidden="true" />
 
-        } as React.CSSProperties}
-      >
-        <div className="hero-backdrop-glow" style={{ backgroundColor: `${color}15` }}></div>
-        <div className="hero-content">
-          <div className="hero-left">
-            <span
-              className="hero-subtitle text-muted"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "left",
-                gap: "8px",
-              }}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="17"
-                height="17"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#ef4444"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="lucide lucide-activity"
-                aria-hidden="true"
-              >
-                <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />
-              </svg>
-              SEISMIC EVENT RECORDED
-            </span>
-            <h1 className="hero-title" style={{ color: '#ffffffff' }}>{earthquake.location}</h1>
-            <span className="hero-subtitle text-muted">{earthquake.datetime}</span>
-            <div className="coordinates-badge">
-              <MapPin size={14} style={{ color }} />
-              <span>{earthquake.latitude}°N, {earthquake.longitude}°E - {earthquake.depth} km depth</span>
-            </div>
-          </div>
-
-          <div className="hero-right">
-            <div className="magnitude-display" style={{ boxShadow: `0 0 30px ${color}30`, borderColor: color }}>
-              <div className="mag-glow" style={{ background: `radial-gradient(circle, ${color}30 0%, transparent 70%)` }}></div>
-              <span className="mag-num" style={{ color }}>{earthquake.magnitude}</span>
-              <span className="mag-txt">MAGNITUDE</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Dynamic Seismograph Animation */}
-        <div className="seismograph-container">
-          <svg
-            className="seismograph-svg"
-            viewBox="0 0 600 200"
-            preserveAspectRatio="none"
-            style={{
-              overflow: 'visible',
-              width: '100%',
-              height: '100%',
-            }}
-          >
-            {/* Baseline */}
-            <path
-              className="seismograph-line-static"
-              d="M 0 100 L 600 100"
-              stroke="rgba(255,255,255,0.08)"
-              strokeWidth="1"
-              fill="none"
-            />
-
-            {/* Seismograph Wave */}
-            <path
-              className="seismograph-line"
-              d={generateSeismographPath(mag)}
-              stroke={color}
-              strokeWidth="2"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-              style={{
-                animationDuration: `${Math.max(1, 4 - mag / 3)}s`,
-              }}
-            />
+        {/* Seismograph — background instrument layer behind the magnitude */}
+        <div className="details-event-trace" aria-hidden="true">
+          <svg viewBox="0 0 600 100" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="detailsTraceFade" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#fff" stopOpacity="0" />
+                <stop offset="28%" stopColor="#fff" stopOpacity="1" />
+                <stop offset="100%" stopColor="#fff" stopOpacity="1" />
+              </linearGradient>
+              <mask id="detailsTraceMask">
+                <rect x="0" y="0" width="600" height="100" fill="url(#detailsTraceFade)" />
+              </mask>
+            </defs>
+            <g mask="url(#detailsTraceMask)">
+              <path className="details-trace-baseline" d="M0 50 L600 50" />
+              <path className="details-trace-line" pathLength={1000} d={trace} style={{ stroke: color }} />
+              <path className="details-trace-pulse" pathLength={1000} d={trace} style={{ stroke: color, color }} />
+            </g>
           </svg>
         </div>
-        <div style={{ position: 'absolute', bottom: '20px', left: '5%', float: 'left', color: '#424242ff', fontSize: '12px' }}>Source data: {sourceLabel}</div>
-      </div>
+
+        <div className="details-event-main">
+          <div className="details-event-topline">
+            <span className="details-eyebrow">
+              <Activity size={13} style={{ color }} aria-hidden="true" />
+              TerraGuard · {sourceLabel}
+            </span>
+            {bulletin && (
+              <span className={`details-tag ${bulletin.final ? 'details-tag--final' : 'details-tag--preliminary'}`}>
+                {bulletin.final ? 'Final' : 'Preliminary'} · No. {bulletin.no}
+              </span>
+            )}
+          </div>
+
+          <h1 className="details-event-title">{earthquake.location}</h1>
+
+          <div className="details-chips">
+            <span className="details-chip">
+              <Clock size={13} aria-hidden="true" />
+              <span className="tnum">{earthquake.datetime}</span>
+            </span>
+            <span className="details-chip">
+              <MapPin size={13} aria-hidden="true" />
+              <span className="tnum">
+                {Math.abs(lat).toFixed(2)}° {lat >= 0 ? 'N' : 'S'}, {Math.abs(lng).toFixed(2)}° {lng >= 0 ? 'E' : 'W'}
+                {` · ${earthquake.depth} km deep`}
+              </span>
+            </span>
+            {nearestProvinces.length > 0 && (
+              <span className="details-chip details-chip--quiet">
+                Nearest · {nearestProvinces[0].name}
+              </span>
+            )}
+            <span className="details-event-age">{occurredAgo}</span>
+          </div>
+        </div>
+
+        <div className="details-mag">
+          <span className="details-mag-num tnum" style={{ color }}>{mag.toFixed(1)}</span>
+          <span className="details-mag-cap">Magnitude · {severityLabel}</span>
+        </div>
+      </header>
 
       {/* Tsunami status strip (from the reporting agency's bulletin text) */}
       {tsunamiInfo && (
@@ -1467,107 +1379,31 @@ export function Details() {
 
       {/* Bulletin navigation across the earthquake sequence */}
       {bulletins.length > 1 && (
-        <div className="details-card glass bulletin-nav">
-          <div className="flex-between" style={{ marginBottom: '14px' }}>
-            <h3 className="card-title" style={{ marginBottom: 0 }}>Information Bulletins</h3>
-            <span className="text-muted" style={{ fontSize: '0.8rem' }}>{bulletins.length} released</span>
-          </div>
+        <nav className="bulletin-nav" aria-label="Information bulletins">
+          <span className="bulletin-nav-label">
+            Bulletins
+            <span className="bulletin-nav-count tnum">{bulletins.length}</span>
+          </span>
           <div className="bulletin-chips">
             {bulletins.map((b) => (
               <button
                 key={b.url}
                 type="button"
                 className={`bulletin-chip ${activeLink === b.url ? 'active' : ''}`}
-                style={activeLink === b.url ? { background: color, borderColor: color, color: '#fff' } : undefined}
                 onClick={() => handleSelectBulletin(b)}
               >
-                No. {b.no}{b.final ? ' (Final)' : ''}
+                No. {b.no}{b.final ? ' · Final' : ''}
               </button>
             ))}
           </div>
-        </div>
+        </nav>
       )}
 
-      <div className="details-grid">
-        <div className="details-main-pane">
-
-
-          {/* Combined Map View */}
-          <div className="details-card glass map-card" style={{ display: 'flex', flexDirection: 'column' }}>
-            <div className="flex-between" style={{ marginBottom: '24px' }}>
-              <h3 className="card-title" style={{ marginBottom: 0 }}>Seismic Epicenter Location</h3>
-              {details && details.mapUrl && (
-                <div className="map-toggle-group" style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '4px' }}>
-                  <button 
-                    className={`map-toggle-btn ${mapView === 'interactive' ? 'active' : ''}`}
-                    onClick={() => setMapView('interactive')}
-                    style={{ 
-                      padding: '6px 12px', 
-                      borderRadius: '6px', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '6px',
-                      background: mapView === 'interactive' ? color : 'transparent',
-                      color: mapView === 'interactive' ? '#fff' : 'var(--text-secondary)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                      fontWeight: 600,
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <MapIcon size={14} />{!isMobile && ' Interactive'}
-                  </button>
-                  <button 
-                    className={`map-toggle-btn ${mapView === 'official' ? 'active' : ''}`}
-                    onClick={() => setMapView('official')}
-                    style={{ 
-                      padding: '6px 12px', 
-                      borderRadius: '6px', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '6px',
-                      background: mapView === 'official' ? color : 'transparent',
-                      color: mapView === 'official' ? '#fff' : 'var(--text-secondary)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                      fontWeight: 600,
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <ImageIcon size={14} />{!isMobile && ' Official'}
-                  </button>
-                  {isUsgs && (
-                    <button
-                      type="button"
-                      className={`map-overlay-btn${overlayPanelOpen ? ' active' : ''}`}
-                      onClick={() => setOverlayPanelOpen((o) => !o)}
-                      aria-label="Toggle map overlays"
-                      title="Map overlays"
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        background: overlayPanelOpen ? color : 'transparent',
-                        color: overlayPanelOpen ? '#fff' : 'var(--text-secondary)',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                        fontWeight: 600,
-                        transition: 'all 0.2s',
-                      }}
-                    >
-                      <Menu size={14} />{!isMobile && ' Overlays'}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+      {/* ── Situation map — full-width band; controls float on the canvas ── */}
+      <section className="map-band" aria-label="Epicenter map">
+        <div className="map-frame">
             {isUsgs && overlayPanelOpen && (
-              <div className="map-overlay-panel">
+              <div className="map-overlay-panel map-overlay-popover">
                 <div className="map-overlay-panel-header">USGS Overlays</div>
                 {!usgsProducts ? (
                   <div className="map-overlay-loading">Loading products…</div>
@@ -1630,7 +1466,7 @@ export function Details() {
               </div>
             )}
             
-            <div className="details-map-container" ref={mapContainerRef} style={{ flex: 1, minHeight: '380px' }}>
+            <div className="details-map-container" ref={mapContainerRef}>
               {mapView === 'interactive' ? (
                 !isNaN(lat) && !isNaN(lng) ? (
                   <MapContainer center={[lat, lng]} zoom={8} scrollWheelZoom={false} attributionControl={false} style={{ height: '100%', width: '100%', zIndex: 0 }}>
@@ -1648,14 +1484,18 @@ export function Details() {
                     />
                     <ActiveFaultsLayer />
                     {(() => {
-                      const pulseSize = Math.max(mag * 30, 50);
-                      const coreSize = Math.max(mag * 4, 12);
+                      // Cap the marker: a big ring over most of the map is noise, not emphasis.
+                      const pulseSize = Math.min(Math.max(mag * 22, 44), 92);
+                      const coreSize = Math.min(Math.max(mag * 2.4, 10), 15);
                       return (
                         <Marker
                           position={[lat, lng]}
                           icon={L.divIcon({
                             className: 'details-pulse-marker',
-                            html: `<div class="pulse-ring" style="--pulse-color: ${color}; width: ${pulseSize}px; height: ${pulseSize}px;"></div><div class="pulse-core" style="background-color: ${color}; width: ${coreSize}px; height: ${coreSize}px;"></div>`,
+                            html: `
+                              <span class="pulse-ring" style="--pulse-color: ${color}; width: ${pulseSize}px; height: ${pulseSize}px"></span>
+                              <span class="pulse-core" style="--pulse-color: ${color}; width: ${coreSize}px; height: ${coreSize}px"></span>
+                            `,
                             iconSize: [pulseSize, pulseSize],
                             iconAnchor: [pulseSize / 2, pulseSize / 2],
                           })}
@@ -1684,222 +1524,279 @@ export function Details() {
                   <div className="flex-center" style={{ height: '100%' }}>Invalid Coordinates</div>
                 )
               ) : (
-                <div className="official-map-container flex-center" style={{ height: '100%', padding: '10px' }}>
+                <div className="official-map-container flex-center">
                   <div className="official-map-wrapper" onClick={() => setIsImageModalOpen(true)}>
                     <img 
                       src={details?.mapUrl} 
                       alt={`Official map for earthquake in ${earthquake.location}`} 
-                      style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
                     />
                   </div>
                 </div>
               )}
             </div>
+
+            {/* Floating view transport — sits on the canvas, not above it */}
+            {details && details.mapUrl && (
+              <div className="map-float-controls" role="tablist" aria-label="Map view">
+                <button
+                  className={`map-toggle-btn ${mapView === 'interactive' ? 'active' : ''}`}
+                  onClick={() => setMapView('interactive')}
+                  aria-pressed={mapView === 'interactive'}
+                >
+                  <MapIcon size={14} aria-hidden="true" />{!isMobile && ' Interactive'}
+                </button>
+                <button
+                  className={`map-toggle-btn ${mapView === 'official' ? 'active' : ''}`}
+                  onClick={() => setMapView('official')}
+                  aria-pressed={mapView === 'official'}
+                >
+                  <ImageIcon size={14} aria-hidden="true" />{!isMobile && ' Official'}
+                </button>
+                {isUsgs && (
+                  <button
+                    type="button"
+                    className={`map-overlay-btn${overlayPanelOpen ? ' active' : ''}`}
+                    onClick={() => setOverlayPanelOpen((o) => !o)}
+                    aria-label="Toggle map overlays"
+                    aria-pressed={overlayPanelOpen}
+                    title="Map overlays"
+                  >
+                    <Menu size={14} aria-hidden="true" />{!isMobile && ' Overlays'}
+                  </button>
+                )}
+              </div>
+            )}
+        </div>
+      </section>
+
+      {/* ── Fact strip — the numbers an agency bulletin leads with; no card chrome ── */}
+      <div className="fact-scroll-wrap">
+        <section className="fact-strip" aria-label="Key earthquake facts">
+        <div className="fact-cell">
+          <span className="fact-label">Origin time</span>
+          <span className="fact-value tnum">{earthquake.datetime}</span>
+          {occurredAgo && <span className="fact-sub">{occurredAgo}</span>}
+        </div>
+        <div className="fact-cell">
+          <span className="fact-label">Depth</span>
+          <span className="fact-value tnum">{earthquake.depth}<span className="fact-unit"> km</span></span>
+          <span className="fact-sub">{parseFloat(earthquake.depth) < 70 ? 'Shallow focus' : parseFloat(earthquake.depth) <= 300 ? 'Intermediate focus' : 'Deep focus'}</span>
+        </div>
+        <div className="fact-cell">
+          <span className="fact-label">Coordinates</span>
+          <span className="fact-value tnum">{Math.abs(lat).toFixed(2)}° {lat >= 0 ? 'N' : 'S'}, {Math.abs(lng).toFixed(2)}° {lng >= 0 ? 'E' : 'W'}</span>
+          <span className="fact-sub">Epicenter</span>
+        </div>
+        <div className="fact-cell">
+          <span className="fact-label">Energy equivalent</span>
+          <span className="fact-value fact-value--soft tnum">≈ {calculateEnergy(mag)}</span>
+          <span className="fact-sub">Estimated from magnitude</span>
+        </div>
+        <div className="fact-cell">
+          <span className="fact-label">{bulletin ? 'Bulletin' : 'Source record'}</span>
+          <span className="fact-value">{bulletin ? `No. ${bulletin.no}` : reportingAgency}</span>
+          <span className="fact-sub">{bulletin ? `${bulletin.final ? 'Final' : 'Preliminary'} · ${reportingAgency}` : 'Reporting agency'}</span>
+        </div>
+        </section>
+        {/* Mobile-only affordance: the strip scrolls horizontally */}
+        <p className="fact-scroll-hint" aria-hidden="true">
+          <ChevronsRight size={14} aria-hidden="true" />
+          Swipe to see more
+        </p>
+      </div>
+
+      {/* ── The one takeaway — always visible ── */}
+      <section className="assessment-band" aria-label="Impact assessment">
+        <div className="assessment-inner">
+          <div className="assessment-main">
+            <div className="section-head">
+              <h2 className="section-title">What this means</h2>
+              <span className="section-note">Magnitude {mag.toFixed(1)} · {severityLabel}</span>
+            </div>
+            <p className="assessment-lead">
+              {mag < 4 ? "Generally not felt by people, but recorded by seismographs and networks near the epicenter." :
+                mag < 5 ? "Felt by many indoors, fewer outdoors. Shaking of indoor items and windows is common." :
+                  mag < 6 ? "Felt by everyone. Slight damage to poorly constructed buildings; generally safe for modern structures." :
+                    mag < 7 ? "Can cause moderate to severe damage to standard buildings within the epicentral zone." :
+                      "Major earthquake. High potential for severe damage, ground rupture, and risk to life over wider regions."}
+            </p>
+            {detailsLoading ? (
+              <div className="assessment-origin" aria-busy="true">
+                <span className="pulse-loader" style={{ width: '18px', height: '18px', borderColor: color, borderWidth: '2px' }} />
+              </div>
+            ) : details && details.origin && (
+              <div className="assessment-origin">
+                <span className="assessment-fact-label">Origin</span>
+                <p className="origin-text">
+                  {originExpanded ? details.origin : `${truncateWords(details.origin, 26)}${details.origin.split(/\s+/).length > 26 ? '…' : ''}`}
+                </p>
+                {details.origin.split(/\s+/).length > 26 && (
+                  <button type="button" className="params-toggle" onClick={() => setOriginExpanded(prev => !prev)}>
+                    {originExpanded ? 'See less' : 'Read full note'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Richter Scale & Key Details */}
-          <div className="details-card glass">
-            <h3 className="card-title">Key Parameters</h3>
-            <div className="info-grid">
-              <div className="info-item glass-card">
-                <Clock size={20} className="info-icon" style={{ color }} />
-                <div>
-                  <div className="info-label">Date &amp; Time</div>
-                  <div className="info-value">{earthquake.datetime}</div>
-                  {occurredAgo && <div className="info-subvalue">{occurredAgo}</div>}
-                </div>
-              </div>
-              <div className="info-item glass-card">
-                <Activity size={20} className="info-icon" style={{ color }} />
-                <div>
-                  <div className="info-label">Depth of Focus</div>
-                  <div className="info-value">{earthquake.depth} km</div>
-                </div>
-              </div>
-              <div className="info-item glass-card">
-                <Zap size={20} className="info-icon" style={{ color }} />
-                <div>
-                  <div className="info-label">Energy Equivalent</div>
-                  <div className="info-value">{calculateEnergy(mag)}</div>
-                </div>
-              </div>
-              <div className="info-item glass-card">
-                <Info size={20} className="info-icon" style={{ color }} />
-                <div>
-                  <div className="info-label">Reporting Agency</div>
-                  <div className="info-value">{reportingAgency}</div>
-                </div>
-              </div>
-              {bulletin && (
-                <div className="info-item glass-card" style={{ gridColumn: 'span 2' }}>
-                  <Info size={20} className="info-icon" style={{ color }} />
-                  <div>
-                    <div className="info-label">Information Bulletin</div>
-                    <div className="info-value">No. {bulletin.no}{bulletin.final ? ' (Final)' : ''}</div>
-                  </div>
-                </div>
-              )}
-              {detailsLoading ? (
-                <div className="info-item glass-card flex-center" style={{ gridColumn: 'span 2', minHeight: '60px' }}>
-                  <div className="pulse-loader" style={{ width: '20px', height: '20px', borderColor: color, borderWidth: '2px' }}></div>
-                </div>
-              ) : details && details.origin && (
-                <div className="info-item glass-card" style={{ gridColumn: 'span 2' }}>
-                  <Info size={20} className="info-icon" style={{ color }} />
-                  <div>
-                    <div className="info-label">Origin</div>
-                    {details.origin.length < 80 ? (
-                      <div className="info-value" style={{ textTransform: 'capitalize' }}>{details.origin.toLowerCase()}</div>
-                    ) : (
-                      <>
-                        <div className="info-value" style={{ fontSize: '0.85rem', lineHeight: 1.5, fontWeight: 'normal' }}>
-                          {originExpanded ? details.origin : `${truncateWords(details.origin, 30)}...`}
-                        </div>
-                        <button
-                          onClick={() => setOriginExpanded(prev => !prev)}
-                          style={{ background: 'none', border: 'none', padding: 0, color: '#60a5fa', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
-                        >
-                          {originExpanded ? 'See less' : 'See more...'}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
+          <div className="assessment-side">
+            <div className="assessment-fact">
+              <span className="assessment-fact-label">Maximum intensity</span>
+              <span
+                className={`assessment-fact-value tnum${(() => {
+                  const maxI = extractMaxIntensity(details?.instrumentalIntensities, details?.reportedIntensities);
+                  return maxI && /^[IVXLCDM]+$/i.test(maxI) ? ` intensity-${maxI.toUpperCase()}` : '';
+                })()}`}
+              >
+                {(() => {
+                  const maxI = extractMaxIntensity(details?.instrumentalIntensities, details?.reportedIntensities);
+                  return maxI ? `Intensity ${maxI}` : detailsLoading ? 'Loading…' : 'Not published yet';
+                })()}
+              </span>
             </div>
-
-            {/* Richter Scale Visualizer */}
-            <div className="richter-visualizer">
-              <div className="richter-labels flex-between">
-                <span>Richter Scale</span>
-                <span style={{ color, fontWeight: 700 }}>M{mag} - {severityLabel}</span>
-              </div>
-              <div className="richter-bar-container">
-                <div className="richter-bar-bg"></div>
-                <div className="richter-bar-fill" style={{ width: `${Math.min(mag * 10, 100)}%`, background: `linear-gradient(to right, #10b981 0%, ${color} 100%)` }}></div>
-                <div className="richter-marker" style={{ left: `${Math.min(mag * 10, 100)}%`, backgroundColor: color, boxShadow: `0 0 12px ${color}` }}></div>
-              </div>
-              <div className="richter-ticks flex-between">
-                <span>1.0</span>
-                <span>3.0</span>
-                <span>5.0</span>
-                <span>7.0</span>
-                <span>9.0+</span>
-              </div>
+            <div className="assessment-fact">
+              <span className="assessment-fact-label">Potential shaking zone</span>
+              <span className="assessment-fact-value">{mag < 4.5 ? 'Local' : mag < 6 ? 'Regional' : 'Widespread'}</span>
             </div>
           </div>
         </div>
+      </section>
 
+      {/* ── Secondary findings — tabbed progressive disclosure ── */}
+      <div className="details-tabs" role="tablist" aria-label="More for this earthquake">
+        <button
+          type="button"
+          role="tab"
+          id="tab-shaking"
+          className={`details-tab${activeTab === 'shaking' ? ' active' : ''}`}
+          aria-selected={activeTab === 'shaking'}
+          aria-controls="panel-shaking"
+          tabIndex={activeTab === 'shaking' ? 0 : -1}
+          onClick={() => setActiveTab('shaking')}
+          onKeyDown={(e) => onTabKeyDown(e, 'shaking')}
+        >
+          Shaking reports
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="tab-places"
+          className={`details-tab${activeTab === 'places' ? ' active' : ''}`}
+          aria-selected={activeTab === 'places'}
+          aria-controls="panel-places"
+          tabIndex={activeTab === 'places' ? 0 : -1}
+          onClick={() => setActiveTab('places')}
+          onKeyDown={(e) => onTabKeyDown(e, 'places')}
+        >
+          Nearby places
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="tab-aftershocks"
+          className={`details-tab${activeTab === 'aftershocks' ? ' active' : ''}`}
+          aria-selected={activeTab === 'aftershocks'}
+          aria-controls="panel-aftershocks"
+          tabIndex={activeTab === 'aftershocks' ? 0 : -1}
+          onClick={() => setActiveTab('aftershocks')}
+          onKeyDown={(e) => onTabKeyDown(e, 'aftershocks')}
+        >
+          Aftershocks
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="tab-safety"
+          className={`details-tab${activeTab === 'safety' ? ' active' : ''}`}
+          aria-selected={activeTab === 'safety'}
+          aria-controls="panel-safety"
+          tabIndex={activeTab === 'safety' ? 0 : -1}
+          onClick={() => setActiveTab('safety')}
+          onKeyDown={(e) => onTabKeyDown(e, 'safety')}
+        >
+          Safety protocol
+        </button>
+      </div>
 
-
-        <div className="details-sidebar-pane">
-          {/* Impact assessment */}
-          <div className="impact-card glass" style={{ borderTop: `4px solid ${color}` }}>
-            <h3 className="card-title flex-center" style={{ gap: '8px', justifyContent: 'flex-start' }}>
-              <ShieldAlert size={20} style={{ color }} />
-              Impact Assessment
-            </h3>
-            <div className="impact-severity" style={{ color }}>{severityLabel}</div>
-            <p className="impact-desc text-muted">
-              {mag < 4 ? "Generally not felt by people, but recorded by local seismographs near the epicenter." :
-                mag < 5 ? "Felt by many indoors, some outdoors. Shaking of indoor items and windows is common." :
-                  mag < 6 ? "Felt by everyone. Slight damage to poorly constructed buildings; generally safe for modern structures." :
-                    mag < 7 ? "Can cause moderate to severe damage to standard buildings and structures within the epicentral zone." :
-                      "Major earthquake. High potential for severe damage, ground rupture, and risk to life over wider regions."}
-            </p>
-
-            <div className="pop-estimate flex-center glass-card" style={{ marginTop: '20px', padding: '14px', gap: '12px' }}>
-              <Users size={20} className="text-muted" />
-              <div style={{ flex: 1 }}>
-                <div className="info-label">Potential Shaking Zone</div>
-                <div className="info-value">{mag < 4.5 ? "Local Only" : mag < 6 ? "Regional Alert" : "Widespread"}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Nearest provinces/cities by epicenter distance */}
-          {nearestProvinces.length > 0 && (
-            <div className="details-card glass" style={{ marginTop: '20px' }}>
-              <h3 className="card-title flex-center" style={{ gap: '8px', justifyContent: 'flex-start' }}>
-                <Navigation size={20} style={{ color }} />
-                Nearest Provinces
-              </h3>
-              <ul className="nearby-list">
-                {nearestProvinces.map((p, idx) => (
-                  <li key={p.name} className="nearby-item">
-                    <span className="nearby-rank" style={{ color }}>{idx + 1}</span>
-                    <span className="nearby-name" title={p.name}>{isMobile && p.name.length > 15 ? `${p.name.slice(0, 15)}…` : p.name}</span>
-                    <span className="nearby-distance">{p.km.toLocaleString()} km</span>
-                    {p.km <= 50 ? (
-                      <span className="nearby-flag nearby-flag--close">Within 50 km</span>
-                    ) : p.km <= 150 ? (
-                      <span className="nearby-flag nearby-flag--near">&lt;150 km</span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Aftershock Tracker */}
-          <AftershockTracker currentEarthquake={earthquake} />
-
-          {/* Intensities from PHIVOLCS */}
+      <div className="details-tabpanel" role="tabpanel" id="panel-shaking" aria-labelledby="tab-shaking" tabIndex={0} hidden={activeTab !== 'shaking'}>
+        <p className="panel-note">Felt-report tables published by the agency, when available.</p>
+        <div className="intensities-body">
           {detailsLoading ? (
-             <div className="safety-card glass flex-center" style={{ marginTop: '20px', minHeight: '120px' }}>
-               <div className="pulse-loader" style={{ width: '30px', height: '30px', borderColor: 'var(--color-minor)' }}></div>
-             </div>
+            <div className="intensities-loading" aria-busy="true" aria-label="Loading intensities">
+              <span className="pulse-loader" style={{ width: '24px', height: '24px', borderColor: color, borderWidth: '2px' }} />
+            </div>
           ) : details && (details.reportedIntensities || details.instrumentalIntensities) ? (
-            <div className="safety-card glass" style={{ marginTop: '20px' }}>
-              <h3 className="card-title">Intensities</h3>
+            <>
               {details.reportedIntensities && (
-                <div style={{ marginBottom: '16px' }}>
-                  <h4 style={{ color: 'var(--color-minor)', marginBottom: '8px' }}>Reported</h4>
+                <div className="intensities-group">
+                  <span className="intensities-cap">Reported — from residents</span>
                   {renderIntensities(details.reportedIntensities)}
                 </div>
               )}
               {details.instrumentalIntensities && (
-                <div>
-                  <h4 style={{ color: 'var(--color-minor)', marginBottom: '8px' }}>Instrumental</h4>
+                <div className="intensities-group">
+                  <span className="intensities-cap">Instrumental — from ground sensors</span>
                   {renderIntensities(details.instrumentalIntensities)}
                 </div>
               )}
-              {details.note && (
-                <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', fontSize: '0.85rem' }} className="text-muted">
-                  {details.note}
-                </div>
-              )}
+              {details.note && <div className="intensities-note">{details.note}</div>}
+            </>
+          ) : (
+            <div className="intensities-empty">
+              <p>No intensity tables have been published for this event. Agencies issue them only when people report feeling the shaking.</p>
             </div>
-          ) : null}
-
-          {/* Safety Guidelines */}
-          <div className="safety-card glass">
-            <h3 className="card-title">Safety Protocol</h3>
-            <div className="safety-timeline">
-              <div className="safety-step">
-                <div className="step-indicator">1</div>
-                <div className="step-content">
-                  <h4>Before Shaking</h4>
-                  <p>Secure overhead shelves, heavy appliances, and emergency supplies.</p>
-                </div>
-              </div>
-              <div className="safety-step">
-                <div className="step-indicator">2</div>
-                <div className="step-content">
-                  <h4>During Shaking</h4>
-                  <p><strong>DROP, COVER, and HOLD ON.</strong> Protect your head, stay clear of glass.</p>
-                </div>
-              </div>
-              <div className="safety-step">
-                <div className="step-indicator">3</div>
-                <div className="step-content">
-                  <h4>After Shaking</h4>
-                  <p>Check for structural hazards, anticipate potential aftershocks, monitor official reports.</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
+      </div>
+
+      <div className="details-tabpanel" role="tabpanel" id="panel-places" aria-labelledby="tab-places" tabIndex={0} hidden={activeTab !== 'places'}>
+        <p className="panel-note">Provinces and cities ranked by distance from the epicenter.</p>
+        {nearestProvinces.length > 0 ? (
+          <ul className="nearby-list">
+            {nearestProvinces.map((p, idx) => (
+              <li key={p.name} className={`nearby-item${idx === 0 ? ' nearby-item--closest' : ''}`}>
+                <span className="nearby-distance tnum">{p.km.toLocaleString()} km</span>
+                <span className="nearby-name" title={p.name}>{isMobile && p.name.length > 15 ? `${p.name.slice(0, 15)}…` : p.name}</span>
+                {p.km <= 50 && idx === 0 && <span className="nearby-flag nearby-flag--close">Closest</span>}
+                {p.km > 50 && p.km <= 150 && <span className="nearby-flag nearby-flag--near">&lt;150 km</span>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="panel-empty">No populated places tracked within the usual monitoring radius for this event.</p>
+        )}
+      </div>
+
+      <div className="details-tabpanel" role="tabpanel" id="panel-aftershocks" aria-labelledby="tab-aftershocks" tabIndex={0} hidden={activeTab !== 'aftershocks'}>
+        <p className="panel-note">PHIVOLCS records within 100 km, in the days since this event.</p>
+        <AftershockTracker currentEarthquake={earthquake} />
+      </div>
+
+      <div className="details-tabpanel" role="tabpanel" id="panel-safety" aria-labelledby="tab-safety" tabIndex={0} hidden={activeTab !== 'safety'}>
+        <p className="panel-note">Official guidance from PHIVOLCS-DOST.</p>
+        <ol className="safety-steps">
+          <li className="safety-step">
+            <span className="safety-step-num tnum" aria-hidden="true">01</span>
+            <div>
+              <h3 className="safety-step-title">Before it happens</h3>
+              <p className="safety-step-text">Secure overhead shelves, heavy appliances, and emergency supplies. Know the safe spots in every room.</p>
+            </div>
+          </li>
+          <li className="safety-step">
+            <span className="safety-step-num tnum" aria-hidden="true">02</span>
+            <div>
+              <h3 className="safety-step-title">During the shaking</h3>
+              <p className="safety-step-text"><strong>DROP, COVER, and HOLD ON.</strong> Protect your head and neck, and stay clear of glass and heavy furniture.</p>
+            </div>
+          </li>
+          <li className="safety-step">
+            <span className="safety-step-num tnum" aria-hidden="true">03</span>
+            <div>
+              <h3 className="safety-step-title">After the shaking</h3>
+              <p className="safety-step-text">Check for structural hazards, expect aftershocks, and monitor official PHIVOLCS bulletins.</p>
+            </div>
+          </li>
+        </ol>
       </div>
 
       {/* Community: star, like, comments */}
@@ -1909,6 +1806,16 @@ export function Details() {
       {earthquake && (
         <CommunitySection key={earthquakeToEqId(earthquake)} eqId={earthquakeToEqId(earthquake)} earthquake={earthquake} />
       )}
+
+      {/* Provenance & source attribution */}
+      <footer className="details-provenance">
+        <span className="details-provenance-text">
+          Source: {reportingAgency}{bulletin ? ` · Bulletin No. ${bulletin.no}${bulletin.final ? ' (Final)' : ''}` : ''} · Event parameters are preliminary and may be revised by the reporting agency.
+        </span>
+        <a className="details-provenance-link" href={activeLink || earthquake?.link} target="_blank" rel="noopener noreferrer">
+          Open the official record <ArrowRight size={12} aria-hidden="true" />
+        </a>
+      </footer>
 
       <ImageModal
         isOpen={isImageModalOpen}
@@ -1927,12 +1834,10 @@ export function Details() {
           onClose={() => setShowVideoReport(false)}
         />
       )}
-      </motion.div>
+      </div>
 
       {/* Revision toast: old link -> the reporting agency revised the event.
-          Rendered outside the motion.div so position: fixed stays
-          viewport-relative (a transformed ancestor would otherwise become its
-          containing block). */}
+          Rendered outside details-page so position: fixed stays viewport-relative. */}
       {revisionInfo && <RevisionToast key={id} info={revisionInfo} sourceName={pref === 'usgs' ? 'USGS' : pref === 'emsc' ? 'EMSC' : 'PHIVOLCS'} />}
     </>
   );

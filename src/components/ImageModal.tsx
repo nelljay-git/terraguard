@@ -47,7 +47,7 @@ export function ImageModal({ isOpen, onClose, imageUrl, altText }: ImageModalPro
           }}
         >
           <div className="image-modal-toolbar">
-            <div className="image-modal-actions glass">
+            <div className="image-modal-actions">
               <button className="image-modal-btn" onClick={() => setScale((s) => Math.min(s + 0.5, 5))} title="Zoom In">
                 <ZoomIn size={18} />
               </button>

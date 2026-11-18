@@ -1,134 +1,156 @@
-.history-container {
-  padding: 20px 0;
-  display: flex;
-  justify-content: center;
-}
+/* ══════════ TerraGuard — Update History (Mission Deck) ══════════ */
 
-.history-card {
-  width: 100%;
-  max-width: 800px;
-  padding: 30px;
-  border-radius: 20px;
+.history-page {
+  max-width: 880px;
+  padding-bottom: 64px;
 }
 
 .history-header {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-bottom: 40px;
-  border-bottom: 1px solid var(--glass-border);
-  padding-bottom: 20px;
+  gap: 14px;
+  margin-bottom: 26px;
 }
 
-.history-title-wrapper {
-  justify-content: flex-start;
-  gap: 12px;
+.history-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 6px 10px 6px 4px;
+  border-radius: var(--tg-radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--tg-text-3);
+  transition: color 0.15s ease;
 }
 
-.history-icon {
-  color: var(--color-minor);
+.history-back:hover { color: var(--tg-text); }
+.history-back:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+
+.history-kicker {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--tg-text-3);
 }
 
 .history-title {
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 2px 0 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--tg-text);
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--tg-hairline);
 }
 
+.history-title svg { color: #60a5fa; }
+
+.history-subtitle {
+  margin: 10px 0 0;
+  font-size: 0.86rem;
+  color: var(--tg-text-2);
+}
+
+/* Timeline — editorial, hairline rail + severity dot */
 .history-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 30px;
-  position: relative;
-}
-
-.history-timeline::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 20px;
-  width: 2px;
-  background: var(--glass-border);
 }
 
 .timeline-item {
-  display: flex;
-  gap: 20px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 18px;
   position: relative;
 }
 
-.timeline-marker {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: var(--bg-primary);
-  border: 2px solid var(--color-minor);
-  color: var(--color-minor);
+.timeline-rail {
+  position: relative;
   display: flex;
-  align-items: center;
   justify-content: center;
+}
+
+.timeline-rail::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  bottom: -14px;
+  left: 50%;
+  width: 1px;
+  background: var(--tg-hairline);
+}
+
+.timeline-item:last-child .timeline-rail::after { display: none; }
+
+.timeline-dot {
+  position: relative;
   z-index: 1;
-  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: #3b82f6;
+  outline: 4px solid var(--bg-primary, #080d17);
 }
 
 .timeline-content {
-  flex: 1;
-  padding: 20px;
+  padding: 16px 20px 18px;
+  margin-bottom: 16px;
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  background: var(--tg-panel);
 }
 
 .timeline-header {
-  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
 }
 
 .version-badge {
-  background: rgba(59, 130, 246, 0.15);
-  color: #60a5fa;
-  padding: 4px 10px;
-  border-radius: 6px;
+  padding: 3px 11px;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: var(--tg-radius-sm);
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+  font-size: 0.78rem;
   font-weight: 700;
-  font-size: 0.9rem;
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  letter-spacing: 0.02em;
 }
 
 .version-date {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-weight: 500;
+  font-size: 0.8rem;
+  color: var(--tg-text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 .version-changes {
   margin: 0;
-  padding-left: 20px;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  line-height: 1.6;
-}
-
-.version-changes li {
-  margin-bottom: 8px;
-}
-
-.version-changes li:last-child {
-  margin-bottom: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--tg-text-2);
+  font-size: 0.88rem;
+  line-height: 1.62;
 }
 
 @media (max-width: 640px) {
-  .history-card {
-    padding: 20px;
-  }
-  
-  .history-timeline::before {
-    left: 16px;
-  }
-  
-  .timeline-marker {
-    width: 34px;
-    height: 34px;
-  }
-  
-  .timeline-item {
-    gap: 14px;
-  }
+  .timeline-item { grid-template-columns: 18px minmax(0, 1fr); gap: 12px; }
+  .timeline-content { padding: 14px 14px 16px; }
+  .history-title { font-size: 1.3rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-back { transition: none; }
 }

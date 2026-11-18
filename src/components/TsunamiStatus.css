@@ -1,0 +1,162 @@
+.tsunami-card {
+  padding: 20px 22px;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.tsunami-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tsunami-head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.tsunami-head-left h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  white-space: nowrap;
+}
+.tsunami-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  white-space: nowrap;
+}
+.tsunami-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tsunami-count {
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.tsunami-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: var(--tg-text-2);
+  cursor: pointer;
+}
+.tsunami-refresh:hover { background: rgba(255,255,255,0.08); }
+.tsunami-refresh .spin { animation: tsunSpin 0.8s linear infinite; }
+
+.tsunami-skeleton,
+.tsunami-empty {
+  padding: 18px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px dashed rgba(255,255,255,0.08);
+  font-size: 0.85rem;
+  color: var(--tg-text-3);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.tsunami-empty strong { color: #4ade80; }
+
+.tsunami-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tsunami-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-left: 3px solid var(--color-moderate, #f97316);
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s;
+}
+.tsunami-item:hover {
+  transform: translateY(-1px);
+  background: rgba(255,255,255,0.05);
+}
+.tsunami-item-mag {
+  flex: 0 0 auto;
+  width: 46px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.95rem;
+  border-radius: 10px;
+  padding: 6px 0;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.tsunami-item-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.tsunami-item-loc {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary, #f1f5f9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tsunami-item-meta {
+  font-size: 0.7rem;
+  color: var(--tg-text-3);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tsunami-item-adv {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #60a5fa;
+  white-space: nowrap;
+}
+.tsunami-foot {
+  font-size: 0.7rem;
+  margin: 0;
+}
+
+@keyframes tsunSpin { to { transform: rotate(360deg); } }
+
+@media (max-width: 640px) {
+  .tsunami-card { padding: 16px; }
+  .tsunami-item-mag { width: 40px; font-size: 0.85rem; }
+  .tsunami-badge { display: none; }
+}
+
+/* Mission Deck flat panel chrome (replaces glass) */
+.tsunami-card {
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  background: var(--tg-panel);
+}

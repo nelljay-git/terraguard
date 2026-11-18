@@ -49,7 +49,7 @@
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.08);
   background: rgba(255,255,255,0.04);
-  color: var(--text-secondary);
+  color: var(--tg-text-2);
   cursor: pointer;
 }
 .volcano-refresh:hover { background: rgba(255,255,255,0.08); }
@@ -61,7 +61,7 @@
   background: rgba(255,255,255,0.03);
   border: 1px dashed rgba(255,255,255,0.08);
   font-size: 0.85rem;
-  color: var(--text-muted);
+  color: var(--tg-text-3);
 }
 
 .volcano-grid {
@@ -130,7 +130,7 @@ button.volcano-item {
   gap: 4px;
   font-size: 0.7rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--tg-text-3);
   margin-top: 2px;
 }
 .volcano-foot {
@@ -139,3 +139,10 @@ button.volcano-item {
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Mission Deck flat panel chrome (replaces glass) */
+.volcano-card {
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  background: var(--tg-panel);
+}

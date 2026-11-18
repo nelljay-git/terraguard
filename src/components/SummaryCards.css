@@ -1,81 +1,115 @@
-.summary-cards {
+/* Rolling figure strip — one flat panel, hairline dividers, no icons */
+.tg-stats {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  background: var(--tg-panel);
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  overflow: hidden;
 }
 
-.summary-card {
+.tg-stat {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px 16px;
-  border-radius: 16px;
-  overflow: hidden;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.summary-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.25);
-}
-
-.sc-accent-line {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 3px;
-  opacity: 0.6;
-  border-radius: 0 0 16px 16px;
-}
-
-.sc-icon-wrap {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.sc-body {
-  display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
+  padding: 16px 18px 14px;
   min-width: 0;
 }
 
-.sc-label {
-  font-size: 0.7rem;
-  color: var(--text-muted);
+.tg-stat-divider {
+  position: absolute;
+  left: 0;
+  top: 16%;
+  bottom: 16%;
+  width: 4px;
+  border-radius: 2px;
+  opacity: 0.85;
+}
+
+/* Leading cell — keep the tick clear of the rounded corner and give it air */
+.tg-stat:first-child { padding-left: 28px; }
+.tg-stat:first-child .tg-stat-divider { left: 12px; }
+
+.tg-stat-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 600;
+  color: var(--tg-text-3);
+  white-space: nowrap;
 }
 
-.sc-value {
-  font-size: 1.5rem;
-  font-weight: 800;
-  line-height: 1.1;
-  color: var(--text-primary);
+.tg-stat-value {
+  font-family: var(--tg-mono);
+  font-weight: 700;
+  font-size: 2.1rem;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  color: var(--tg-text);
+  font-variant-numeric: tabular-nums;
 }
 
-.sc-desc {
-  font-size: 0.65rem;
-  color: var(--text-muted);
-  margin-top: 2px;
+.tg-stat-cap {
+  font-size: 0.68rem;
+  color: var(--tg-text-2);
 }
 
 @media (max-width: 1100px) {
-  .summary-cards {
-    grid-template-columns: repeat(3, 1fr);
-  }
+  .tg-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tg-stat:nth-child(n + 4) { border-top: 1px solid var(--tg-hairline-soft); }
+  .tg-stat-divider { display: none; }
+  .tg-stat:nth-child(3n + 2) .tg-stat-divider,
+  .tg-stat:nth-child(3n + 3) .tg-stat-divider { display: block; }
 }
 
 @media (max-width: 640px) {
-  .summary-cards {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .tg-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tg-stat:nth-child(n + 3) { border-top: 1px solid var(--tg-hairline-soft); }
+  .tg-stat:nth-child(2n) .tg-stat-divider { display: block; }
+  .tg-stat:nth-child(3n + 2) .tg-stat-divider,
+  .tg-stat:nth-child(3n + 3) .tg-stat-divider { display: none; }
+  .tg-stat-value { font-size: 1.8rem; }
+}
+
+/* ---------- Magnitude Trend panel ---------- */
+.tg-chart-panel {
+  display: block;
+  min-width: 0;
+  background: var(--tg-panel);
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius);
+  overflow: hidden;
+}
+
+.tg-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--tg-hairline);
+}
+
+.tg-chart-title {
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tg-text-2);
+}
+
+.tg-chart-note {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tg-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-chart-body {
+  height: 240px;
+  padding: 12px 10px 14px;
 }
