@@ -122,14 +122,14 @@ export function AftershockTracker({ currentEarthquake }: AftershockTrackerProps)
 
   if (aftershocks.length === 0) {
     return (
-      <p className="ast-empty">No aftershocks detected within {AFTERSHOCK_RADIUS_KM} km of the epicenter since this event (PHIVOLCS records).</p>
+      <p className="ast-empty">No aftershocks detected within {AFTERSHOCK_RADIUS_KM} km of the epicenter since this event (PHIVOLCS records, covering the Philippines).</p>
     );
   }
 
   return (
     <>
       <p className="ast-summary">
-        <span className="tnum">{aftershocks.length}</span> aftershock{aftershocks.length !== 1 ? 's' : ''} recorded within {AFTERSHOCK_RADIUS_KM} km since this event
+        <span className="tnum">{aftershocks.length}</span> aftershock{aftershocks.length !== 1 ? 's' : ''} recorded within {AFTERSHOCK_RADIUS_KM} km since this event (PHIVOLCS records)
       </p>
 
       <div className={`ast-list${aftershocks.length > 10 ? ' ast-list-scroll' : ''}`}>

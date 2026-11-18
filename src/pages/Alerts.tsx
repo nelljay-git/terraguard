@@ -38,7 +38,7 @@ export function Alerts() {
           <ul className="alerts-how-list">
             <li>Create alert zones by clicking locations on the map</li>
             <li>Set a magnitude threshold for each zone (e.g., M4.5+)</li>
-            <li>When the app is open and visible, it polls PHIVOLCS every 60 seconds</li>
+            <li>When the app is open and visible, it polls the feed you picked in Settings — PHIVOLCS by default, USGS or EMSC if you switched — every 60 seconds</li>
             <li>A matching event triggers a browser notification — after publication, not in advance</li>
             <li>Install TerraGuard as a PWA for the best chance of receiving alerts</li>
           </ul>

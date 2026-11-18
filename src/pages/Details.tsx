@@ -775,8 +775,14 @@ export function Details() {
 
     // Progressive disclosure — secondary findings live behind tabs so the map
     // and the assessment stay the screen's focus.
-    const SECONDARY_TABS = ['shaking', 'places', 'aftershocks', 'safety'] as const;
-    type SecondaryTab = typeof SECONDARY_TABS[number];
+    const ALL_SECONDARY_TABS = ['shaking', 'places', 'aftershocks', 'safety'] as const;
+    type SecondaryTab = typeof ALL_SECONDARY_TABS[number];
+    // Hidden unless the user is on the PHIVOLCS feed — the aftershocks
+    // component queries the PHIVOLCS-only aftershock list regardless of the
+    // event's source, so it is meaningless for USGS/EMSC accounts.
+    const SECONDARY_TABS: SecondaryTab[] = pref === 'phivolcs'
+      ? ['shaking', 'places', 'aftershocks', 'safety']
+      : ['shaking', 'places', 'safety'];
     const [activeTab, setActiveTab] = useState<SecondaryTab>('shaking');
     const onTabKeyDown = (e: KeyboardEvent<HTMLButtonElement>, current: SecondaryTab) => {
       if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
@@ -1690,19 +1696,21 @@ export function Details() {
         >
           Nearby places
         </button>
-        <button
-          type="button"
-          role="tab"
-          id="tab-aftershocks"
-          className={`details-tab${activeTab === 'aftershocks' ? ' active' : ''}`}
-          aria-selected={activeTab === 'aftershocks'}
-          aria-controls="panel-aftershocks"
-          tabIndex={activeTab === 'aftershocks' ? 0 : -1}
-          onClick={() => setActiveTab('aftershocks')}
-          onKeyDown={(e) => onTabKeyDown(e, 'aftershocks')}
-        >
-          Aftershocks
-        </button>
+        {pref === 'phivolcs' && (
+          <button
+            type="button"
+            role="tab"
+            id="tab-aftershocks"
+            className={`details-tab${activeTab === 'aftershocks' ? ' active' : ''}`}
+            aria-selected={activeTab === 'aftershocks'}
+            aria-controls="panel-aftershocks"
+            tabIndex={activeTab === 'aftershocks' ? 0 : -1}
+            onClick={() => setActiveTab('aftershocks')}
+            onKeyDown={(e) => onTabKeyDown(e, 'aftershocks')}
+          >
+            Aftershocks
+          </button>
+        )}
         <button
           type="button"
           role="tab"
@@ -1767,13 +1775,15 @@ export function Details() {
         )}
       </div>
 
-      <div className="details-tabpanel" role="tabpanel" id="panel-aftershocks" aria-labelledby="tab-aftershocks" tabIndex={0} hidden={activeTab !== 'aftershocks'}>
-        <p className="panel-note">PHIVOLCS records within 100 km, in the days since this event.</p>
-        <AftershockTracker currentEarthquake={earthquake} />
-      </div>
+      {pref === 'phivolcs' && (
+        <div className="details-tabpanel" role="tabpanel" id="panel-aftershocks" aria-labelledby="tab-aftershocks" tabIndex={0} hidden={activeTab !== 'aftershocks'}>
+          <p className="panel-note">Aftershocks (PHIVOLCS feed, Philippines-only) — within 100 km, in the days since this event.</p>
+          <AftershockTracker currentEarthquake={earthquake} />
+        </div>
+      )}
 
       <div className="details-tabpanel" role="tabpanel" id="panel-safety" aria-labelledby="tab-safety" tabIndex={0} hidden={activeTab !== 'safety'}>
-        <p className="panel-note">Official guidance from PHIVOLCS-DOST.</p>
+        <p className="panel-note">General preparedness guidance — not an official {reportingAgency} bulletin.</p>
         <ol className="safety-steps">
           <li className="safety-step">
             <span className="safety-step-num tnum" aria-hidden="true">01</span>
@@ -1793,7 +1803,7 @@ export function Details() {
             <span className="safety-step-num tnum" aria-hidden="true">03</span>
             <div>
               <h3 className="safety-step-title">After the shaking</h3>
-              <p className="safety-step-text">Check for structural hazards, expect aftershocks, and monitor official PHIVOLCS bulletins.</p>
+              <p className="safety-step-text">Check for structural hazards, expect aftershocks, and monitor official bulletins from your reporting agency (PHIVOLCS-DOST, USGS, or EMSC-CSEM).</p>
             </div>
           </li>
         </ol>

@@ -59,16 +59,23 @@
   .tg-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .tg-stat:nth-child(n + 4) { border-top: 1px solid var(--tg-hairline-soft); }
   .tg-stat-divider { display: none; }
-  .tg-stat:nth-child(3n + 2) .tg-stat-divider,
-  .tg-stat:nth-child(3n + 3) .tg-stat-divider { display: block; }
+  /* 1fr|2fr|3fr in row 1 keep ticks; 4|5 in row 2 — 5 is the only non-first cell */
+  .tg-stat:nth-child(2) .tg-stat-divider,
+  .tg-stat:nth-child(3) .tg-stat-divider,
+  .tg-stat:nth-child(5) .tg-stat-divider { display: block; }
 }
 
 @media (max-width: 640px) {
   .tg-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tg-stat:nth-child(n + 3) { border-top: 1px solid var(--tg-hairline-soft); }
-  .tg-stat:nth-child(2n) .tg-stat-divider { display: block; }
-  .tg-stat:nth-child(3n + 2) .tg-stat-divider,
-  .tg-stat:nth-child(3n + 3) .tg-stat-divider { display: none; }
+  .tg-stat-divider { display: none; }
+  /* Second column of each row keeps its tick, like desktop.
+     Hide rules need equal specificity to the 1100px show rules — plain
+     `.tg-stat-divider` (0,1,0) loses to `:nth-child(3)/(5)` (0,1,1). */
+  .tg-stat:nth-child(2) .tg-stat-divider,
+  .tg-stat:nth-child(4) .tg-stat-divider { display: block; }
+  .tg-stat:nth-child(3) .tg-stat-divider,
+  .tg-stat:nth-child(5) .tg-stat-divider { display: none; }
   .tg-stat-value { font-size: 1.8rem; }
 }
 

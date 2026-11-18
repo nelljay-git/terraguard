@@ -76,7 +76,7 @@ export function TermsOfService() {
               The Service and all content, features, and functionality are owned by TerraGuard and are protected by copyright, trademark, and other intellectual property laws. These Terms do not grant you any rights to use our trademarks, service marks, or other intellectual property without our prior written consent.
             </p>
             <p>
-              Earthquake data sourced from PHIVOLCS and USGS remains the property of those respective organizations.
+              Earthquake data sourced from PHIVOLCS, USGS, and EMSC remains the property of those respective organizations.
             </p>
           </section>
 

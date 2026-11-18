@@ -328,7 +328,7 @@ export function Safety() {
             <span className="safety-ch-num">08</span>
             <h2 id="h-reading" className="safety-ch-title">How To Read TerraGuard's Event Data</h2>
             <p>
-              Every earthquake on TerraGuard is a PHIVOLCS or USGS record with a consistent set of fields, covering events anywhere in the world. Knowing what each field means helps you judge how much an event matters to you:
+              Every earthquake on TerraGuard is a PHIVOLCS, USGS, or EMSC record with a consistent set of fields, covering events anywhere in the world. Knowing what each field means helps you judge how much an event matters to you:
             </p>
             <ul className="safety-list">
               <li><strong>Location</strong> — the closest named area to the epicenter, such as "032 km N 85° W of Balut Island (Sarangani)" or "18 km S of a coastal town in Indonesia." The distance shown is measured from the epicenter, not from your own position.</li>

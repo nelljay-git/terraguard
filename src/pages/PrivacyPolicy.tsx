@@ -27,7 +27,7 @@ export function PrivacyPolicy() {
               TerraGuard ("we", "us", or "our") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our seismic monitoring dashboard and related services (the "Service").
             </p>
             <p>
-              We process earthquake data from third-party providers such as PHIVOLCS and USGS. We do not collect, store, or share any personally identifiable information from those data sources.
+              We process earthquake data from third-party providers such as PHIVOLCS, USGS, and EMSC. We do not collect, store, or share any personally identifiable information from those data sources.
             </p>
           </section>
 
@@ -79,7 +79,7 @@ export function PrivacyPolicy() {
               The Service may contain links to other websites or services that are not operated by us. We strongly advise you to review the privacy policy of every site you visit. We have no control over and assume no responsibility for the content, privacy policies, or practices of any third-party sites or services.
             </p>
             <p>
-              Earthquake data is sourced from PHIVOLCS and USGS. See their respective privacy policies for information about how they handle data.
+              Earthquake data is sourced from PHIVOLCS, USGS, and EMSC. See their respective privacy policies for information about how they handle data.
             </p>
           </section>
 
