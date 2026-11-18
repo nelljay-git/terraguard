@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchVolcanoDetail, alertColor, alertLabel, type VolcanoStatus, type VolcanoDetail } from '../api/volcano';
 import { ImageModal } from './ImageModal';
@@ -65,6 +65,38 @@ export function VolcanoDetailModal({ volcano, onClose }: { volcano: VolcanoStatu
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [mapOpen, setMapOpen] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  /* Focus trap + restore; Escape closes (scroll lock below) */
+  useEffect(() => {
+    const modal = modalRef.current;
+    if (!modal) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const firstFocusable = modal.querySelector<HTMLElement>('button:not([disabled])');
+    firstFocusable?.focus();
+
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const focusables = Array.from(
+        modal.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      previouslyFocused?.focus?.();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,28 +113,37 @@ export function VolcanoDetailModal({ volcano, onClose }: { volcano: VolcanoStatu
     });
     const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onEsc);
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
-    return () => { cancelled = true; document.removeEventListener('keydown', onEsc); document.body.style.overflow = ''; };
+    return () => {
+      cancelled = true;
+      document.removeEventListener('keydown', onEsc);
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
   }, [volcano.url, onClose]);
 
   const mapImg = detail?.links.find(l => /bulletinMap\//i.test(l));
 
   const modal = (
-    <div className="volc-modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="volc-modal" onClick={e => e.stopPropagation()}>
+    <div className="volc-modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="volc-modal-title">
+      <div ref={modalRef} className="volc-modal" onClick={e => e.stopPropagation()}>
         <button className="volc-modal-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
 
         <div className="volc-modal-head">
           <div className="volc-modal-title-row">
-            <Mountain size={18} />
-            <h3>{detail?.title || volcano.volcano + ' Volcano'}</h3>
-            <span className="volcano-level" style={{ background: alertColor(detail?.alertLevel ?? volcano.alertLevel) }}>
+            <Mountain size={18} className="volc-modal-head-icon" aria-hidden="true" />
+            <h3 id="volc-modal-title">{detail?.title || volcano.volcano + ' Volcano'}</h3>
+            <span className="volc-modal-level" style={{ '--sev': alertColor(detail?.alertLevel ?? volcano.alertLevel) } as CSSProperties}>
+              <span className="volc-modal-level-dot" aria-hidden="true" />
               {alertLabel(detail?.alertLevel ?? volcano.alertLevel)}
             </span>
           </div>
           <div className="volc-modal-meta text-muted">
-            <span className="volc-meta-item"><Calendar size={12} /> {detail?.issued || '—'}{volcano.bid ? ` · BID ${volcano.bid}` : ''}</span>
-            <span className="volc-meta-item"><MapPin size={12} /> Province of {volcano.volcano === 'MAYON' ? 'Albay' : volcano.volcano === 'TAAL' ? 'Batangas' : volcano.volcano === 'KANLAON' ? 'Negros' : volcano.volcano === 'BULUSAN' ? 'Sorsogon' : 'Zambales'}</span>
+            <span className="volc-meta-item"><Calendar size={12} aria-hidden="true" /> {detail?.issued || '—'}{volcano.bid ? ` · BID ${volcano.bid}` : ''}</span>
+            <span className="volc-meta-item"><MapPin size={12} aria-hidden="true" /> Province of {volcano.volcano === 'MAYON' ? 'Albay' : volcano.volcano === 'TAAL' ? 'Batangas' : volcano.volcano === 'KANLAON' ? 'Negros' : volcano.volcano === 'BULUSAN' ? 'Sorsogon' : 'Zambales'}</span>
           </div>
         </div>
 
@@ -136,35 +177,35 @@ export function VolcanoDetailModal({ volcano, onClose }: { volcano: VolcanoStatu
             )}
 
             <div className="volc-params">
-              <h4><Activity size={14} /> Parameters</h4>
+              <h4 className="volc-section-head"><Activity size={12} aria-hidden="true" /> Parameters</h4>
               {Object.keys(detail.parametros).length === 0 ? (
                 <p className="text-muted" style={{ fontSize: '0.85rem' }}>No parameter breakdown available for this bulletin.</p>
               ) : (
                 <div className="volc-params-list">
                   {(
                     [
-                      ['seismicity', 'Seismicity', '7 volcanic'],
-                      ['craterGlow', 'Crater glow', 'Eye'],
-                      ['so2', 'Sulfur Dioxide Flux', 'SO₂'],
-                      ['plume', 'Plume', 'Wind'],
-                      ['groundDeformation', 'Ground Deformation', 'Mountain'],
+                      ['seismicity', 'Seismicity'],
+                      ['craterGlow', 'Crater glow'],
+                      ['so2', 'Sulfur Dioxide Flux'],
+                      ['plume', 'Plume'],
+                      ['groundDeformation', 'Ground Deformation'],
                     ] as const
                   ).map(([k, label]) => {
                     const v = detail.parametros[k];
                     if (!v) return null;
                     return (
-                      <div key={k} className="volc-param-card">
-                        <div className="volc-param-label">{label}</div>
-                        <div className="volc-param-value">{v}</div>
+                      <div key={k} className="volc-param">
+                        <span className="volc-param-label">{label}</span>
+                        <span className="volc-param-value">{v}</span>
                       </div>
                     );
                   })}
                   {Object.entries(detail.parametros)
                     .filter(([k]) => !['seismicity', 'craterGlow', 'so2', 'plume', 'groundDeformation', 'eruption', 'activity'].includes(k))
                     .map(([k, v]) => (
-                      <div key={k} className="volc-param-card">
-                        <div className="volc-param-label">{k}</div>
-                        <div className="volc-param-value">{String(v)}</div>
+                      <div key={k} className="volc-param">
+                        <span className="volc-param-label">{k}</span>
+                        <span className="volc-param-value">{String(v)}</span>
                       </div>
                     ))}
                 </div>
@@ -177,7 +218,7 @@ export function VolcanoDetailModal({ volcano, onClose }: { volcano: VolcanoStatu
               if (!rec && !loc) return null;
               return (
                 <div className="volc-rec">
-                  <h4><ShieldAlert size={14} /> Advisory</h4>
+                  <h4 className="volc-section-head"><ShieldAlert size={12} aria-hidden="true" /> Advisory</h4>
                   {rec?.prohibited?.length ? (
                     <div className="volc-rec-block volc-rec-prohibited">
                       <div className="volc-rec-title"><AlertTriangle size={13} /> Should not be allowed</div>
