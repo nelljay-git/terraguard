@@ -392,6 +392,8 @@ export function Details() {
   const [fbPostStatus, setFbPostStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [videoPostStatus, setVideoPostStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [showVideoReport, setShowVideoReport] = useState(false);
+  // Which intensity dataset the in-browser video report is built from.
+  const [videoReportSource, setVideoReportSource] = useState<'reported' | 'instrumental'>('reported');
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const [banner, setBanner] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -1279,11 +1281,12 @@ export function Details() {
               </button>
               {moreMenuOpen && (
                 <div className="more-dropdown" role="menu">
-                  {isUsgs && (
-                    <button className="more-item" role="menuitem" disabled={detailsLoading} onClick={() => { setMoreMenuOpen(false); setShowVideoReport(true); }}>
-                      <Clapperboard size={14} aria-hidden="true" /> Video report{detailsLoading ? '…' : ''}
-                    </button>
-                  )}
+                  <button className="more-item" role="menuitem" disabled={detailsLoading} onClick={() => { setMoreMenuOpen(false); setVideoReportSource('reported'); setShowVideoReport(true); }}>
+                    <Clapperboard size={14} aria-hidden="true" /> Video report{detailsLoading ? '…' : ''}
+                  </button>
+                  <button className="more-item" role="menuitem" disabled={detailsLoading} onClick={() => { setMoreMenuOpen(false); setVideoReportSource('instrumental'); setShowVideoReport(true); }}>
+                    <Activity size={14} aria-hidden="true" /> Video report (instrumental){detailsLoading ? '…' : ''}
+                  </button>
                   <button className="more-item" role="menuitem" onClick={() => { setMoreMenuOpen(false); handleCopyDescription(); }}>
                     {copiedDesc ? <Check size={14} className="details-ok" aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />} Copy description
                   </button>
@@ -1836,9 +1839,13 @@ export function Details() {
       {showVideoReport && earthquake && isWebhookAuthorized && (
         <VideoReportModal
           earthquake={earthquake}
-          intensity={extractMaxIntensity(details?.instrumentalIntensities, details?.reportedIntensities)}
+          intensity={videoReportSource === 'instrumental'
+            ? extractMaxIntensity(details?.instrumentalIntensities)
+            : extractMaxIntensity(details?.instrumentalIntensities, details?.reportedIntensities)}
           tsunamiThreat={tsunamiInfo?.label ?? ''}
-          shakes={(() => { const s = extractShakeRows(details?.reportedIntensities); return s.length > 0 ? s : extractShakeRows(details?.instrumentalIntensities); })()}
+          shakes={videoReportSource === 'instrumental'
+            ? extractShakeRows(details?.instrumentalIntensities)
+            : (() => { const s = extractShakeRows(details?.reportedIntensities); return s.length > 0 ? s : extractShakeRows(details?.instrumentalIntensities); })()}
           usgsEventId={isUsgs ? (extractUsgsEventId(earthquake.link) ?? undefined) : undefined}
           quakeSource={dataSource}
           onClose={() => setShowVideoReport(false)}
