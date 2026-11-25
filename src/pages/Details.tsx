@@ -1156,6 +1156,7 @@ export function Details() {
           // instrumental UTM grid codes only when no reported rows exist.
           shakes: (() => { const s = extractShakeRows(details?.reportedIntensities); return s.length > 0 ? s : extractShakeRows(details?.instrumentalIntensities); })(),
           usgsEventId: isUsgs ? (extractUsgsEventId(activeLink || earthquake.link) ?? undefined) : undefined,
+          infoNo: dataSource === 'phivolcs' ? (bulletin?.no ?? undefined) : undefined,
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -1848,6 +1849,7 @@ export function Details() {
             : (() => { const s = extractShakeRows(details?.reportedIntensities); return s.length > 0 ? s : extractShakeRows(details?.instrumentalIntensities); })()}
           usgsEventId={isUsgs ? (extractUsgsEventId(earthquake.link) ?? undefined) : undefined}
           quakeSource={dataSource}
+          infoNo={dataSource === 'phivolcs' && bulletin ? String(bulletin.no) : undefined}
           onClose={() => setShowVideoReport(false)}
         />
       )}

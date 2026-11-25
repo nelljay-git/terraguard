@@ -94,6 +94,7 @@ interface QuakeInput {
     tsunamiThreat?: string;
     shakes?: Array<{ area: string; intensity: string }>;
     usgsEventId?: string;
+    infoNo?: string;
   };
 }
 
@@ -315,6 +316,7 @@ async function main(): Promise<void> {
   quake.tsunamiThreat = quake.tsunamiThreat || ex.tsunamiThreat || quake.threat;
   quake.shakes = quake.shakes ?? ex.shakes ?? [];
   quake.usgsEventId = quake.usgsEventId || ex.usgsEventId;
+  quake.infoNo = quake.infoNo || ex.infoNo;
   quake.finalReport = quake.finalReport || ex.finalReport || false;
   if (!quake.latitude || !quake.longitude) throw new Error('QUAKE_JSON missing latitude/longitude');
 
@@ -392,7 +394,7 @@ async function main(): Promise<void> {
   const ctx = canvas.getContext('2d', { alpha: false } as unknown as Record<string, unknown>);
   for (let i = 0; i < total; i++) {
     const tt = i / FPS;
-    drawFrame(ctx as unknown as CanvasRenderingContext2D, view, quake, quake.intensity ?? '', quake.threat ?? '', quake.shakes ?? [], dyfi, tt, quake.source);
+    drawFrame(ctx as unknown as CanvasRenderingContext2D, view, quake, quake.intensity ?? '', quake.threat ?? '', quake.shakes ?? [], dyfi, tt, quake.source, quake.infoNo);
     fs.writeFileSync(path.join(outDir, `frame${String(i).padStart(4, '0')}.png`), canvas.toBuffer('image/png'));
     if (i % 120 === 0) console.log(`frame ${i}/${total}`);
   }

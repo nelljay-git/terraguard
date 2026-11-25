@@ -113,6 +113,7 @@ export async function onRequest(context: { request: Request; env?: Record<string
                 })
               : [],
             usgsEventId: esc(body.usgsEventId).slice(0, 32) || undefined,
+            infoNo: esc(body.infoNo).slice(0, 16) || undefined,
           },
         },
       }),

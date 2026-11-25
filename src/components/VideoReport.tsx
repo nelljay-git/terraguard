@@ -264,6 +264,7 @@ export function drawFrame(
   dyfi: DyfiPoint[],
   t: number,
   source?: string,
+  infoNo?: string,
 ) {
   const p = Math.min(Math.max(t / DUR, 0), 1);
   // Open tight on the epicenter with a slow push-in while the map intro
@@ -786,6 +787,18 @@ export function drawFrame(
     const rawSrc = (source ?? (eq as unknown as { source?: string }).source ?? '').toString().trim();
     const srcLabel = rawSrc ? rawSrc.toUpperCase() : 'PHIVOLCS';
     ctx.fillText(srcLabel === 'EMSC' ? 'EMSC-CSEM' : srcLabel, lx, ly);
+    // PHIVOLCS bulletins carry an "Earthquake Information No." — show it
+    // when supplied (other agencies have no equivalent identifier).
+    if (infoNo) {
+      ly += 30;
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '400 14px Inter, sans-serif';
+      ctx.fillText('EARTHQUAKE INFORMATION NO.', lx, ly);
+      ly += 26;
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '400 19px Inter, sans-serif';
+      ctx.fillText(String(infoNo), lx, ly);
+    }
     ctx.restore();
     }
 
@@ -1056,6 +1069,7 @@ export function VideoReportModal({
   shakes,
   usgsEventId,
   quakeSource,
+  infoNo,
   onClose,
 }: {
   earthquake: PhivolcsEarthquake;
@@ -1064,6 +1078,7 @@ export function VideoReportModal({
   shakes?: ShakeRow[];
   usgsEventId?: string;
   quakeSource?: string;
+  infoNo?: string;
   onClose: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1083,6 +1098,10 @@ export function VideoReportModal({
   useEffect(() => {
     shakesRef.current = shakes ?? [];
   }, [shakes]);
+  const infoNoRef = useRef<string>(infoNo ?? '');
+  useEffect(() => {
+    infoNoRef.current = infoNo ?? '';
+  }, [infoNo]);
   // DYFI felt responses load in the background (never block the preview
   // or recording); drawFrame reads the ref each frame, so points pop in
   // whenever they arrive.
@@ -1173,11 +1192,11 @@ export function VideoReportModal({
     const tick = (now: number) => {
       const t = (now - t0) / 1000;
       if (phase === 'recording' && t >= DUR) {
-        drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, dyfiRef.current, DUR, quakeSource);
+        drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, dyfiRef.current, DUR, quakeSource, infoNoRef.current);
         recRef.current?.stop();
         return;
       }
-      drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, dyfiRef.current, phase === 'preview' ? t % DUR : t, quakeSource);
+      drawFrame(ctx, viewRef.current, earthquake, intensityRef.current, threatRef.current, shakesRef.current, dyfiRef.current, phase === 'preview' ? t % DUR : t, quakeSource, infoNoRef.current);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
