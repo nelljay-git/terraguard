@@ -194,7 +194,8 @@
 /* Sections — hairline-divided */
 .settings-avatar-section,
 .settings-theme-section,
-.settings-api-section {
+.settings-api-section,
+.settings-apk-section {
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid var(--tg-hairline-soft);
@@ -327,6 +328,96 @@
 }
 
 :root[data-theme='light'] .settings-api-btn.active small { color: #1d4ed8; }
+
+/* Android APK install/update card */
+.settings-apk-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--tg-hairline);
+  border-radius: var(--tg-radius-sm);
+  background: var(--tg-panel-2);
+}
+
+.settings-apk-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  color: #818cf8;
+  background: rgba(99, 102, 241, 0.14);
+}
+
+.settings-apk-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-apk-text strong {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--tg-text);
+}
+
+.settings-apk-text > span {
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--tg-text-3);
+}
+
+.settings-apk-features {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-apk-features li {
+  position: relative;
+  padding-left: 13px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--tg-text-2);
+}
+
+.settings-apk-features li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 6px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #6366f1;
+}
+
+.settings-apk-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--tg-radius-sm);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fff;
+  background: #4f46e5;
+  transition: filter 0.15s ease;
+}
+
+.settings-apk-btn:hover {
+  filter: brightness(1.12);
+}
 
 /* ══════════ Footer ══════════ */
 .settings-modal-footer {

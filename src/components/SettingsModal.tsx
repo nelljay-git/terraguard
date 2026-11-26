@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
-import { X, User, Save, Clock, Sun, Moon, Monitor } from 'lucide-react';
+import { X, User, Save, Clock, Sun, Moon, Monitor, Download, Smartphone } from 'lucide-react';
 import { useAuth, type ThemePreference } from '../context/AuthContext';
 import { syncFcmSource } from '../lib/fcm';
+import {
+  APK_DOWNLOAD_URL,
+  fetchLatestRelease,
+  openApkDownload,
+  type LatestRelease,
+} from '../lib/appUpdate';
 import './SettingsModal.css';
 
 const USERNAME_COOLDOWN_MS = 60 * 24 * 60 * 60 * 1000;
@@ -40,7 +46,18 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [apiError, setApiError] = useState<string | null>(null);
   const [apiSuccess, setApiSuccess] = useState<string | null>(null);
 
+  // Latest APK info shown in the manual install/update section.
+  const [apkRelease, setApkRelease] = useState<LatestRelease | null>(null);
+
   const modalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchLatestRelease().then((rel) => {
+      if (!cancelled) setApkRelease(rel);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const lastChanged = profile?.username_changed_at ?? null;
   const cooldownUntil = lastChanged
@@ -187,6 +204,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     { value: 'usgs', label: 'USGS', sub: 'Global · M4.5+' },
     { value: 'emsc', label: 'EMSC', sub: 'Global · M1.0+' },
   ];
+
+  const apkFeatures = (apkRelease?.notes ?? '')
+    .split('\n')
+    .map((line) => line.replace(/^\s*[-*]\s*/, '').trim())
+    .filter((line) => line && !/^install\b/i.test(line) && !/^terra\s*guard v/i.test(line))
+    .slice(0, 4);
 
   return createPortal(
     <div
@@ -352,6 +375,44 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             </p>
             {apiError && <div className="settings-error" role="alert">{apiError}</div>}
             {apiSuccess && <div className="settings-success" role="status">{apiSuccess}</div>}
+          </div>
+
+          <div className="settings-apk-section">
+            <span className="settings-field-label" id="settings-apk-label">Android App (APK)</span>
+            <div className="settings-apk-card">
+              <div className="settings-apk-icon" aria-hidden="true">
+                <Smartphone size={19} />
+              </div>
+              <div className="settings-apk-text">
+                <strong>
+                  {apkRelease ? `Latest version · v${apkRelease.version}` : 'Install TerraGuard on Android'}
+                </strong>
+                <span>
+                  {apkRelease
+                    ? 'Get the native app for real push notifications and offline-friendly access.'
+                    : 'Download the APK to get push notifications and faster access.'}
+                </span>
+                {apkFeatures.length > 0 && (
+                  <ul className="settings-apk-features">
+                    {apkFeatures.map((feature) => (
+                      <li key={feature}>{feature}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="settings-apk-btn"
+              onClick={() => openApkDownload(apkRelease?.apkUrl ?? APK_DOWNLOAD_URL)}
+            >
+              <Download size={15} aria-hidden="true" />
+              {apkRelease ? `Install / Update APK (v${apkRelease.version})` : 'Install APK'}
+            </button>
+            <p className="settings-hint">
+              After downloading, open the file on your Android device and tap Install. You may need to
+              allow installation from unknown apps once.
+            </p>
           </div>
         </div>
 
