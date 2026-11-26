@@ -41,13 +41,24 @@ export async function nativeHttpGet(url: string): Promise<SimpleResponse> {
       // whereas the Fetch API lowercases it. Read it case-insensitively or the
       // JSON response is mistaken for HTML and parses to zero quakes.
       const contentType = headerKey ? String(rawHeaders[headerKey] ?? '') : '';
-      const body = typeof res.data === 'string' ? res.data : String(res.data ?? '');
+
+      // @capacitor-community/http auto-parses any application/json body into a
+      // JS object, even when responseType is 'text'. Stringifying that object
+      // would yield "[object Object]" and break every res.json() caller — so
+      // keep the parsed value and rebuild valid JSON text from it.
+      const raw = res.data;
+      const parsedJson = raw !== null && typeof raw === 'object';
+      const body = typeof raw === 'string'
+        ? raw
+        : parsedJson
+          ? JSON.stringify(raw)
+          : String(raw ?? '');
 
       return {
         ok: res.status >= 200 && res.status < 300,
         status: res.status,
         text: async () => body,
-        json: async () => JSON.parse(body),
+        json: async () => (parsedJson ? raw : JSON.parse(body)),
         headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? contentType : null) },
       };
     } catch (e) {

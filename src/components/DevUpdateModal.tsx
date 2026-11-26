@@ -33,12 +33,19 @@ interface UpdateData {
 // Added "quick_changes" field to each item for easy copy paste on history page
 
 const UPDATE_DATA: UpdateData = {
-  version: '1.8',
+  version: '1.9',
   date: 'November 26, 2026',
   greeting:
     "We've been working hard to make TerraGuard better! Here's what's new in this update:",
 
   items: [
+    {
+      badge: 'fixed',
+      title: 'Native Data Loading',
+      description:
+        'Fixed volcano bulletins and earthquake news failing to load in the APK by correcting how JSON responses from the native HTTP layer are handled.',
+      quick_changes: 'Fixed volcano bulletin and news loading in the APK'
+    },
     {
       badge: 'new',
       title: 'In-app APK Updates',

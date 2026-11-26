@@ -4,6 +4,13 @@ import './History.css';
 
 const VERSION_HISTORY = [
   {
+    version: '1.9',
+    date: 'November 26, 2026',
+    changes: [
+      'Fixed volcano bulletins and earthquake news failing to load in the APK',
+    ],
+  },
+  {
     version: '1.8',
     date: 'November 26, 2026',
     changes: [

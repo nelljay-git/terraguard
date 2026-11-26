@@ -311,7 +311,8 @@ export async function fetchVolcanoDetail(bulletinUrl: string): Promise<VolcanoDe
     } catch {}
   }
 
-  // 2) Web: try direct /bulletin proxy (CORS bypass) -> Vercel -> PHP
+  // 2) Shared fallbacks: serverless detail endpoint (works on native too via
+  // the native HTTP plugin) and, on web, the direct /bulletin proxy.
   const candidates: string[] = [];
   if (!IS_NATIVE) {
     // Direct /bulletin proxy works in Vite dev (and preview if proxy available) — try FIRST
@@ -320,13 +321,15 @@ export async function fetchVolcanoDetail(bulletinUrl: string): Promise<VolcanoDe
       const directProxy = u.pathname + u.search;
       if (directProxy.startsWith('/bulletin/')) candidates.push(directProxy);
     } catch {}
-    // Production Vercel is the reliable path (PHP host is 404)
-    const vercelUrl = apiUrl(`/api/volcano?detail=1&url=${encodeURIComponent(bulletinUrl)}`);
-    candidates.push(vercelUrl);
-    const phpUrl = volcanoDetailUrl(bulletinUrl);
-    for (const u of expandPhpFailoverUrls(phpUrl)) {
-      if (!candidates.includes(u)) candidates.push(u);
-    }
+  }
+  // Native WebViews have no origin for the relative /api path, so use the
+  // deployed origin explicitly there.
+  const detailPath = `/api/volcano?detail=1&url=${encodeURIComponent(bulletinUrl)}`;
+  const serverlessUrl = IS_NATIVE ? `https://terraguard-ph.pages.dev${detailPath}` : apiUrl(detailPath);
+  if (!candidates.includes(serverlessUrl)) candidates.push(serverlessUrl);
+  const phpUrl = volcanoDetailUrl(bulletinUrl);
+  for (const u of expandPhpFailoverUrls(phpUrl)) {
+    if (!candidates.includes(u)) candidates.push(u);
   }
 
   let lastError: unknown = null;
