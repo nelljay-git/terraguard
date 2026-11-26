@@ -4,6 +4,13 @@ import './History.css';
 
 const VERSION_HISTORY = [
   {
+    version: '1.10',
+    date: 'November 26, 2026',
+    changes: [
+      'Moved the APK download prompt into its own modal that appears every session',
+    ],
+  },
+  {
     version: '1.9',
     date: 'November 26, 2026',
     changes: [

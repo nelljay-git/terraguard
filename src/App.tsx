@@ -4,6 +4,7 @@ import { Navbar } from './components/Navbar';
 import { useFcmRegistration } from './lib/fcm';
 import { useFcmDeepLinks } from './lib/deepLinks';
 import { DevUpdateModal } from './components/DevUpdateModal';
+import { ApkUpdateModal } from './components/ApkUpdateModal';
 import { InstallPrompt } from './components/InstallPrompt';
 import { ScrollToTop } from './components/ScrollToTop';
 import { AuthProvider } from './context/AuthContext';
@@ -58,6 +59,7 @@ function App() {
       <div className="app-container">
         <ScrollToTop />
         <DevUpdateModal />
+        <ApkUpdateModal />
         <InstallPrompt />
         <Navbar />
         <main className="main-content">

@@ -3,11 +3,9 @@ import {
   X,
   Megaphone,
   CalendarDays,
-  Download,
 } from 'lucide-react';
 import { IS_NATIVE } from '../lib/nativeHttp';
 import { useIsMobileViewport } from '../lib/useMobileViewport';
-import { checkForApkUpdate, fetchLatestRelease, openApkDownload, type LatestRelease } from '../lib/appUpdate';
 import './DevUpdateModal.css';
 
 // ─── EDIT THIS SECTION TO UPDATE THE MODAL CONTENT ───────────────────────────
@@ -33,12 +31,19 @@ interface UpdateData {
 // Added "quick_changes" field to each item for easy copy paste on history page
 
 const UPDATE_DATA: UpdateData = {
-  version: '1.9',
+  version: '1.10',
   date: 'November 26, 2026',
   greeting:
     "We've been working hard to make TerraGuard better! Here's what's new in this update:",
 
   items: [
+    {
+      badge: 'new',
+      title: 'Separate APK Prompt',
+      description:
+        'The APK download button now has its own modal that appears each session, instead of being buried inside What’s New.',
+      quick_changes: 'Moved APK download prompt into a standalone modal'
+    },
     {
       badge: 'fixed',
       title: 'Native Data Loading',
@@ -94,7 +99,6 @@ const UPDATE_DATA: UpdateData = {
 // ─── END OF EDITABLE SECTION ─────────────────────────────────────────────────
 
 const STORAGE_KEY = 'terraguard_last_seen_update';
-const APK_DISMISSED_KEY = 'terraguard_apk_update_dismissed';
 
 const badgeLabel: Record<BadgeType, string> = {
   new: 'New',
@@ -105,7 +109,6 @@ const badgeLabel: Record<BadgeType, string> = {
 
 export function DevUpdateModal() {
   const [showModal, setShowModal] = useState(false);
-  const [apkUpdate, setApkUpdate] = useState<LatestRelease | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const isMobileViewport = useIsMobileViewport();
   // The APK is always a mobile client even on a tablet-width WebView.
@@ -115,39 +118,18 @@ export function DevUpdateModal() {
 
   useEffect(() => {
     if (!isMobileView) return;
-    let cancelled = false;
-
     // New changelog in this build — show once per version.
     const lastSeen = localStorage.getItem(STORAGE_KEY);
-    const timer = lastSeen !== UPDATE_DATA.version
-      ? setTimeout(() => { if (!cancelled) setShowModal(true); }, 800)
-      : undefined;
-
-    // Native clients check for a newer APK; mobile web offers the latest APK
-    // as a download (it can't know an installed version to compare against).
-    const showApkIfNew = (rel: LatestRelease | null) => {
-      if (!cancelled && rel && localStorage.getItem(APK_DISMISSED_KEY) !== rel.version) {
-        setApkUpdate(rel);
-        setShowModal(true);
-      }
-    };
-    if (IS_NATIVE) {
-      void checkForApkUpdate().then(showApkIfNew);
-    } else {
-      void fetchLatestRelease().then(showApkIfNew);
+    if (lastSeen !== UPDATE_DATA.version) {
+      const timer = setTimeout(() => setShowModal(true), 800);
+      return () => clearTimeout(timer);
     }
-
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
   }, [isMobileView]);
 
   const handleDismiss = useCallback(() => {
     localStorage.setItem(STORAGE_KEY, UPDATE_DATA.version);
-    if (apkUpdate) localStorage.setItem(APK_DISMISSED_KEY, apkUpdate.version);
     setShowModal(false);
-  }, [apkUpdate]);
+  }, []);
 
   /* Escape to close, body scroll lock, simple focus trap, focus restore */
   useEffect(() => {
@@ -235,24 +217,6 @@ export function DevUpdateModal() {
         {/* Body */}
         <div className="dev-modal-body">
           <p className="dev-modal-message">{UPDATE_DATA.greeting}</p>
-
-          {apkUpdate && (
-            <div className="dev-modal-apk-update">
-              <div className="dev-modal-apk-icon" aria-hidden="true">
-                <Download size={18} />
-              </div>
-              <div className="dev-modal-apk-text">
-                <strong>New APK available · v{apkUpdate.version}</strong>
-                <span>Download it on this device, then tap the file to install.</span>
-              </div>
-              <button
-                className="dev-modal-apk-btn"
-                onClick={() => openApkDownload(apkUpdate.apkUrl)}
-              >
-                Download
-              </button>
-            </div>
-          )}
 
           <ul className="dev-modal-updates">
             {UPDATE_DATA.items.map((item) => (
