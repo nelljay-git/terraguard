@@ -5,8 +5,7 @@ const corsHeaders = {
 };
 
 const EDGE_TTL_MS = 3600 * 1000;
-// v2 busts cached payloads that predate the per-bulletin event parameters.
-const EDGE_CACHE_HOST = 'https://terraguard-edge-cache-v2.invalid';
+const EDGE_CACHE_HOST = 'https://terraguard-edge-cache.invalid';
 const EDGE_CACHE_KEY_HEADER = 'x-terraguard-cached-at';
 
 interface DetailsPayload {
@@ -18,12 +17,6 @@ interface DetailsPayload {
     note: string;
     mapUrl: string;
     tsunami: string;
-    bulletinDatetime?: string;
-    bulletinLocation?: string;
-    bulletinLatitude?: string;
-    bulletinLongitude?: string;
-    bulletinDepth?: string;
-    bulletinMagnitude?: string;
   };
 }
 
@@ -106,19 +99,6 @@ export async function onRequest(context: { request: Request }) {
     const originMatch = /Origin\s*:\s*(.*?)\s*Magnitude/i.exec(cleanText);
     const origin = originMatch ? originMatch[1].trim() : 'Unknown';
 
-    // PHIVOLCS revises these parameters with each information bulletin.
-    const datetimeMatch = /Date\/Time\s*:\s*(.*?)\s+Location\s*:/i.exec(cleanText);
-    const bulletinDatetime = datetimeMatch ? datetimeMatch[1].trim() : '';
-    const locationMatch = /Location\s*:\s*(.*?)\s+Depth of Focus/i.exec(cleanText);
-    const bulletinLocation = locationMatch ? locationMatch[1].trim() : '';
-    const coordMatch = /([\d.]+)\s*[\u00b0?]\s*([NS])\s*,\s*([\d.]+)\s*[\u00b0?]\s*([EW])/i.exec(bulletinLocation);
-    const bulletinLatitude = coordMatch ? `${coordMatch[1]}${coordMatch[2].toUpperCase()}` : '';
-    const bulletinLongitude = coordMatch ? `${coordMatch[3]}${coordMatch[4].toUpperCase()}` : '';
-    const depthMatch = /Depth of Focus \(Km\)\s*:\s*([\d.]+)/i.exec(cleanText);
-    const bulletinDepth = depthMatch ? depthMatch[1].trim() : '';
-    const magMatch = /Magnitude\s*:\s*([A-Za-z]{0,3})\s*([\d.]+)/i.exec(cleanText);
-    const bulletinMagnitude = magMatch ? magMatch[2].trim() : '';
-
     const reportedMatch = /Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
     const reported = reportedMatch ? reportedMatch[1].replace(/^[a-zA-Z0-9_.\s]+Intensity/i, 'Intensity').trim() : '';
 
@@ -149,22 +129,7 @@ export async function onRequest(context: { request: Request }) {
 
     const payload: DetailsPayload = {
       success: true,
-      data: {
-        origin,
-        reportedIntensities: reported,
-        instrumentalIntensities: instrumental,
-        note,
-        mapUrl,
-        tsunami,
-        bulletinDatetime,
-        bulletinLocation: bulletinLocation.includes(' - ')
-          ? bulletinLocation.slice(bulletinLocation.indexOf(' - ') + 3).trim()
-          : bulletinLocation,
-        bulletinLatitude,
-        bulletinLongitude,
-        bulletinDepth,
-        bulletinMagnitude,
-      },
+      data: { origin, reportedIntensities: reported, instrumentalIntensities: instrumental, note, mapUrl, tsunami },
     };
     await edgePut(targetUrl, payload);
 

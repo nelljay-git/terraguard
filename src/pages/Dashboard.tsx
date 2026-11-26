@@ -48,6 +48,7 @@ export function Dashboard() {
       }
     } catch (err) {
       console.error("Failed to fetch dashboard data", err);
+      setLoadError(err instanceof Error ? err.message : 'Unable to reach the data source.');
     } finally {
       setLoading(false);
       setSyncing(false);

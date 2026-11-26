@@ -36,20 +36,6 @@ export default async function handler(req: any, res: any) {
     const originMatch = /Origin\s*:\s*(.*?)\s*Magnitude/i.exec(cleanText);
     const origin = originMatch ? originMatch[1].trim() : 'Unknown';
 
-    // Each bulletin in a sequence can revise these parameters. Returning them
-    // lets the details page show the selected information number's own values.
-    const datetimeMatch = /Date\/Time\s*:\s*(.*?)\s+Location\s*:/i.exec(cleanText);
-    const bulletinDatetime = datetimeMatch ? datetimeMatch[1].trim() : '';
-    const locationMatch = /Location\s*:\s*(.*?)\s+Depth of Focus/i.exec(cleanText);
-    const bulletinLocation = locationMatch ? locationMatch[1].trim() : '';
-    const coordMatch = /([\d.]+)\s*[\u00b0?]\s*([NS])\s*,\s*([\d.]+)\s*[\u00b0?]\s*([EW])/i.exec(bulletinLocation);
-    const bulletinLatitude = coordMatch ? `${coordMatch[1]}${coordMatch[2].toUpperCase()}` : '';
-    const bulletinLongitude = coordMatch ? `${coordMatch[3]}${coordMatch[4].toUpperCase()}` : '';
-    const depthMatch = /Depth of Focus \(Km\)\s*:\s*([\d.]+)/i.exec(cleanText);
-    const bulletinDepth = depthMatch ? depthMatch[1].trim() : '';
-    const magMatch = /Magnitude\s*:\s*([A-Za-z]{0,3})\s*([\d.]+)/i.exec(cleanText);
-    const bulletinMagnitude = magMatch ? magMatch[2].trim() : '';
-
     const reportedMatch = /Reported Intensities\s*:\s*(.*?)(?:Instrumental Intensities|This is an aftershock|Expecting Damage|$)/i.exec(cleanText);
     let reported = reportedMatch ? reportedMatch[1].trim() : '';
 
@@ -83,15 +69,7 @@ export default async function handler(req: any, res: any) {
         reportedIntensities: reported,
         instrumentalIntensities: instrumental,
         note,
-        mapUrl,
-        bulletinDatetime,
-        bulletinLocation: bulletinLocation.includes(' - ')
-          ? bulletinLocation.slice(bulletinLocation.indexOf(' - ') + 3).trim()
-          : bulletinLocation,
-        bulletinLatitude,
-        bulletinLongitude,
-        bulletinDepth,
-        bulletinMagnitude
+        mapUrl
       }
     });
   } catch (error) {

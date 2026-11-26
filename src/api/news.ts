@@ -81,12 +81,10 @@ export async function fetchNews(): Promise<NewsResponse> {
 
   const isGlobal = getPreferredApi() === 'usgs' || getPreferredApi() === 'emsc';
   const serverlessUrl = `${IS_NATIVE ? NATIVE_NEWS_API : ''}/api/news${isGlobal ? '?global=1' : ''}`;
-  // On native, try the fresh Google News RSS first; if the feed is blocked or
-  // returns zero items, fall back to the deployed serverless proxy (Bing-first
-  // with a browser UA). Web/dev reverses that order.
-  const urls = IS_NATIVE
-    ? [buildNewsQuery(), serverlessUrl]
-    : [serverlessUrl, buildNewsQuery()];
+  // Prefer the deployed serverless proxy on native too: it is CORS-enabled and
+  // always reachable, whereas Google News RSS is CORS-blocked in the WebView
+  // and can return an empty feed. RSS remains the fallback.
+  const urls = [serverlessUrl, buildNewsQuery()];
 
   let lastError: unknown = null;
   for (const url of urls) {

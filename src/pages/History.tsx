@@ -4,10 +4,12 @@ import './History.css';
 
 const VERSION_HISTORY = [
   {
-    version: '1.11',
+    version: '1.12',
     date: 'November 26, 2026',
     changes: [
-      'Fixed PHIVOLCS bulletin tabs showing the same details for every information number',
+      'Fixed earthquake, volcano, tsunami, and news data not loading in the APK',
+      'Added reliable server-side volcano and tsunami endpoints for the app',
+      'Show the real error when every data source is unreachable',
     ],
   },
   {

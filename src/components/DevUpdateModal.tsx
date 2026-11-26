@@ -31,7 +31,7 @@ interface UpdateData {
 // Added "quick_changes" field to each item for easy copy paste on history page
 
 const UPDATE_DATA: UpdateData = {
-  version: '1.11',
+  version: '1.12',
   date: 'November 26, 2026',
   greeting:
     "We've been working hard to make TerraGuard better! Here's what's new in this update:",
@@ -39,10 +39,24 @@ const UPDATE_DATA: UpdateData = {
   items: [
     {
       badge: 'fixed',
-      title: 'Bulletin Details',
+      title: 'Reliable Data on the APK',
       description:
-        'Each PHIVOLCS information bulletin now shows its own revised location, depth, magnitude, and intensity data when selected.',
-      quick_changes: 'Fixed bulletin tabs showing the same details for every information number'
+        'Earthquake, volcano, tsunami, and news data now load through the deployed TerraGuard servers instead of the phone having to reach the free hosting directly. Each source falls back automatically if one is unavailable.',
+      quick_changes: 'Fixed earthquake, volcano, tsunami, and news data not loading in the APK'
+    },
+    {
+      badge: 'new',
+      title: 'Volcano & Tsunami Proxies',
+      description:
+        'Added server-side endpoints for volcano bulletins and tsunami advisories so the mobile app can load them even when the backup hosts are down.',
+      quick_changes: 'Added reliable volcano and tsunami endpoints for the app'
+    },
+    {
+      badge: 'improved',
+      title: 'Clearer Connection Errors',
+      description:
+        'If every data source is unreachable, the dashboard now shows the actual reason instead of staying on “Connecting to PHIVOLCS…”.',
+      quick_changes: 'Show the real error when the data source cannot be reached'
     },
     {
       badge: 'new',

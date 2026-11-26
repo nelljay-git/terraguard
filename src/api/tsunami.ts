@@ -12,8 +12,8 @@
 // Rows contain everything the list view needs; the advisory *verdict*
 // ("NO TSUNAMI THREAT" vs "TSUNAMI THREAT") only lives on the detail page.
 
-import { tsunamiEventsUrl, tsunamiArchiveUrl, tsunamiDetailUrl } from '../lib/apiBase';
-import { nativeHttpGetWithPhpFailover } from '../lib/nativeHttp';
+import { tsunamiEventsUrl, tsunamiArchiveUrl, tsunamiDetailUrl, apiUrl } from '../lib/apiBase';
+import { nativeHttpGet, nativeHttpGetWithPhpFailover, IS_NATIVE } from '../lib/nativeHttp';
 
 export interface TsunamiAdvisory {
   label: string;
@@ -97,13 +97,50 @@ function writeCache(key: string, payload: unknown): void {
   try { localStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), payload })); } catch { /* private mode / quota — cache is best-effort */ }
 }
 
-/** Current-year tsunami events from PHIVOLCS. Stale cache is served when both PHP hosts are down. */
+/**
+ * Fetch JSON from the first candidate that answers with a successful payload.
+ * PHP URLs get the primary/backup host failover; Pages URLs are CORS-enabled and
+ * are fetched directly.
+ */
+async function fetchJsonFromCandidates<T extends { success?: boolean; error?: string }>(
+  candidates: string[],
+): Promise<T> {
+  let lastError: unknown = null;
+  for (let i = 0; i < candidates.length; i++) {
+    const url = candidates[i];
+    try {
+      const res = url.includes('tsunami.php')
+        ? await nativeHttpGetWithPhpFailover(url)
+        : await nativeHttpGet(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as T;
+      // An upstream can answer 200 with success:false (scrape failed). Try the
+      // next candidate before giving up.
+      if (json.success === false && i < candidates.length - 1) {
+        lastError = new Error(json.error || 'Upstream returned no data');
+        continue;
+      }
+      return json;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError ?? new Error('All tsunami sources failed');
+}
+
+/** Pages is the reliable path from mobile networks; PHP stays as the fallback. */
+function tsunamiCandidates(serverlessPath: string, phpUrl: string): string[] {
+  const serverlessUrl = apiUrl(serverlessPath);
+  return IS_NATIVE ? [serverlessUrl, phpUrl] : [phpUrl, serverlessUrl];
+}
+
+/** Current-year tsunami events from PHIVOLCS. Stale cache is served when every source is down. */
 export async function fetchTsunamiEvents(): Promise<TsunamiEventsResponse> {
   const cached = readCache<TsunamiEventsResponse>(EVENTS_CACHE_KEY);
   try {
-    const res = await nativeHttpGetWithPhpFailover(tsunamiEventsUrl());
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = (await res.json()) as TsunamiEventsResponse;
+    const json = await fetchJsonFromCandidates<TsunamiEventsResponse>(
+      tsunamiCandidates('/api/tsunami?page=events', tsunamiEventsUrl()),
+    );
     if (json.success) writeCache(EVENTS_CACHE_KEY, json);
     return json;
   } catch (e) {
@@ -117,9 +154,9 @@ export async function fetchTsunamiArchive(year: number): Promise<TsunamiEventsRe
   const cacheKey = `${ARCHIVE_CACHE_PREFIX}${year}`;
   const cached = readCache<TsunamiEventsResponse>(cacheKey);
   try {
-    const res = await nativeHttpGetWithPhpFailover(tsunamiArchiveUrl(year));
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = (await res.json()) as TsunamiEventsResponse;
+    const json = await fetchJsonFromCandidates<TsunamiEventsResponse>(
+      tsunamiCandidates(`/api/tsunami?page=archive&year=${year}`, tsunamiArchiveUrl(year)),
+    );
     if (json.success) writeCache(cacheKey, json);
     return json;
   } catch (e) {
@@ -134,9 +171,12 @@ export async function fetchTsunamiDetail(url: string): Promise<TsunamiDetailResp
   const cached = readCache<TsunamiDetailResponse>(cacheKey);
   if (cached) return cached;
   try {
-    const res = await nativeHttpGetWithPhpFailover(tsunamiDetailUrl(url));
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = (await res.json()) as TsunamiDetailResponse;
+    const json = await fetchJsonFromCandidates<TsunamiDetailResponse>(
+      tsunamiCandidates(
+        `/api/tsunami?detail=1&url=${encodeURIComponent(url)}`,
+        tsunamiDetailUrl(url),
+      ),
+    );
     if (json.success) writeCache(cacheKey, json);
     return json;
   } catch (e) {

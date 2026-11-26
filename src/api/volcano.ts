@@ -78,18 +78,20 @@ export async function fetchVolcanoHub(): Promise<VolcanoHubResponse> {
     }
   };
 
-  // PHP JSON first (stable, cached upstream), then the Vercel function on web.
-  // The old native branch tried WOVODAT with a plain WebView fetch — which CORS
-  // blocks — and never reached the PHP endpoint at all, so the APK always
-  // showed "Volcano data unavailable".
+  // Native prefers the deployed Pages function (the free PHP hosts are often
+  // unreachable from mobile networks); web keeps PHP first so polling doesn't
+  // exhaust the Cloudflare invocation quota.
   const candidates: { url: string; isDirectHtml: boolean }[] = [];
+  const serverlessUrl = apiUrl('/api/volcano?page=hub');
+  if (IS_NATIVE && !candidates.some((c) => c.url === serverlessUrl)) {
+    candidates.push({ url: serverlessUrl, isDirectHtml: false });
+  }
   const phpUrl = volcanoListUrl();
   for (const u of expandPhpFailoverUrls(phpUrl)) {
     if (!candidates.some((c) => c.url === u)) candidates.push({ url: u, isDirectHtml: false });
   }
-  if (!IS_NATIVE) {
-    const vercelUrl = apiUrl('/api/volcano?page=hub');
-    if (!candidates.some((c) => c.url === vercelUrl)) candidates.push({ url: vercelUrl, isDirectHtml: false });
+  if (!IS_NATIVE && !candidates.some((c) => c.url === serverlessUrl)) {
+    candidates.push({ url: serverlessUrl, isDirectHtml: false });
   }
   // Direct HTML scrape is the last resort on native (and a dev/web fallback).
   const directUrl = 'https://wovodat.phivolcs.dost.gov.ph/bulletin/list-of-bulletin';
@@ -273,9 +275,22 @@ export async function fetchVolcanoDetail(bulletinUrl: string): Promise<VolcanoDe
   const cached = getDetailCached(bulletinUrl);
   if (cached) return cached;
 
-  // 1) Native: PHP detail endpoint first (CORS-free via plugin); direct WOVODAT
-  // HTML as fallback. A plain WebView fetch of the bulletin is CORS-blocked.
+  // 1) Native: deployed Pages function first, then the PHP detail endpoint,
+  // then a direct WOVODAT scrape. A plain WebView fetch of the bulletin is
+  // CORS-blocked, so those requests go through the native HTTP layer.
   if (IS_NATIVE) {
+    try {
+      const srvRes = await nativeHttpGet(apiUrl(`/api/volcano?detail=1&url=${encodeURIComponent(bulletinUrl)}`));
+      if (srvRes.ok) {
+        const ct = srvRes.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const j = await srvRes.json() as VolcanoDetailResponse;
+          if (j.success) { setDetailCached(bulletinUrl, j); return j; }
+        }
+      }
+    } catch (e) {
+      console.warn('Serverless volcano detail failed on native:', e);
+    }
     try {
       const res = await nativeHttpGetWithPhpFailover(volcanoDetailUrl(bulletinUrl));
       if (res.ok) {
@@ -322,10 +337,10 @@ export async function fetchVolcanoDetail(bulletinUrl: string): Promise<VolcanoDe
       if (directProxy.startsWith('/bulletin/')) candidates.push(directProxy);
     } catch {}
   }
-  // Native WebViews have no origin for the relative /api path, so use the
-  // deployed origin explicitly there.
+  // apiUrl() is absolute on native (the APK has no /api origin) and relative
+  // on web, where Pages serves the same function.
   const detailPath = `/api/volcano?detail=1&url=${encodeURIComponent(bulletinUrl)}`;
-  const serverlessUrl = IS_NATIVE ? `https://terraguard-ph.pages.dev${detailPath}` : apiUrl(detailPath);
+  const serverlessUrl = apiUrl(detailPath);
   if (!candidates.includes(serverlessUrl)) candidates.push(serverlessUrl);
   const phpUrl = volcanoDetailUrl(bulletinUrl);
   for (const u of expandPhpFailoverUrls(phpUrl)) {

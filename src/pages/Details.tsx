@@ -364,7 +364,6 @@ export function Details() {
   const [details, setDetails] = useState<EarthquakeDetails | null>(null);
   const [loading, setLoading] = useState(!state?.earthquake);
   const [detailsLoading, setDetailsLoading] = useState(true);
-  const [detailsUnavailable, setDetailsUnavailable] = useState(false);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedDesc, setCopiedDesc] = useState(false);
@@ -840,22 +839,12 @@ export function Details() {
       );
    }
 
-   const bulletin = extractBulletin(activeLink);
-   // PHIVOLCS revises location/depth/magnitude with each information bulletin.
-   // Show the selected bulletin's own values instead of the feed snapshot.
-   const bulletinEvent = dataSource === 'phivolcs' ? details : null;
-   const mag = parseFloat(bulletinEvent?.bulletinMagnitude || earthquake.magnitude);
+   const mag = parseFloat(earthquake.magnitude);
    const color = getSeverityColor(mag);
    const severityLabel = getSeverityLabel(mag);
-   const lat = bulletinEvent?.bulletinLatitude
-     ? parseFloat(bulletinEvent.bulletinLatitude)
-     : parseFloat(earthquake.latitude);
-   const lng = bulletinEvent?.bulletinLongitude
-     ? parseFloat(bulletinEvent.bulletinLongitude)
-     : parseFloat(earthquake.longitude);
-   const displayDatetime = bulletinEvent?.bulletinDatetime || earthquake.datetime;
-   const displayLocation = bulletinEvent?.bulletinLocation || earthquake.location;
-   const displayDepth = bulletinEvent?.bulletinDepth || earthquake.depth;
+   const lat = parseFloat(earthquake.latitude);
+   const lng = parseFloat(earthquake.longitude);
+   const bulletin = extractBulletin(activeLink);
    const occurredAgo = timeAgo(parseDateTime(earthquake.datetime), now);
    const tsunamiInfo = classifyTsunami(details?.tsunami || '');
 
@@ -869,12 +858,9 @@ export function Details() {
     setDetailsLoading(true);
     try {
       const det = await fetchEarthquakeDetails(url);
-      setDetails(det ?? null);
-      setDetailsUnavailable(!det);
+      if (det) setDetails(det);
     } catch (err) {
       console.error('Failed to load bulletin details:', err);
-      setDetails(null);
-      setDetailsUnavailable(true);
     } finally {
       setDetailsLoading(false);
     }
@@ -1361,18 +1347,18 @@ export function Details() {
             )}
           </div>
 
-          <h1 className="details-event-title">{displayLocation}</h1>
+          <h1 className="details-event-title">{earthquake.location}</h1>
 
           <div className="details-chips">
             <span className="details-chip">
               <Clock size={13} aria-hidden="true" />
-              <span className="tnum">{displayDatetime}</span>
+              <span className="tnum">{earthquake.datetime}</span>
             </span>
             <span className="details-chip">
               <MapPin size={13} aria-hidden="true" />
               <span className="tnum">
                 {Math.abs(lat).toFixed(2)}° {lat >= 0 ? 'N' : 'S'}, {Math.abs(lng).toFixed(2)}° {lng >= 0 ? 'E' : 'W'}
-                {` · ${displayDepth} km deep`}
+                {` · ${earthquake.depth} km deep`}
               </span>
             </span>
             {nearestProvinces.length > 0 && (
@@ -1767,10 +1753,6 @@ export function Details() {
               )}
               {details.note && <div className="intensities-note">{details.note}</div>}
             </>
-          ) : detailsUnavailable ? (
-            <div className="intensities-empty">
-              <p>This bulletin&rsquo;s details could not be loaded. Try another information number or open it on PHIVOLCS.</p>
-            </div>
           ) : (
             <div className="intensities-empty">
               <p>No intensity tables have been published for this event. Agencies issue them only when people report feeling the shaking.</p>

@@ -4,9 +4,10 @@
 //   - dev:  Vite dev proxy (/api/*)
 //   - prod: Vercel serverless functions (/api/*)
 //
-// NOTE: the native (Capacitor) app does NOT use this. It scrapes PHIVOLCS and
-// Google News directly via @capacitor-community/http (CORS-free at the native
-// layer) — see src/lib/nativeHttp.ts and the IS_NATIVE branches in api/*.ts.
+// NOTE: the native (Capacitor) app routes PHIVOLCS / Google News requests
+// through CapacitorHttp (CORS-free at the native layer) and prefers the
+// deployed Pages Functions — see src/lib/nativeHttp.ts and the IS_NATIVE
+// branches in api/*.ts.
 //
 // VITE_API_BASE (injected by vite.config.ts) is still used purely as the native
 // build signal: when set, the VitePWA service worker is disabled so it can't
@@ -16,10 +17,19 @@
 // When empty (dev), callers keep using the relative /api/* paths handled by the
 // local Vite proxy.
 
+import { Capacitor } from '@capacitor/core';
+
 const RAW = (import.meta.env?.VITE_API_BASE as string | undefined) ?? '';
 
+// The APK loads its assets from https://localhost, so a relative /api/* path
+// resolves to the WebView's own origin and never reaches the backend. Point
+// native builds at the deployed Pages Functions explicitly.
+export const NATIVE_API_ORIGIN = 'https://terraguard-ph.pages.dev';
+
+const NORMALIZED_RAW = RAW.replace(/\/+$/, '').replace(/\/api\/?$/, '');
+
 // Normalize to "https://host" without a trailing slash.
-export const API_BASE: string = RAW.replace(/\/+$/, '').replace(/\/api\/?$/, '');
+export const API_BASE: string = NORMALIZED_RAW || (Capacitor.isNativePlatform() ? NATIVE_API_ORIGIN : '');
 
 /** Prefix a relative /api/* path with the configured backend host. */
 export function apiUrl(path: string): string {
@@ -172,15 +182,14 @@ export function volcanoDetailUrl(url: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// PHIVOLCS-TSUNAMI bulletins — always via the PHP failover hosts.
+// PHIVOLCS-TSUNAMI bulletins.
 // ---------------------------------------------------------------------------
-// tsunami.phivolcs.dost.gov.ph blocks datacenter IPs, so a serverless proxy
-// (Vercel/Cloudflare) is a dead end; the shared PHP hosts are the only
-// reliable scraping path (this is why worker-webhook/src/terraguard.js uses
-// the same two hosts). Unlike phivolcsListUrl() these intentionally ignore
-// the VITE_USE_PHP_PHIVOLCS_API switch, because there is no serverless
-// /api/tsunami equivalent to fall back to. nativeHttpGetWithPhpFailover()
-// expands each URL into primary+backup candidates automatically.
+// tsunami.phivolcs.dost.gov.ph blocks datacenter IPs, so the scraping itself
+// stays on the shared PHP hosts. The in-repo Pages function
+// (functions/api/tsunami.ts) proxies those hosts with CORS headers, which gives
+// the APK a reachable URL when mobile networks can't reach the free hosting
+// directly. These helpers return the PHP URLs; the client prefers the Pages
+// proxy on native and falls back to these.
 export function tsunamiEventsUrl(): string {
   return `${PHP_API_PRIMARY}/api/tsunami.php?page=events`;
 }
