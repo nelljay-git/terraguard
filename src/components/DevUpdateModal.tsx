@@ -31,12 +31,19 @@ interface UpdateData {
 // Added "quick_changes" field to each item for easy copy paste on history page
 
 const UPDATE_DATA: UpdateData = {
-  version: '1.10',
+  version: '1.11',
   date: 'November 26, 2026',
   greeting:
     "We've been working hard to make TerraGuard better! Here's what's new in this update:",
 
   items: [
+    {
+      badge: 'fixed',
+      title: 'Bulletin Details',
+      description:
+        'Each PHIVOLCS information bulletin now shows its own revised location, depth, magnitude, and intensity data when selected.',
+      quick_changes: 'Fixed bulletin tabs showing the same details for every information number'
+    },
     {
       badge: 'new',
       title: 'Separate APK Prompt',

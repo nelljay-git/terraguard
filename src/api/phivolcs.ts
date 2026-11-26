@@ -67,6 +67,13 @@ export interface EarthquakeDetails {
   note: string;
   mapUrl: string;
   tsunami?: string;
+  // Bulletin-specific event parameters (PHIVOLCS revises these per bulletin).
+  bulletinDatetime?: string;
+  bulletinLocation?: string;
+  bulletinLatitude?: string;
+  bulletinLongitude?: string;
+  bulletinDepth?: string;
+  bulletinMagnitude?: string;
 }
 
 export interface BulletinRef {
@@ -76,7 +83,7 @@ export interface BulletinRef {
 }
 
 import { apiUrl, phivolcsListUrl, phivolcsArchiveUrl, phivolcsDetailUrl, phivolcsBulletinsUrl, fetchPhpWithFailover, usePhpApi } from '../lib/apiBase';
-import { nativeHttpGetWithPhpFailover, IS_NATIVE } from '../lib/nativeHttp';
+import { nativeHttpGet, nativeHttpGetWithPhpFailover, IS_NATIVE } from '../lib/nativeHttp';
 import { type UsgsEarthquake, fetchUsgsData, getCachedUsgsData, fetchUsgsArchiveData } from './usgs';
 import { fetchEmscData, getCachedEmscData, fetchEmscArchiveData } from './emsc';
 import { getPreferredApi } from '../lib/apiPreference';
@@ -735,59 +742,78 @@ export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDet
     return null;
   }
 
-  try {
-    // Native can't reach PHIVOLCS directly (its TLS cert is rejected by the
-    // Android HTTP stack), so use the same PHP proxy as the web app.
-    if (IS_NATIVE) {
-      try {
-        const phpRes = await nativeHttpGetWithPhpFailover(phivolcsDetailUrl(url));
-        if (phpRes.ok && (phpRes.headers.get('content-type') || '').includes('application/json')) {
-          const json = await phpRes.json();
-          if (json.success) return json.data;
-        }
-      } catch (e) {
-        console.warn('PHP detail endpoint failed on native:', e);
-      }
+  // A scraper can answer success:true with empty fields (or an image filename
+  // misread as "reported intensities"). Never accept those — try the next path.
+  const hasDetailData = (det: EarthquakeDetails | null): boolean => {
+    if (!det) return false;
+    const values = [
+      det.reportedIntensities,
+      det.instrumentalIntensities,
+      det.note,
+      det.bulletinLocation,
+      det.bulletinDatetime,
+    ];
+    return values.some((v) => {
+      const s = (v ?? '').trim();
+      if (!s || /^[\d.]+[a-z]?\s+\d{4}_\d{4}/i.test(s)) return false;
+      return /[a-z]{3}/i.test(s);
+    });
+  };
+
+  const readJson = async (
+    getRes: () => Promise<{
+      ok: boolean;
+      headers: { get: (name: string) => string | null };
+      json: () => Promise<unknown>;
+    }>,
+    label: string,
+  ): Promise<EarthquakeDetails | null> => {
+    try {
+      const res = await getRes();
+      if (!res.ok || !(res.headers.get('content-type') || '').includes('application/json')) return null;
+      const json = (await res.json()) as { success?: boolean; data?: EarthquakeDetails };
+      const det = json?.success ? json.data ?? null : null;
+      return hasDetailData(det) ? det : null;
+    } catch (e) {
+      console.warn(`${label} failed:`, e);
       return null;
     }
+  };
 
-    // Try PHP endpoint in production web when enabled (default true).
-    // fetchPhpWithFailover tries trikefare first, then the backup on 503/5xx.
-    if (!import.meta.env?.DEV && usePhpApi) {
-      try {
-        const phpRes = await fetchPhpWithFailover(phivolcsDetailUrl(url));
-        if (phpRes.ok) {
-          const contentType = phpRes.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            const json = await phpRes.json();
-            if (json.success) return json.data;
-          }
-        }
-      } catch (e) {
-        console.warn('PHP detail endpoint failed, falling back:', e);
-      }
-    }
+  const detailsPath = `/api/details?url=${encodeURIComponent(url)}`;
 
-    // Try Vercel serverless function only in production web
-    // This prevents Vite from erroneously trying to compile api/details.ts
-    if (!import.meta.env?.DEV) {
-      const res = await fetch(apiUrl(`/api/details?url=${encodeURIComponent(url)}`));
-      if (res.ok) {
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const json = await res.json();
-          if (json.success) return json.data;
-        }
-      }
-    }
+  // 1) Deployed serverless scraper — produces the cleanest per-bulletin data,
+  //    including the revised location/depth/magnitude for each information no.
+  //    Native has no /api origin, so use the deployed host explicitly.
+  if (!import.meta.env?.DEV) {
+    const fromServerless = await readJson(
+      () => IS_NATIVE
+        ? nativeHttpGet(`https://terraguard-ph.pages.dev${detailsPath}`)
+        : fetch(apiUrl(detailsPath)),
+      'Serverless details',
+    );
+    if (fromServerless) return fromServerless;
+  }
 
-    // Fallback for local Vite dev environment
-    // Use the Vite proxy to fetch the HTML directly
+  // 2) PHP proxy (native and web) — only if it returned meaningful data.
+  if (IS_NATIVE || usePhpApi) {
+    const fromPhp = await readJson(
+      () => IS_NATIVE
+        ? nativeHttpGetWithPhpFailover(phivolcsDetailUrl(url))
+        : fetchPhpWithFailover(phivolcsDetailUrl(url)),
+      'PHP details',
+    );
+    if (fromPhp) return fromPhp;
+  }
+
+  // 3) Local Vite dev — scrape the HTML through the dev proxy.
+  try {
     const localProxyUrl = url.replace('https://earthquake.phivolcs.dost.gov.ph', '/api/phivolcs');
     const htmlRes = await fetch(localProxyUrl);
     if (!htmlRes.ok) throw new Error('Failed to fetch details HTML');
     const html = await htmlRes.text();
-    return parseDetailsHtml(html, url);
+    const parsed = parseDetailsHtml(html, url);
+    return hasDetailData(parsed) ? parsed : null;
   } catch (error) {
     console.warn('Failed to fetch earthquake details:', error);
   }
