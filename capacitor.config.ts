@@ -5,9 +5,9 @@ const config: CapacitorConfig = {
   appName: 'TerraGuard',
   webDir: 'dist',
   server: {
-    // Allow the WebView to load the deployed Vercel API host so /api/* proxy
+    // Allow the WebView to load the deployed Pages host so /api/* proxy
     // calls reach the real backend instead of the WebView's own origin.
-    allowNavigation: ['terraguard-ph.vercel.app'],
+    allowNavigation: ['terraguard-ph.pages.dev'],
   },
   plugins: {
     StatusBar: {

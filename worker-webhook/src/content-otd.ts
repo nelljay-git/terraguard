@@ -108,11 +108,6 @@ ${pick.mag >= 7 ? "🚨" : "🌍"} **M${pick.mag.toFixed(1)}** struck **${pick.p
     }
   } catch{}
 
-  // Also create a thread for discussion
-  try{
-    const msg = await fetch(waitUrl, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ content: "dummy" }) }).catch(()=>null);
-  } catch{}
-
   await env.WEBHOOK_KV.put(keyToday, JSON.stringify(pick), { expirationTtl: 60*60*24*30 });
   return `otd sent M${pick.mag.toFixed(1)} ${pick.place} ${pickDate.getUTCFullYear()}`;
 }

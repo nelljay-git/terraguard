@@ -36,13 +36,12 @@ function setCache(payload: VolcanoHubResponse): void {
 }
 
 export async function fetchVolcanoHub(): Promise<VolcanoHubResponse> {
-  // Try cache first for instant paint
   const fetchVia = async (url: string, isDirectHtml = false): Promise<VolcanoHubResponse | null> => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      const res = isDirectHtml ? await fetch(url, { signal: controller.signal }) : await nativeHttpGetWithPhpFailover(url);
-      clearTimeout(timeout);
+      // Both the PHP host and WOVODAT are CORS-less. On Android a plain WebView
+      // `fetch` is blocked, so route even the direct HTML scrape through the
+      // native HTTP plugin.
+      const res = isDirectHtml ? await nativeHttpGet(url) : await nativeHttpGetWithPhpFailover(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const ct = res.headers.get('content-type') || '';
       if (ct.includes('application/json')) {
@@ -74,41 +73,37 @@ export async function fetchVolcanoHub(): Promise<VolcanoHubResponse> {
       } catch {}
       return { success: false, page: 'hub', source: url, issued: '', count: 0, data: [], error: 'Unexpected HTML response' };
     } catch (e) {
-      clearTimeout(timeout);
-      // bubble up as null so caller can try next fallback
+      // bubble up so the caller can try the next fallback
       throw e;
     }
   };
 
-  // Native: scrape WOVODAT directly (CORS-free at native layer)
-  if (IS_NATIVE) {
-    try {
-      const direct = await fetchVia('https://wovodat.phivolcs.dost.gov.ph/bulletin/list-of-bulletin', true);
-      if (direct && direct.success) return direct;
-      if (direct) return direct;
-    } catch {}
+  // PHP JSON first (stable, cached upstream), then the Vercel function on web.
+  // The old native branch tried WOVODAT with a plain WebView fetch — which CORS
+  // blocks — and never reached the PHP endpoint at all, so the APK always
+  // showed "Volcano data unavailable".
+  const candidates: { url: string; isDirectHtml: boolean }[] = [];
+  const phpUrl = volcanoListUrl();
+  for (const u of expandPhpFailoverUrls(phpUrl)) {
+    if (!candidates.some((c) => c.url === u)) candidates.push({ url: u, isDirectHtml: false });
   }
-
-  // Web: try PHP endpoint first (primary -> backup via failover), then Vercel serverless fallback
-  const candidates: string[] = [];
   if (!IS_NATIVE) {
-    const phpUrl = volcanoListUrl();
-    for (const u of expandPhpFailoverUrls(phpUrl)) {
-      if (!candidates.includes(u)) candidates.push(u);
-    }
-    // Avoid duplicate if PHP already points at /api/volcano
     const vercelUrl = apiUrl('/api/volcano?page=hub');
-    if (!candidates.includes(vercelUrl)) candidates.push(vercelUrl);
+    if (!candidates.some((c) => c.url === vercelUrl)) candidates.push({ url: vercelUrl, isDirectHtml: false });
   }
+  // Direct HTML scrape is the last resort on native (and a dev/web fallback).
+  const directUrl = 'https://wovodat.phivolcs.dost.gov.ph/bulletin/list-of-bulletin';
+  if (!candidates.some((c) => c.url === directUrl)) candidates.push({ url: directUrl, isDirectHtml: true });
 
   let lastError: unknown = null;
-  for (const url of candidates) {
+  for (let i = 0; i < candidates.length; i++) {
+    const { url, isDirectHtml } = candidates[i];
     try {
-      const res = await fetchVia(url);
+      const res = await fetchVia(url, isDirectHtml);
       if (res) {
         // If PHP returned JSON with success:false due to upstream failure,
         // try next candidate instead of immediately showing error
-        if (!res.success && res.error && candidates.indexOf(url) < candidates.length - 1) {
+        if (!res.success && res.error && i < candidates.length - 1) {
           lastError = new Error(res.error);
           continue;
         }
@@ -278,10 +273,11 @@ export async function fetchVolcanoDetail(bulletinUrl: string): Promise<VolcanoDe
   const cached = getDetailCached(bulletinUrl);
   if (cached) return cached;
 
-  // 1) Native: fetch wovodat directly (CORS-free)
+  // 1) Native: PHP detail endpoint first (CORS-free via plugin); direct WOVODAT
+  // HTML as fallback. A plain WebView fetch of the bulletin is CORS-blocked.
   if (IS_NATIVE) {
     try {
-      const res = await nativeHttpGet(bulletinUrl);
+      const res = await nativeHttpGetWithPhpFailover(volcanoDetailUrl(bulletinUrl));
       if (res.ok) {
         const ct = res.headers.get('content-type') || '';
         if (ct.includes('application/json')) {
@@ -289,10 +285,28 @@ export async function fetchVolcanoDetail(bulletinUrl: string): Promise<VolcanoDe
           if (j.success) { setDetailCached(bulletinUrl, j); return j; }
         }
         const html = await res.text();
-        const detail = parseVolcanoDetailHtml(html, bulletinUrl);
-        const payload: VolcanoDetailResponse = { success: true, count: 1, data: detail };
-        setDetailCached(bulletinUrl, payload);
-        return payload;
+        if (html) {
+          const detail = parseVolcanoDetailHtml(html, bulletinUrl);
+          if (detail.title || Object.keys(detail.parametros).length || detail.text) {
+            const payload: VolcanoDetailResponse = { success: true, count: 1, data: detail };
+            setDetailCached(bulletinUrl, payload);
+            return payload;
+          }
+        }
+      }
+    } catch {}
+    try {
+      const res = await nativeHttpGet(bulletinUrl);
+      if (res.ok) {
+        const html = await res.text();
+        if (html) {
+          const detail = parseVolcanoDetailHtml(html, bulletinUrl);
+          if (detail.title || Object.keys(detail.parametros).length || detail.text) {
+            const payload: VolcanoDetailResponse = { success: true, count: 1, data: detail };
+            setDetailCached(bulletinUrl, payload);
+            return payload;
+          }
+        }
       }
     } catch {}
   }

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ChangeEvent, useRef } from 'r
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ImagePlus, Loader2, Save, ShieldAlert, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { notifyUsersAboutForumPost } from '../lib/adminNotify';
 import {
   getForumPost,
   createForumPost,
@@ -125,6 +126,8 @@ export function ForumEdit() {
         navigate(`/forum/${id}`, { replace: true });
       } else {
         const created = await createForumPost(t, c, imageUrl);
+        // Notify subscribers when an admin publishes a new forum post.
+        if (admin) void notifyUsersAboutForumPost(created);
         navigate(`/forum/${created.id}`, { replace: true });
       }
     } catch (err) {

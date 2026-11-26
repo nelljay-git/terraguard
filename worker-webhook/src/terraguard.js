@@ -1,5 +1,8 @@
 ﻿// TerraGuard all-hazard monitor: weather (PAGASA) + volcano (PHIVOLCS) + haze (ASMC).
 // ONE worker, ONE cron set. See worker-webhook/TERRA_README.md.
+// Plus the push monitor (FCM earthquake notifications) — see src/push-monitor.js.
+import { runPushMonitor, sendAdminNotification } from "./push-monitor.js";
+import { runHazardPushMonitor } from "./hazard-push.js";
 
 // Shared Facebook Graph helpers (used by Weather, Volcano, Haze)
 const FB_GRAPH_VERSION = "v21.0";
@@ -5198,11 +5201,24 @@ function b64urlDecode(s) {
 }
 
 /**
- * Verify a Supabase access token (JWT, HS256, signed with the project's JWT
- * secret). Returns the payload. Throws on malformed / wrong-alg / bad
- * signature / expired tokens. Fail-closed: any doubt rejects.
+ * Verify a Supabase access token. Recent Supabase projects sign access tokens
+ * with ES256 (asymmetric, keys published in JWKS); older ones use HS256 with
+ * the project JWT secret. Both are accepted. Returns the payload, throws on
+ * malformed / wrong-alg / bad-signature / expired tokens.
  */
-async function verifySupabaseJwt(token, jwtSecret) {
+let jwksCache = null;
+let jwksFetchedAt = 0;
+async function supabaseJwks(supabaseUrl) {
+    if (jwksCache && Date.now() - jwksFetchedAt < 3600_000) return jwksCache;
+    const url = `${String(supabaseUrl).replace(/\/+$/, "")}/auth/v1/.well-known/jwks.json`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`JWKS fetch failed (${res.status})`);
+    jwksCache = await res.json();
+    jwksFetchedAt = Date.now();
+    return jwksCache;
+}
+
+async function verifySupabaseJwt(token, jwtSecret, env) {
     const parts = String(token || "").split(".");
     if (parts.length !== 3) throw new Error("malformed token");
     let header, payload;
@@ -5213,22 +5229,37 @@ async function verifySupabaseJwt(token, jwtSecret) {
     catch {
         throw new Error("malformed token");
     }
-    if (header.alg !== "HS256") throw new Error(`unexpected alg ${header.alg}`);
     if (!crypto?.subtle) throw new Error("crypto unavailable");
-    const key = await crypto.subtle.importKey(
-        "raw",
-        new TextEncoder().encode(jwtSecret),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["verify"],
-    );
-    const ok = await crypto.subtle.verify(
-        "HMAC",
-        key,
-        b64urlDecode(parts[2]),
-        new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
-    );
-    if (!ok) throw new Error("bad signature");
+    const signingInput = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+    const signature = b64urlDecode(parts[2]);
+
+    if (header.alg === "HS256") {
+        const key = await crypto.subtle.importKey(
+            "raw",
+            new TextEncoder().encode(jwtSecret),
+            { name: "HMAC", hash: "SHA-256" },
+            false,
+            ["verify"],
+        );
+        if (!await crypto.subtle.verify("HMAC", key, signature, signingInput))
+            throw new Error("bad signature");
+    } else if (header.alg === "ES256") {
+        const jwks = await supabaseJwks(env?.SUPABASE_URL ?? "");
+        const jwk = jwks.keys.find((k) => k.kid === header.kid) ?? jwks.keys[0];
+        if (!jwk) throw new Error("no matching JWKS key");
+        const key = await crypto.subtle.importKey(
+            "jwk",
+            { kty: "EC", crv: jwk.crv ?? "P-256", x: jwk.x, y: jwk.y, ext: true },
+            { name: "ECDSA", namedCurve: jwk.crv ?? "P-256" },
+            false,
+            ["verify"],
+        );
+        if (!await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, signature, signingInput))
+            throw new Error("bad signature");
+    } else {
+        throw new Error(`unexpected alg ${header.alg}`);
+    }
+
     const now = Math.floor(Date.now() / 1000);
     if (typeof payload.exp === "number" && payload.exp < now - 30)
         throw new Error("token expired");
@@ -5491,6 +5522,74 @@ export default {
             parts.push("haze: " + await runGuarded("haze", h.kv, () => Haze.runMonitor(h.env)));
             parts.push("tsunami: " + await runGuarded("tsunami", t.kv, () => Tsunami.runMonitor(t.env)));
             return json({ success: true, message: parts.join(" | ") });
+        }
+        if (path === "/admin/push") {
+            // Admin-only system message. The browser gate is UX only — this
+            // verifies the Supabase JWT signature and the email allowlist.
+            try {
+                if (request.method !== "POST")
+                    return json({ success: false, error: "Use POST" }, 405);
+                const jwtSecret = (env.SUPABASE_JWT_SECRET ?? "").trim();
+                if (!jwtSecret)
+                    return json({ success: false, error: "not configured (SUPABASE_JWT_SECRET)" }, 500);
+                const auth = request.headers.get("Authorization") ?? "";
+                const bearer = /^Bearer (.+)$/.exec(auth.trim());
+                if (!bearer)
+                    return json({ success: false, error: "missing Bearer token (sign in first)" }, 401);
+                let claims;
+                try {
+                    claims = await verifySupabaseJwt(bearer[1], jwtSecret, env);
+                } catch (e) {
+                    return json({ success: false, error: `invalid token: ${e instanceof Error ? e.message : String(e)}` }, 401);
+                }
+                const email = String(claims.email ?? "").toLowerCase();
+                if (!email || !parseNewsAdmins(env).includes(email))
+                    return json({ success: false, error: "restricted: admins only" }, 403);
+
+                let input;
+                try {
+                    input = await request.json();
+                } catch {
+                    return json({ success: false, error: "invalid JSON body" }, 400);
+                }
+                const title = String(input.title ?? "").trim().slice(0, 120);
+                const body = String(input.body ?? "").trim().slice(0, 600);
+                if (!title || !body)
+                    return json({ success: false, error: "title and body are required" }, 400);
+                const source = String(input.source ?? "all").toLowerCase();
+                if (!["all", "phivolcs", "usgs", "emsc"].includes(source))
+                    return json({ success: false, error: "invalid source" }, 400);
+                const link = String(input.link ?? "").trim().slice(0, 500);
+                if (link && !/^(https?:\/\/|\/)/i.test(link))
+                    return json({ success: false, error: "link must be an http(s) URL or an app path starting with /" }, 400);
+                const scope = String(input.scope ?? "alerts").toLowerCase();
+                if (!["alerts", "all"].includes(scope))
+                    return json({ success: false, error: "invalid scope" }, 400);
+
+                const result = await sendAdminNotification(env, {
+                    title,
+                    body,
+                    link,
+                    scope,
+                    source: source === "all" ? null : source,
+                });
+                if (result.error) return json({ success: false, error: result.error }, 500);
+                return json({ success: true, ...result });
+            } catch (e) {
+                return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
+            }
+        }
+        if (path === "/trigger-push") {
+            if (!secretsOk(request, masterSecrets(env)))
+                return new Response("Not Found", { status: 404, headers: CORS });
+            try {
+                const result = await runPushMonitor(env);
+                const hazards = await runHazardPushMonitor(env);
+                return json({ success: true, result, hazards });
+            }
+            catch (e) {
+                return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
+            }
         }
         if (path === "/trigger-weather") {
             if (!secretsOk(request, weatherSecrets(env)))
@@ -5788,7 +5887,7 @@ export default {
                     return json({ success: false, error: "missing Bearer token (sign in first)" }, 401);
                 let claims;
                 try {
-                    claims = await verifySupabaseJwt(bearer[1], jwtSecret);
+                    claims = await verifySupabaseJwt(bearer[1], jwtSecret, env);
                 }
                 catch (e) {
                     return json({ success: false, error: `invalid token: ${e instanceof Error ? e.message : String(e)}` }, 401);
@@ -5987,10 +6086,19 @@ export default {
                     console.log(`[cron][weather][daily] ${await runGuarded("daily", w.kv, () => Weather.runDaily(w.env))}`);
                     return;
                 }
+                // The 1-minute cron exists only for push freshness. Keep the
+                // other monitors on their original ~10-minute cadence so they
+                // don't re-scrape every source or spam Discord/Facebook.
+                if (event.cron === "* * * * *" && new Date().getUTCMinutes() % 10 !== 0) {
+                    console.log(`[cron][push] ${JSON.stringify(await runPushMonitor(env))}`);
+                    return;
+                }
                 console.log(`[cron][weather] ${await runGuarded("weather", w.kv, () => Weather.runMonitor(w.env))}`);
                 console.log(`[cron][volcano] ${await runGuarded("volcano", v.kv, () => Volcano.runMonitor(v.env))}`);
                 console.log(`[cron][haze] ${await runGuarded("haze", h.kv, () => Haze.runMonitor(h.env))}`);
                 console.log(`[cron][tsunami] ${await runGuarded("tsunami", t.kv, () => Tsunami.runMonitor(t.env))}`);
+                console.log(`[cron][push] ${JSON.stringify(await runPushMonitor(env))}`);
+                console.log(`[cron][hazards-push] ${JSON.stringify(await runHazardPushMonitor(env))}`);
             }
             catch (e) {
                 console.error("[cron][terraguard] failed", e);

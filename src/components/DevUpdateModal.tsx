@@ -1,9 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X,
   Megaphone,
   CalendarDays,
+  Download,
 } from 'lucide-react';
+import { IS_NATIVE } from '../lib/nativeHttp';
+import { useIsMobileViewport } from '../lib/useMobileViewport';
+import { checkForApkUpdate, openApkDownload, type LatestRelease } from '../lib/appUpdate';
 import './DevUpdateModal.css';
 
 // ─── EDIT THIS SECTION TO UPDATE THE MODAL CONTENT ───────────────────────────
@@ -29,12 +33,19 @@ interface UpdateData {
 // Added "quick_changes" field to each item for easy copy paste on history page
 
 const UPDATE_DATA: UpdateData = {
-  version: '1.7',
-  date: 'August 4, 2026',
+  version: '1.8',
+  date: 'November 26, 2026',
   greeting:
     "We've been working hard to make TerraGuard better! Here's what's new in this update:",
 
   items: [
+    {
+      badge: 'new',
+      title: 'In-app APK Updates',
+      description:
+        'TerraGuard now checks for a newer APK and shows a download button right in the update modal — no need to hunt for the latest file.',
+      quick_changes: 'Added in-app APK update check with direct download link'
+    },
     {
       badge: 'new',
       title: 'Community Forum',
@@ -76,6 +87,7 @@ const UPDATE_DATA: UpdateData = {
 // ─── END OF EDITABLE SECTION ─────────────────────────────────────────────────
 
 const STORAGE_KEY = 'terraguard_last_seen_update';
+const APK_DISMISSED_KEY = 'terraguard_apk_update_dismissed';
 
 const badgeLabel: Record<BadgeType, string> = {
   new: 'New',
@@ -85,22 +97,46 @@ const badgeLabel: Record<BadgeType, string> = {
 };
 
 export function DevUpdateModal() {
-  const [isOpen, setIsOpen] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [apkUpdate, setApkUpdate] = useState<LatestRelease | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const isMobileViewport = useIsMobileViewport();
+  // The APK is always a mobile client even on a tablet-width WebView.
+  const isMobileView = IS_NATIVE || isMobileViewport;
+  // Update modals are for mobile view only (including the APK).
+  const isOpen = showModal && isMobileView;
 
   useEffect(() => {
-    const lastSeen = localStorage.getItem(STORAGE_KEY);
-    if (lastSeen !== UPDATE_DATA.version) {
-      // Small delay so it doesn't flash on initial load
-      const timer = setTimeout(() => setIsOpen(true), 800);
-      return () => clearTimeout(timer);
-    }
-  }, []);
+    if (!isMobileView) return;
+    let cancelled = false;
 
-  const handleDismiss = () => {
+    // New changelog in this build — show once per version.
+    const lastSeen = localStorage.getItem(STORAGE_KEY);
+    const timer = lastSeen !== UPDATE_DATA.version
+      ? setTimeout(() => { if (!cancelled) setShowModal(true); }, 800)
+      : undefined;
+
+    // Native clients also check the public releases repo for a newer APK.
+    if (IS_NATIVE) {
+      void checkForApkUpdate().then((rel) => {
+        if (!cancelled && rel && localStorage.getItem(APK_DISMISSED_KEY) !== rel.version) {
+          setApkUpdate(rel);
+          setShowModal(true);
+        }
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [isMobileView]);
+
+  const handleDismiss = useCallback(() => {
     localStorage.setItem(STORAGE_KEY, UPDATE_DATA.version);
-    setIsOpen(false);
-  };
+    if (apkUpdate) localStorage.setItem(APK_DISMISSED_KEY, apkUpdate.version);
+    setShowModal(false);
+  }, [apkUpdate]);
 
   /* Escape to close, body scroll lock, simple focus trap, focus restore */
   useEffect(() => {
@@ -141,7 +177,7 @@ export function DevUpdateModal() {
       document.body.style.overflow = prevOverflow;
       previouslyFocused?.focus?.();
     };
-  }, [isOpen]);
+  }, [isOpen, handleDismiss]);
 
   if (!isOpen) return null;
 
@@ -188,6 +224,24 @@ export function DevUpdateModal() {
         {/* Body */}
         <div className="dev-modal-body">
           <p className="dev-modal-message">{UPDATE_DATA.greeting}</p>
+
+          {apkUpdate && (
+            <div className="dev-modal-apk-update">
+              <div className="dev-modal-apk-icon" aria-hidden="true">
+                <Download size={18} />
+              </div>
+              <div className="dev-modal-apk-text">
+                <strong>New APK available · v{apkUpdate.version}</strong>
+                <span>Download it on this device, then tap the file to install.</span>
+              </div>
+              <button
+                className="dev-modal-apk-btn"
+                onClick={() => openApkDownload(apkUpdate.apkUrl)}
+              >
+                Download
+              </button>
+            </div>
+          )}
 
           <ul className="dev-modal-updates">
             {UPDATE_DATA.items.map((item) => (

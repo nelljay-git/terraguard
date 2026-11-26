@@ -96,7 +96,9 @@ function tileDevProxy() {
 // A set VITE_API_BASE signals a native (Capacitor) build: the WebView
 // points at the deployed Vercel app for /api/*, and the PWA service
 // worker is disabled (it would intercept/break API fetches inside the WebView).
-const IS_NATIVE = !!process.env.VITE_API_BASE;
+// VITE_NATIVE_BUILD is set by `npm run build:apk`; plain `npm run build` keeps
+// the service worker for the deployed web app.
+const IS_NATIVE = !!(process.env.VITE_API_BASE || process.env.VITE_NATIVE_BUILD);
 
 export default defineConfig({
   // Base API URL for the serverless proxy (Vercel /api/* functions).
@@ -223,6 +225,11 @@ export default defineConfig({
     chunkSizeWarningLimit: 1200,
   },
   server: {
+    // Gradle rewrites thousands of files under android/ on every APK build;
+    // watching them makes Vite crash with EBUSY. The web app never needs them.
+    watch: {
+      ignored: ['**/android/**', '**/dist-video/**', '**/node_modules/**', '**/public/**'],
+    },
     proxy: {
       // Hub: /api/volcano?page=hub -> wovodat hub (used as fallback when PHP 404)
       // Detail (/api/volcano?detail=1&url=...) is handled server-side in production; in dev we bypass this proxy

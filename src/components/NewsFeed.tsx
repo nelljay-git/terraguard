@@ -15,6 +15,7 @@ interface NewsFeedProps {
 export function NewsFeed({ limit = 5, showViewAll = true }: NewsFeedProps) {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const loadNews = useCallback(async () => {
     setLoading(true);
@@ -22,9 +23,13 @@ export function NewsFeed({ limit = 5, showViewAll = true }: NewsFeedProps) {
       const res = await fetchNews();
       if (res.data.length > 0) {
         setArticles(res.data);
+        setError('');
+      } else {
+        setError(res.error || 'News source unavailable.');
       }
     } catch (err) {
       console.error('NewsFeed error:', err);
+      setError(err instanceof Error ? err.message : 'News source unavailable.');
     } finally {
       setLoading(false);
     }
@@ -68,7 +73,9 @@ export function NewsFeed({ limit = 5, showViewAll = true }: NewsFeedProps) {
       )}
 
       {!loading && displayArticles.length === 0 && (
-        <div className="news-feed-empty">No earthquake news available right now.</div>
+        <div className="news-feed-empty" title={error}>
+          {error || 'No earthquake news available right now.'}
+        </div>
       )}
 
       {!loading && displayArticles.length > 0 && (

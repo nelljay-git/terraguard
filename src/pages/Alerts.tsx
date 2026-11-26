@@ -1,9 +1,25 @@
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Bell, Info } from 'lucide-react';
 import { NotificationSettings } from '../components/NotificationSettings';
+import { PushSettings } from '../components/PushSettings';
+import { IS_NATIVE } from '../lib/nativeHttp';
 import { AlertZoneManager } from '../components/AlertZoneManager';
 import './Alerts.css';
 
+type AlertsTab = 'alerts' | 'settings';
+
 export function Alerts() {
+  const [params] = useSearchParams();
+  const tabParam = params.get('tab');
+  const [tab, setTab] = useState<AlertsTab>(tabParam === 'settings' ? 'settings' : 'alerts');
+
+  // Tapping "Notification Settings" in the account menu while already on this
+  // page reuses the same component, so react to the query param changing.
+  useEffect(() => {
+    if (tabParam === 'settings') setTab('settings');
+  }, [tabParam]);
+
   return (
     <div className="alerts-container container">
       <header className="alerts-header">
@@ -21,14 +37,37 @@ export function Alerts() {
         </p>
       </header>
 
-      <div className="alerts-grid">
-        <div className="alerts-section">
-          <NotificationSettings />
-        </div>
+      <div className="alerts-tabs" role="tablist" aria-label="Alerts sections">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'alerts'}
+          className={`alerts-tab${tab === 'alerts' ? ' alerts-tab--active' : ''}`}
+          onClick={() => setTab('alerts')}
+        >
+          Alerts
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'settings'}
+          className={`alerts-tab${tab === 'settings' ? ' alerts-tab--active' : ''}`}
+          onClick={() => setTab('settings')}
+        >
+          Settings
+        </button>
+      </div>
 
-        <div className="alerts-section">
-          <AlertZoneManager />
-        </div>
+      <div className="alerts-grid">
+        {tab === 'alerts' ? (
+          <div className="alerts-section">
+            <AlertZoneManager />
+          </div>
+        ) : (
+          <div className="alerts-section">
+            {IS_NATIVE ? <PushSettings /> : <NotificationSettings />}
+          </div>
+        )}
       </div>
 
       <div className="alerts-info">
@@ -38,9 +77,19 @@ export function Alerts() {
           <ul className="alerts-how-list">
             <li>Create alert zones by clicking locations on the map</li>
             <li>Set a magnitude threshold for each zone (e.g., M4.5+)</li>
-            <li>When the app is open and visible, it polls the feed you picked in Settings — PHIVOLCS by default, USGS or EMSC if you switched — every 60 seconds</li>
+            <li>
+              Push notifications follow the same feed — pick PHIVOLCS, USGS or EMSC in the app's
+              Settings (gear icon). Each notification states its source and never claims to be an
+              early warning.
+            </li>
+            <li>
+              When the app is open and visible, it polls the feed you picked in the app's Settings
+              — PHIVOLCS by default, USGS or EMSC if you switched — every 60 seconds
+            </li>
             <li>A matching event triggers a browser notification — after publication, not in advance</li>
-            <li>Install TerraGuard as a PWA for the best chance of receiving alerts</li>
+            {!IS_NATIVE && (
+              <li>Install TerraGuard as a PWA for the best chance of receiving alerts</li>
+            )}
           </ul>
         </div>
       </div>

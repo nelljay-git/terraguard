@@ -25,25 +25,44 @@ interface SimpleResponse {
 // In dev/the web app, the Vite proxy (/api/phivolcs) and relative paths handle it.
 export async function nativeHttpGet(url: string): Promise<SimpleResponse> {
   if (IS_NATIVE) {
-    const { Http } = await import('@capacitor-community/http');
-    const res = await Http.get({
-      url,
-      headers: { 'User-Agent': 'TerraGuard/1.0' },
-      connectTimeout: 8000,
-      readTimeout: 8000,
-      responseType: 'text',
-    });
+    try {
+      const { Http } = await import('@capacitor-community/http');
+      const res = await Http.get({
+        url,
+        headers: { 'User-Agent': 'TerraGuard/1.0' },
+        connectTimeout: 8000,
+        readTimeout: 8000,
+        responseType: 'text',
+      });
 
-    const contentType = (res.headers?.['content-type'] as string) || '';
-    const body = typeof res.data === 'string' ? res.data : String(res.data ?? '');
+      const rawHeaders = (res.headers ?? {}) as Record<string, unknown>;
+      const headerKey = Object.keys(rawHeaders).find((k) => k.toLowerCase() === 'content-type');
+      // OkHttp/Capacitor preserves the server's header casing ("Content-Type"),
+      // whereas the Fetch API lowercases it. Read it case-insensitively or the
+      // JSON response is mistaken for HTML and parses to zero quakes.
+      const contentType = headerKey ? String(rawHeaders[headerKey] ?? '') : '';
+      const body = typeof res.data === 'string' ? res.data : String(res.data ?? '');
 
-    return {
-      ok: res.status >= 200 && res.status < 300,
-      status: res.status,
-      text: async () => body,
-      json: async () => JSON.parse(body),
-      headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? contentType : null) },
-    };
+      return {
+        ok: res.status >= 200 && res.status < 300,
+        status: res.status,
+        text: async () => body,
+        json: async () => JSON.parse(body),
+        headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? contentType : null) },
+      };
+    } catch (e) {
+      // The native plugin can fail on some Android builds. CORS-enabled hosts
+      // (the PHP proxy, USGS, EMSC) work fine with a plain WebView fetch.
+      console.warn('Capacitor HTTP failed, using WebView fetch instead:', e);
+      const res = await fetch(url);
+      return {
+        ok: res.ok,
+        status: res.status,
+        text: () => res.text(),
+        json: () => res.json(),
+        headers: { get: (name: string) => res.headers.get(name) },
+      };
+    }
   }
 
   // Web / dev: standard fetch (Vite proxy handles cross-origin).

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Share, X, Smartphone } from 'lucide-react';
+import { IS_NATIVE } from '../lib/nativeHttp';
+import { useIsMobileViewport } from '../lib/useMobileViewport';
 import './InstallPrompt.css';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -13,15 +15,20 @@ const INSTALLED_KEY = 'terraguard_pwa_installed';
 const SHOW_DELAY_MS = 4000;
 
 function isIOS() {
-  return /iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as any).MSStream;
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as Window & { MSStream?: unknown }).MSStream;
 }
 
 function isInStandaloneMode() {
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as any).standalone === true
+    (window.navigator as Navigator & { standalone?: boolean }).standalone === true
   );
 }
+
+type RelatedApp = { id?: string; packageName?: string };
+type NavigatorWithRelatedApps = Navigator & {
+  getInstalledRelatedApps?: () => Promise<RelatedApp[]>;
+};
 
 /** Mark the PWA as installed so the prompt never appears again. */
 function markAsInstalled() {
@@ -35,10 +42,14 @@ function wasInstalledBefore() {
 
 export function InstallPrompt() {
   const [visible, setVisible] = useState(false);
-  const [isIos, setIsIos] = useState(false);
   const deferredPrompt = useRef<BeforeInstallPromptEvent | null>(null);
+  const isMobile = useIsMobileViewport();
+  const isIos = isIOS();
 
   useEffect(() => {
+    // Install prompt is for mobile web only — never on desktop or in the APK.
+    if (!isMobile) return;
+
     // Never show if already running as installed PWA
     if (isInStandaloneMode()) {
       markAsInstalled();
@@ -51,12 +62,10 @@ export function InstallPrompt() {
     // Don't show if dismissed in this session
     if (sessionStorage.getItem(DISMISSED_KEY)) return;
 
-    const ios = isIOS();
-    setIsIos(ios);
-
     // Check the Related Apps API (Chrome 80+) to detect if already installed
-    if ('getInstalledRelatedApps' in navigator) {
-      (navigator as any).getInstalledRelatedApps().then((apps: any[]) => {
+    const getRelatedApps = (navigator as NavigatorWithRelatedApps).getInstalledRelatedApps;
+    if (typeof getRelatedApps === 'function') {
+      getRelatedApps.call(navigator).then((apps) => {
         if (apps && apps.length > 0) {
           markAsInstalled();
           setVisible(false);
@@ -104,7 +113,7 @@ export function InstallPrompt() {
       window.removeEventListener('appinstalled', onAppInstalled);
       standaloneQuery.removeEventListener('change', onDisplayModeChange);
     };
-  }, []);
+  }, [isMobile]);
 
   const handleInstall = async () => {
     if (deferredPrompt.current) {
@@ -128,6 +137,10 @@ export function InstallPrompt() {
   };
 
   const showInstallButton = !isIos;
+
+  // In the native APK the app is already installed, and desktop view doesn't
+  // need a mobile install prompt — skip it in both cases.
+  if (IS_NATIVE || !isMobile) return null;
 
   return (
     <AnimatePresence>

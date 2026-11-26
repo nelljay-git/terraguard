@@ -7,11 +7,13 @@ export function ActiveFaultsLayer() {
   useEffect(() => {
     fetch('/assets/geojson/gem_active_faults_harmonized.geojson')
       .then(res => {
-        if (!res.ok) throw new Error("Failed to fetch");
+        // Optional dataset: when it isn't shipped, the dev server returns the
+        // SPA's HTML fallback. Skip it instead of throwing a JSON parse error.
+        if (!res.ok || !(res.headers.get('content-type') || '').includes('json')) return null;
         return res.json();
       })
       .then(setData)
-      .catch(err => console.error("Error loading active faults:", err));
+      .catch(() => { /* optional layer — ignore */ });
   }, []);
 
   if (!data) return null;

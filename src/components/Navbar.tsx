@@ -4,6 +4,7 @@ import {
   Activity,
   Archive,
   BarChart2,
+  Bell,
   Newspaper,
   HelpCircle,
   User,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
+import { MOTION_FEATURE_ENABLED } from '../lib/featureFlags';
 import { getPreferredApi, PREFERRED_API_CHANGE_EVENT } from '../lib/apiPreference';
 import { SettingsModal } from './SettingsModal';
 import { Notifications } from './Notifications';
@@ -247,6 +249,29 @@ export function Navbar() {
                       <Settings size={16} aria-hidden="true" />
                       Settings
                     </button>
+                    <Link
+                      to="/alerts?tab=settings"
+                      role="menuitem"
+                      className="nav-account-menu-item"
+                      onClick={closeMenu}
+                    >
+                      <Bell size={16} aria-hidden="true" />
+                      Notification Settings
+                    </Link>
+                    {user?.email?.toLowerCase() === 'gianganwneljae@gmail.com' && (
+                      <>
+                        <Link to="/ai" role="menuitem" className="nav-account-menu-item" onClick={closeMenu}>
+                          <Shield size={16} aria-hidden="true" />
+                          Admin Studio
+                        </Link>
+                        {MOTION_FEATURE_ENABLED && (
+                          <Link to="/motion-lab" role="menuitem" className="nav-account-menu-item" onClick={closeMenu}>
+                            <Activity size={16} aria-hidden="true" />
+                            Motion Diagnostics Lab
+                          </Link>
+                        )}
+                      </>
+                    )}
                     <button type="button" role="menuitem" className="nav-account-menu-item danger" onClick={handleSignOut}>
                       <LogOut size={16} aria-hidden="true" />
                       Sign Out
@@ -330,6 +355,17 @@ export function Navbar() {
           ))}
 
           <div className="nav-drawer-divider" role="separator" />
+
+          {/* Available to everyone, including guests — not just the signed-in
+              account menu. */}
+          <Link
+            to="/alerts?tab=settings"
+            className={cn('nav-drawer-link', location.pathname === '/alerts' && 'active')}
+            onClick={closeDrawer}
+          >
+            <Bell size={18} className="nav-drawer-link-icon" aria-hidden="true" />
+            Notification Settings
+          </Link>
 
           <Link to="/about" className="nav-drawer-link" onClick={closeDrawer}>
             <HelpCircle size={18} className="nav-drawer-link-icon" aria-hidden="true" />

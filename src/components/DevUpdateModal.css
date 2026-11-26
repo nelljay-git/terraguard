@@ -151,6 +151,64 @@
   margin: 0 0 14px;
 }
 
+/* APK update callout (native builds only) */
+.dev-modal-apk-update {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0 0 14px;
+  padding: 11px 12px;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 12px;
+  background: rgba(99, 102, 241, 0.09);
+}
+
+.dev-modal-apk-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  color: #818cf8;
+  background: rgba(99, 102, 241, 0.16);
+}
+
+.dev-modal-apk-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.dev-modal-apk-text strong {
+  font-size: 0.82rem;
+  color: var(--tg-text);
+}
+
+.dev-modal-apk-text span {
+  font-size: 0.73rem;
+  line-height: 1.4;
+  color: var(--tg-text-3);
+}
+
+.dev-modal-apk-btn {
+  flex-shrink: 0;
+  padding: 7px 13px;
+  border-radius: 9px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #fff;
+  background: #4f46e5;
+  transition: filter 0.2s ease;
+}
+
+.dev-modal-apk-btn:hover {
+  filter: brightness(1.12);
+}
+
 /* Editorial list — hairline-separated rows, severity tag column */
 .dev-modal-updates {
   list-style: none;

@@ -21,6 +21,14 @@
 
 .ns-title svg { color: #60a5fa; }
 
+.ns-group-title {
+  margin: 14px 2px 0;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--tg-text-3);
+}
+
 /* Section rows are flat hairline panels */
 .ns-perm,
 .ns-toggle-row,
@@ -61,6 +69,7 @@
 
 .ns-perm-status--granted { color: #34d399; }
 .ns-perm-status--denied { color: #f87171; }
+.ns-perm-status--pending { color: #94a3b8; }
 .ns-perm-status--default { color: #fbbf24; }
 
 .ns-perm-icon--granted { color: #34d399; }
@@ -71,6 +80,66 @@
   font-size: 0.75rem;
   color: var(--tg-text-2);
   line-height: 1.5;
+}
+
+/* Debug log (PushSettings) — expandable, in-app copy for "why didn't it fire" */
+.ns-debug {
+  margin: 18px 0 2px;
+  padding: 8px 12px;
+  border: 1px dashed var(--tg-hairline);
+  border-radius: var(--tg-radius-sm);
+}
+
+.ns-debug-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--tg-text-3);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ns-debug-head svg {
+  transition: transform 0.15s ease;
+}
+
+.ns-debug-head[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.ns-debug-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ns-debug-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin-bottom: 4px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--tg-text-3);
+  font-size: 0.67rem;
+  cursor: pointer;
+}
+
+.ns-debug-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.67rem;
+  color: var(--tg-text-2);
+  word-break: break-word;
 }
 
 /* Toggle row */

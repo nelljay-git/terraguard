@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { X, User, Save, Clock, Sun, Moon, Monitor } from 'lucide-react';
 import { useAuth, type ThemePreference } from '../context/AuthContext';
+import { syncFcmSource } from '../lib/fcm';
 import './SettingsModal.css';
 
 const USERNAME_COOLDOWN_MS = 60 * 24 * 60 * 60 * 1000;
@@ -157,14 +158,22 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     setApiSuccess(null);
     setApiSaving(true);
     const err = await updatePreferredApi(next);
-    setApiSaving(false);
     if (err) {
+      setApiSaving(false);
       setApiError(err);
-    } else {
-      setPreferredApi(next);
-      setApiSuccess('Preferred API saved. Reloading…');
-      setTimeout(() => window.location.reload(), 600);
+      return;
     }
+    setPreferredApi(next);
+    // Flush the device's push source before reloading: the reload aborts
+    // in-flight requests, and a missed write leaves the worker on the old feed.
+    const synced = await syncFcmSource(next);
+    setApiSaving(false);
+    setApiSuccess(
+      synced
+        ? 'Preferred API saved. Reloading…'
+        : 'Preferred API saved. Push source will sync on next launch. Reloading…',
+    );
+    setTimeout(() => window.location.reload(), 600);
   };
 
   const themeOptions: { value: ThemePreference; label: string; icon: ReactElement }[] = [

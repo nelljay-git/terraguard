@@ -12,7 +12,6 @@ export interface NewsResponse {
   error?: string;
 }
 
-import { apiUrl } from '../lib/apiBase';
 import { nativeHttpGet, IS_NATIVE } from '../lib/nativeHttp';
 import { getPreferredApi } from '../lib/apiPreference';
 
@@ -22,6 +21,12 @@ function buildNewsQuery(): string {
   const query = pref === 'usgs' || pref === 'emsc' ? 'earthquake' : 'earthquake location:Philippines';
   return 'https://news.google.com/rss/search?q=' + encodeURIComponent(query) + '&hl=en-PH&gl=PH&ceid=PH:en';
 }
+
+// Native builds load from file:// assets, so a relative /api/news would resolve
+// to file:///api/news. Use the deployed function's ORIGIN as the native fallback;
+// the /api/news path is appended below. (Including the path here would produce
+// /api/news/api/news, which Pages answers with a 200 SPA HTML page.)
+const NATIVE_NEWS_API = 'https://terraguard-ph.pages.dev';
 
 const NEWS_CACHE_KEY = 'terraguard_news_cache';
 const NEWS_CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes
@@ -55,65 +60,63 @@ function setCachedNews(data: NewsResponse): void {
   } catch { /* ignore */ }
 }
 
+function parseRssFeed(xml: string): NewsResponse {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const articles: NewsArticle[] = [];
+  doc.querySelectorAll('item').forEach((item) => {
+    const title = item.querySelector('title')?.textContent?.trim() || '';
+    const link = item.querySelector('link')?.textContent?.trim() || '';
+    const pubDate = item.querySelector('pubDate')?.textContent?.trim() || '';
+    const source = item.querySelector('source')?.textContent?.trim() || '';
+    if (title && link) articles.push({ title, link, pubDate, source });
+  });
+  return { success: true, count: articles.length, data: articles.slice(0, 20) };
+}
+
 export async function fetchNews(): Promise<NewsResponse> {
   const cached = getCachedNews();
   if (cached && cached.data.length > 0) {
     return cached;
   }
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+  const isGlobal = getPreferredApi() === 'usgs' || getPreferredApi() === 'emsc';
+  const serverlessUrl = `${IS_NATIVE ? NATIVE_NEWS_API : ''}/api/news${isGlobal ? '?global=1' : ''}`;
+  // On native, try the fresh Google News RSS first; if the feed is blocked or
+  // returns zero items, fall back to the deployed serverless proxy (Bing-first
+  // with a browser UA). Web/dev reverses that order.
+  const urls = IS_NATIVE
+    ? [buildNewsQuery(), serverlessUrl]
+    : [serverlessUrl, buildNewsQuery()];
 
-    // Native: scrape the Google News RSS feed directly (CORS-free via plugin).
-    // Web/dev: use the Vercel function or local Vite proxy (pass scope as a param).
-    const isGlobal = getPreferredApi() === 'usgs' || getPreferredApi() === 'emsc';
-    const url = IS_NATIVE
-      ? buildNewsQuery()
-      : apiUrl(`/api/news${isGlobal ? '?global=1' : ''}`);
-    const res = await nativeHttpGet(url);
-    clearTimeout(timeout);
-
-    if (!res.ok) throw new Error(`News API responded with ${res.status}`);
-
-    const contentType = res.headers.get('content-type') || '';
-    let result: NewsResponse;
-
-    if (contentType.includes('application/json')) {
-      // Vercel serverless function returns JSON
-      result = (await res.json()) as NewsResponse;
-    } else {
-      // Native / Vite dev proxy returns raw RSS XML — parse it
-      const xml = await res.text();
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(xml, 'text/xml');
-      const items = doc.querySelectorAll('item');
-      const articles: NewsArticle[] = [];
-
-      items.forEach((item) => {
-        const title = item.querySelector('title')?.textContent?.trim() || '';
-        const link = item.querySelector('link')?.textContent?.trim() || '';
-        const pubDate = item.querySelector('pubDate')?.textContent?.trim() || '';
-        const source = item.querySelector('source')?.textContent?.trim() || '';
-        if (title && link) {
-          articles.push({ title, link, pubDate, source });
-        }
-      });
-
-      result = { success: true, count: articles.length, data: articles.slice(0, 20) };
+  let lastError: unknown = null;
+  for (const url of urls) {
+    try {
+      const res = await nativeHttpGet(url);
+      if (!res.ok) throw new Error(`News API responded with ${res.status}`);
+      const contentType = res.headers.get('content-type') || '';
+      const body = await res.text();
+      const result: NewsResponse = contentType.includes('application/json')
+        ? (JSON.parse(body) as NewsResponse)
+        : parseRssFeed(body);
+      if (result.success && result.data.length > 0) {
+        setCachedNews(result);
+        return result;
+      }
+      lastError = new Error('News source returned no articles');
+    } catch (error) {
+      lastError = error;
+      console.warn('News fetch failed for', url, error);
     }
-
-    if (result.success && result.data.length > 0) {
-      setCachedNews(result);
-    }
-    return result;
-  } catch (error) {
-    console.warn('News fetch failed:', error);
-
-    // Return stale cache if available
-    const stale = getCachedNews();
-    if (stale) return stale;
-
-    return { success: false, count: 0, data: [] };
   }
+
+  // Return stale cache if available
+  const stale = getCachedNews();
+  if (stale) return stale;
+
+  return {
+    success: false,
+    count: 0,
+    data: [],
+    error: lastError instanceof Error ? lastError.message : String(lastError ?? 'News unavailable'),
+  };
 }

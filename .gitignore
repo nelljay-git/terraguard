@@ -32,3 +32,12 @@ dist-video/
 
 # Local scratch/test fixture
 worker-webhook/src/asdasdas.txt
+
+# Generated deploy config holding live worker vars/secrets
+worker-webhook/wrangler-terraguard.deploy.toml
+
+# Supabase CLI scratch
+supabase/.temp/
+
+# Wrangler local state / cache (can contain request metadata)
+worker-webhook/.wrangler/

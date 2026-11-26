@@ -76,7 +76,7 @@ export interface BulletinRef {
 }
 
 import { apiUrl, phivolcsListUrl, phivolcsArchiveUrl, phivolcsDetailUrl, phivolcsBulletinsUrl, fetchPhpWithFailover, usePhpApi } from '../lib/apiBase';
-import { nativeHttpGet, nativeHttpGetWithPhpFailover, IS_NATIVE } from '../lib/nativeHttp';
+import { nativeHttpGetWithPhpFailover, IS_NATIVE } from '../lib/nativeHttp';
 import { type UsgsEarthquake, fetchUsgsData, getCachedUsgsData, fetchUsgsArchiveData } from './usgs';
 import { fetchEmscData, getCachedEmscData, fetchEmscArchiveData } from './emsc';
 import { getPreferredApi } from '../lib/apiPreference';
@@ -98,8 +98,6 @@ function formatUtc(date: Date): string {
   const seconds = date.getUTCSeconds().toString().padStart(2, '0');
   return `${day} ${month} ${year} - ${hours}:${minutes}:${seconds} UTC`;
 }
-
-const PHIVOLCS_BASE = 'https://earthquake.phivolcs.dost.gov.ph';
 
 const PHIVOLCS_CACHE_KEY = 'terraguard_phivolcs_cache';
 const MAX_RETRIES = 2;
@@ -181,18 +179,20 @@ async function fetchPhivolcsOnce(): Promise<PhivolcsResponse> {
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    // Native: scrape PHIVOLCS directly (no CORS-blocking proxy needed).
-    // Dev: local Vite proxy (/api/phivolcs). Prod web: PHP endpoint or in-repo functions.
-    const url = IS_NATIVE
-      ? `${PHIVOLCS_BASE}/`
-      : import.meta.env?.DEV
-        ? '/api/phivolcs'
-        : phivolcsListUrl();
+    // Use the PHP proxy on native too: PHIVOLCS' TLS cert is rejected by the
+    // Android HTTP stack, so direct scraping only works on the web proxy path.
+    const url = import.meta.env?.DEV
+      ? '/api/phivolcs'
+      : phivolcsListUrl();
     // Primary PHP host (trikefare) -> backup (InfinityFree) on 503/5xx, then
     // the /api/* serverless fallback if both PHP hosts are down.
     try {
       const res = await nativeHttpGetWithPhpFailover(url);
-      return await parsePhivolcsListResponse(res);
+      const parsed = await parsePhivolcsListResponse(res);
+      if (!parsed.data?.length) {
+        throw new Error('PHIVOLCS proxy returned 0 events (response format unreadable)');
+      }
+      return parsed;
     } catch (phpError) {
       const canFallback = !IS_NATIVE && !import.meta.env?.DEV && usePhpApi;
       if (!canFallback) throw phpError;
@@ -206,12 +206,14 @@ async function fetchPhivolcsOnce(): Promise<PhivolcsResponse> {
 }
 
 export async function fetchPhivolcsData(): Promise<PhivolcsResponse> {
+  let lastError: unknown = null;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const result = await fetchPhivolcsOnce();
       setPhivolcsCachedData(result);
       return result;
     } catch (error) {
+      lastError = error;
       console.warn(`PHIVOLCS fetch attempt ${attempt}/${MAX_RETRIES} failed:`, error);
       if (attempt < MAX_RETRIES) {
         await delay(RETRY_DELAY_MS * attempt);
@@ -225,7 +227,14 @@ export async function fetchPhivolcsData(): Promise<PhivolcsResponse> {
     return cached;
   }
 
-  return { success: false, count: 0, data: [] };
+  const detail = lastError instanceof Error ? lastError.message : String(lastError ?? 'unknown error');
+  console.error('PHIVOLCS fetch failed:', lastError);
+  return {
+    success: false,
+    count: 0,
+    data: [],
+    error: `Could not reach the PHIVOLCS proxy: ${detail}`,
+  };
 }
 
 export async function fetchEarthquakeData(): Promise<
@@ -271,13 +280,11 @@ export async function fetchArchiveData(
 
 export async function fetchPhivolcsArchiveData(year: number, monthName: string): Promise<PhivolcsResponse> {
   const path = `EQLatest-Monthly/${year}/${year}_${monthName}.html`;
-  // Native: scrape the archive page directly from PHIVOLCS.
-  // Dev: Vite proxy handles the path routing. Prod web: PHP endpoint or in-repo functions (?path=).
-  const url = IS_NATIVE
-    ? `${PHIVOLCS_BASE}/${path}`
-    : import.meta.env?.DEV
-      ? `/api/phivolcs/${path}`
-      : phivolcsArchiveUrl(path);
+  // The PHP proxy is used on native too — PHIVOLCS' TLS cert fails in the
+  // Android HTTP stack. Dev: Vite proxy handles the path routing.
+  const url = import.meta.env?.DEV
+    ? `/api/phivolcs/${path}`
+    : phivolcsArchiveUrl(path);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -358,36 +365,19 @@ export async function fetchBulletins(link: string): Promise<BulletinRef[]> {
   const prefix = m[1];
   const build = (n: number, final: boolean) => `${prefix}_B${n}${final ? 'F' : ''}.html`;
 
-  // In a native shell, probe candidate URLs by scraping PHIVOLCS directly (CORS-free).
+  // Native also uses the PHP bulletins endpoint (direct PHIVOLCS scraping
+  // fails on Android due to its TLS certificate).
   if (IS_NATIVE) {
-    const exists = async (url: string): Promise<boolean> => {
-      try {
-        const res = await nativeHttpGet(url);
-        if (!res.ok) return false;
-        const html = await res.text();
-        return /EARTHQUAKE INFORMATION/i.test(html);
-      } catch {
-        return false;
+    try {
+      const res = await nativeHttpGetWithPhpFailover(phivolcsBulletinsUrl(link));
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) return json.data as BulletinRef[];
       }
-    };
-
-    const results: BulletinRef[] = [];
-    // PHIVOLCS sometimes prunes early bulletins of a long sequence (e.g. No. 1
-    // disappears once the event is revised), so a single missing number must not
-    // stop discovery. Break only after two consecutive misses.
-    let missStreak = 0;
-    for (let n = 1; n <= 8; n++) {
-      const [plain, final] = await Promise.all([exists(build(n, false)), exists(build(n, true))]);
-      if (!plain && !final) {
-        missStreak += 1;
-        if (missStreak >= 2) break;
-      } else {
-        missStreak = 0;
-        if (plain) results.push({ no: n, final: false, url: build(n, false) });
-        if (final) results.push({ no: n, final: true, url: build(n, true) });
-      }
+    } catch (e) {
+      console.warn('PHP bulletins endpoint failed on native:', e);
     }
-    return results;
+    return [];
   }
 
   // In production web, probe through the PHP endpoint (the link) when enabled,
@@ -746,12 +736,19 @@ export async function fetchEarthquakeDetails(url: string): Promise<EarthquakeDet
   }
 
   try {
-    // In a native shell, scrape the details page directly from PHIVOLCS (CORS-free).
+    // Native can't reach PHIVOLCS directly (its TLS cert is rejected by the
+    // Android HTTP stack), so use the same PHP proxy as the web app.
     if (IS_NATIVE) {
-      const htmlRes = await nativeHttpGet(url);
-      if (!htmlRes.ok) throw new Error('Failed to fetch details HTML');
-      const html = await htmlRes.text();
-      return parseDetailsHtml(html, url);
+      try {
+        const phpRes = await nativeHttpGetWithPhpFailover(phivolcsDetailUrl(url));
+        if (phpRes.ok && (phpRes.headers.get('content-type') || '').includes('application/json')) {
+          const json = await phpRes.json();
+          if (json.success) return json.data;
+        }
+      } catch (e) {
+        console.warn('PHP detail endpoint failed on native:', e);
+      }
+      return null;
     }
 
     // Try PHP endpoint in production web when enabled (default true).

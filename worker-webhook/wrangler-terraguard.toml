@@ -4,11 +4,10 @@ compatibility_date = "2026-09-07"
 compatibility_flags = ["nodejs_compat"]
 
 # ONE cron set for all four monitors (weather + volcano + haze + tsunami).
-# Monitor tick every 10 min + PAGASA daily summaries 07:00/18:00 PHT
-# (PHT = UTC+8: 07:00 PHT = 23:00 UTC, 18:00 PHT = 10:00 UTC)
-# Tsunami was previously */5 — now shares the 10m tick to save free-tier crons.
+# Push notifications piggyback on the 1-minute tick for near-live alerts.
+# Daily summaries: 07:00/18:00 PHT (23:00/10:00 UTC).
 [triggers]
-crons = ["*/10 * * * *", "0 23 * * *", "0 10 * * *"]
+crons = ["* * * * *", "0 23 * * *", "0 10 * * *"]
 
 # Bind ALL existing namespaces to keep history (no re-baseline burst),
 # or bind a single TERRAGUARD_KV to start fresh (one baseline burst).

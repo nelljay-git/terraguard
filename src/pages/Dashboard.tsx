@@ -27,6 +27,7 @@ export function Dashboard() {
     initialData.length > 0 ? getSignificantEarthquakes(initialData) : []
   );
   const [loading, setLoading] = useState(initialData.length === 0);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
 
@@ -35,11 +36,15 @@ export function Dashboard() {
     try {
       const res = await fetchEarthquakeData();
       if (res.data.length > 0) {
+        setLoadError(null);
         const normalized = normalizeEarthquakes(res.data);
         setEarthquakes(normalized);
         setSigEarthquakes(getSignificantEarthquakes(normalized));
         setLastSync(new Date());
         checkAlerts(normalized);
+      } else {
+        const detail = 'error' in res ? (res as { error?: string }).error : null;
+        setLoadError(detail || 'The data source returned no events.');
       }
     } catch (err) {
       console.error("Failed to fetch dashboard data", err);
@@ -172,10 +177,15 @@ export function Dashboard() {
   }
 
   if (earthquakes.length === 0) return (
-    <div className="container flex-center" style={{ height: '50vh', flexDirection: 'column', gap: '16px' }}>
+    <div className="container flex-center" style={{ minHeight: '50vh', flexDirection: 'column', gap: '16px', paddingBottom: '24px' }}>
       <Shield size={48} style={{ color: 'var(--tg-text-3)', opacity: 0.5 }} />
       <h2>Connecting to {sourceName}...</h2>
       <p className="text-muted">The data source is temporarily unavailable. Retrying automatically.</p>
+      {loadError && (
+        <p className="text-muted" style={{ fontSize: '0.7rem', maxWidth: '92vw', wordBreak: 'break-word' }}>
+          Debug: {loadError}
+        </p>
+      )}
       <button
         className="dash-refresh-btn"
         onClick={loadData}
@@ -185,6 +195,9 @@ export function Dashboard() {
         <RefreshCw size={16} className={syncing ? 'spin' : ''} style={{ marginRight: '8px', display: 'inline' }} />
         {syncing ? 'Retrying...' : 'Retry Now'}
       </button>
+      {/* A quake-feed hiccup must not hide the other live feeds entirely. */}
+      {prefDash === 'phivolcs' && <HazardStrip />}
+      <NewsFeed limit={4} />
     </div>
   );
 

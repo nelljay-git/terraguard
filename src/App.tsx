@@ -1,6 +1,8 @@
-import { Routes, Route, useParams } from 'react-router-dom';
+import { Routes, Route, useParams, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { Navbar } from './components/Navbar';
+import { useFcmRegistration } from './lib/fcm';
+import { useFcmDeepLinks } from './lib/deepLinks';
 import { DevUpdateModal } from './components/DevUpdateModal';
 import { InstallPrompt } from './components/InstallPrompt';
 import { ScrollToTop } from './components/ScrollToTop';
@@ -27,6 +29,8 @@ import { BlogPost } from './pages/BlogPost';
 import { VolcanoBulletin } from './pages/VolcanoBulletin';
 import { Tsunami } from './pages/Tsunami';
 import { AiStudio } from './pages/AiStudio';
+import { MotionLab } from './pages/MotionLab';
+import { MOTION_FEATURE_ENABLED } from './lib/featureFlags';
 import RememberingDebug from './pages/RememberingDebug';
 import './App.css';
 
@@ -39,6 +43,8 @@ function DetailsByUrl() {
 }
 
 function App() {
+  useFcmRegistration();
+  useFcmDeepLinks();
   // Strip the internal _spa query param used by the OG rewrite
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -81,6 +87,7 @@ function App() {
           {/* Unlisted admin page: no nav link. The page itself enforces the
               email allowlist, and /post-news re-checks the signed-in user. */}
           <Route path="/ai" element={<AiStudio />} />
+          <Route path="/motion-lab" element={MOTION_FEATURE_ENABLED ? <MotionLab /> : <Navigate to="/" replace />} />
           <Route path="/remembering-debug" element={<RememberingDebug />} />
           </Routes>
         </main>

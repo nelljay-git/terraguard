@@ -1,21 +1,24 @@
-name = "terraguard-content-otd"
-main = "src/content-otd.ts"
-compatibility_date = "2026-09-07"
+name = "terraguard-daily"
+main = "src/content-otd.js"
+compatibility_date = "2026-09-09"
 compatibility_flags = ["nodejs_compat"]
 
+# On This Day runs daily at 08:00 UTC.
 [triggers]
-crons = ["0 8 * * *"] # Daily 08:00 UTC
+crons = ["0 8 * * *"]
 
+# WEBHOOK_KV (shared with terraguard-earthquake). The old dedicated namespace
+# (becafbb92e4b4170b692cd3327daadaf) was deleted, which made every cron run
+# fail at env.WEBHOOK_KV.get() and stopped the Discord post.
 [[kv_namespaces]]
 binding = "WEBHOOK_KV"
-id = "REPLACE_WITH_SAME_KV_ID"
-preview_id = "REPLACE_WITH_PREVIEW_ID"
+id = "4c2e67d0997b4de6a26f155bc6cbab8a"
 
 [vars]
 OTD_MIN_MAG = "5.0" # historical significance
 OTD_YEARS_BACK = "25"
+CRON_SECRET = "b7f3c1a9e54d2f8061ca3d9e72b45f18" # manual /trigger guard
 
 # Secrets (set via `wrangler secret put` on this worker):
-# CONTENT_WEBHOOK_URL = "https://discord.com/api/webhooks/...  # #📜-on-this-day channel
-# CRON_SECRET = "same secret"
-# BOT_TOKEN = "for reactions"
+# CONTENT_WEBHOOK_URL = "https://discord.com/api/webhooks/...  #📜-on-this-day channel
+# BOT_TOKEN = optional (auto-reactions)

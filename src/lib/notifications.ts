@@ -18,7 +18,10 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   return await Notification.requestPermission();
 }
 
+import { IS_NATIVE } from './nativeHttp';
+
 export function sendNotification(title: string, options?: NotificationOptions): void {
+  if (IS_NATIVE) return; // native pushes are delivered by FCM (see src/lib/fcm.ts)
   if (Notification.permission !== 'granted') return;
 
   const merged = {

@@ -4,6 +4,14 @@ import './History.css';
 
 const VERSION_HISTORY = [
   {
+    version: '1.8',
+    date: 'November 26, 2026',
+    changes: [
+      'Added in-app APK update check with a direct download button',
+      'Moved install/update prompts to mobile view only',
+    ],
+  },
+  {
     version: '1.7',
     date: 'August 4, 2026',
     changes: [

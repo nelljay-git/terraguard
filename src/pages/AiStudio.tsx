@@ -141,6 +141,14 @@ export function AiStudio() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
 
+  // Admin push form
+  const [pushTitle, setPushTitle] = useState('');
+  const [pushBody, setPushBody] = useState('');
+  const [pushLink, setPushLink] = useState('');
+  const [pushSource, setPushSource] = useState('all');
+  const [pushSending, setPushSending] = useState(false);
+  const [pushResult, setPushResult] = useState<string | null>(null);
+
   const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   const MAX_IMAGES = MAX_NEWS_IMAGES;
 
@@ -405,6 +413,43 @@ export function AiStudio() {
     }
   }
 
+  async function sendAdminPush() {
+    setError(null);
+    setPushResult(null);
+    if (!pushTitle.trim() || !pushBody.trim()) {
+      setPushResult('Enter both a title and a message first.');
+      return;
+    }
+    if (!window.confirm(`Send this push to users?\n\n"${pushTitle.trim()}"\n\nThis really sends. Continue?`)) return;
+    setPushSending(true);
+    try {
+      const token = await accessToken();
+      const res = await fetch(`${WORKER_URL}/admin/push`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: pushTitle.trim(),
+          body: pushBody.trim(),
+          link: pushLink.trim(),
+          source: pushSource,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+      setPushResult(
+        `Sent to ${data.sent ?? 0} device(s); ${data.failed ?? 0} failed` +
+        (data.capped ? ` — capped at ${data.sent}; narrow the target to reach all ${data.total} devices.` : '.'),
+      );
+      setPushTitle('');
+      setPushBody('');
+      setPushLink('');
+    } catch (e) {
+      setError(`Push failed — ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setPushSending(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="ai-container container">
@@ -622,6 +667,48 @@ export function AiStudio() {
             <button type="button" className="ai-btn fb" disabled={!canPost} data-skip="discord"
               onClick={() => postNews(true, false, false)}>
               <Share2 size={15} /> Facebook only
+            </button>
+          </div>
+        </section>
+
+        <section className="ai-section" aria-label="Send admin push notification">
+          <h2 className="ai-step"><span className="ai-step-n">4</span> Send app notification</h2>
+          <div className="ai-field">
+            <span><label htmlFor="admin-push-title">Title</label></span>
+            <small>Shown as the notification headline on every device.</small>
+            <input id="admin-push-title" className="ai-input" value={pushTitle} maxLength={120}
+              onChange={(e) => setPushTitle(e.target.value)} placeholder="e.g. Scheduled maintenance tonight" />
+          </div>
+          <div className="ai-field">
+            <span><label htmlFor="admin-push-body">Message</label></span>
+            <small>Keep it factual — never claim an early warning.</small>
+            <textarea id="admin-push-body" className="ai-textarea" value={pushBody} maxLength={600}
+              onChange={(e) => setPushBody(e.target.value)} rows={3}
+              placeholder="Write the message subscribers will see…" />
+          </div>
+          <div className="ai-field">
+            <span><label htmlFor="admin-push-link">Link (optional)</label></span>
+            <small>Tap destination: https://… opens a browser; /news or /safety opens inside the app. Leave blank for no tap action.</small>
+            <input id="admin-push-link" className="ai-input" value={pushLink} maxLength={500}
+              onChange={(e) => setPushLink(e.target.value)}
+              placeholder="https://terraguard-ph.pages.dev/news  or  /news" />
+          </div>
+          <div className="ai-field">
+            <span><label htmlFor="admin-push-source">Target devices</label></span>
+            <small>Only devices with earthquake pushes enabled receive this.</small>
+            <select id="admin-push-source" className="ai-input" value={pushSource}
+              onChange={(e) => setPushSource(e.target.value)}>
+              <option value="all">All sources</option>
+              <option value="phivolcs">PHIVOLCS subscribers</option>
+              <option value="usgs">USGS subscribers</option>
+              <option value="emsc">EMSC subscribers</option>
+            </select>
+          </div>
+          {pushResult && <p className="ai-msg ok" role="status"><CheckCircle2 size={16} /> <span>{pushResult}</span></p>}
+          <div className="ai-actions">
+            <button type="button" className="ai-btn primary" disabled={pushSending || !pushTitle.trim() || !pushBody.trim()}
+              onClick={sendAdminPush}>
+              {pushSending ? (<><Loader2 size={15} className="spin" /> Sending…</>) : (<><Send size={15} /> Send push to users</>)}
             </button>
           </div>
         </section>
