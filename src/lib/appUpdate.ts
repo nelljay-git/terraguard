@@ -90,9 +90,10 @@ export async function checkForApkUpdate(): Promise<LatestRelease | null> {
   return isNewerVersion(latest.version, installed) ? latest : null;
 }
 
-/** Hand the APK URL to Android's browser/download manager for install. */
+/** Hand the APK URL to Android's browser/download manager, or a new tab on web. */
 export function openApkDownload(url: string): void {
-  const win = window.open(url, '_system') ?? window.open(url, '_blank', 'noopener,noreferrer');
+  const target = Capacitor.isNativePlatform() ? '_system' : '_blank';
+  const win = window.open(url, target, 'noopener,noreferrer');
   if (!win) {
     window.location.href = url;
   }

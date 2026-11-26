@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { IS_NATIVE } from '../lib/nativeHttp';
 import { useIsMobileViewport } from '../lib/useMobileViewport';
-import { checkForApkUpdate, openApkDownload, type LatestRelease } from '../lib/appUpdate';
+import { checkForApkUpdate, fetchLatestRelease, openApkDownload, type LatestRelease } from '../lib/appUpdate';
 import './DevUpdateModal.css';
 
 // ─── EDIT THIS SECTION TO UPDATE THE MODAL CONTENT ───────────────────────────
@@ -116,14 +116,18 @@ export function DevUpdateModal() {
       ? setTimeout(() => { if (!cancelled) setShowModal(true); }, 800)
       : undefined;
 
-    // Native clients also check the public releases repo for a newer APK.
+    // Native clients check for a newer APK; mobile web offers the latest APK
+    // as a download (it can't know an installed version to compare against).
+    const showApkIfNew = (rel: LatestRelease | null) => {
+      if (!cancelled && rel && localStorage.getItem(APK_DISMISSED_KEY) !== rel.version) {
+        setApkUpdate(rel);
+        setShowModal(true);
+      }
+    };
     if (IS_NATIVE) {
-      void checkForApkUpdate().then((rel) => {
-        if (!cancelled && rel && localStorage.getItem(APK_DISMISSED_KEY) !== rel.version) {
-          setApkUpdate(rel);
-          setShowModal(true);
-        }
-      });
+      void checkForApkUpdate().then(showApkIfNew);
+    } else {
+      void fetchLatestRelease().then(showApkIfNew);
     }
 
     return () => {
